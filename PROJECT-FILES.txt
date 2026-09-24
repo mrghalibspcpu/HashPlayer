@@ -1,0 +1,12 @@
+README.md
+build.gradle
+gradle.properties
+settings.gradle
+.github/workflows/build-apk.yml
+app/build.gradle
+app/src/main/AndroidManifest.xml
+app/src/main/assets/index.html
+app/src/main/java/com/mrghalibspcpu/hashplayer/MainActivity.kt
+app/src/main/res/drawable/hashplayer_icon.png
+app/src/main/res/values/strings.xml
+app/src/main/res/values/themes.xml
