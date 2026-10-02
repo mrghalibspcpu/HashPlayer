@@ -1,0 +1,14 @@
+# build output
+build/
+app/build/
+.gradle/
+local.properties
+*.apk
+*.aab
+*.keystore
+# editors / os
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+node_modules/
