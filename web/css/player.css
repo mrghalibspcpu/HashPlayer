@@ -283,3 +283,83 @@ body[dir=rtl] #queue-panel{right:auto;left:0;transform:translateX(-102%);border-
   .np-tools{display:none}
   .np-top{padding:4px 10px}
 }
+
+/* ============================================================
+   YouTube stage
+   ============================================================ */
+.yt-mount{position:absolute;inset:0;z-index:2;background:#000}
+/* the embed must not swallow our gestures — HashPlayer draws the controls */
+.yt-mount iframe{width:100%;height:100%;border:0;display:block;pointer-events:none}
+body.yt-mode .art-wrap,body.yt-mode #vis,body.yt-mode #media{display:none !important}
+body.yt-mode .stage{background:#000}
+/* the embed owns its own pixels — our video-only tools cannot touch them */
+body.yt-mode #v-shot,body.yt-mode #v-mirror,body.yt-mode #v-rotate,
+body.yt-mode #v-aspect,body.yt-mode #v-cc{display:none}
+#v-yt{display:none}
+body.yt-mode #v-yt{display:grid;color:#ff4d4d}
+body.yt-mode .vtools{opacity:1}
+
+/* ============================================================
+   Phone landscape — the video takes the whole screen and the
+   controls float on top of it instead of stealing its height.
+   ============================================================ */
+@media (orientation:landscape) and (max-height:620px){
+  body.has-video #np .np-body{padding:0;gap:0}
+  body.has-video #np .stage{border-radius:0;box-shadow:none;flex:1}
+
+  body.has-video #np .np-top{
+    position:absolute;z-index:8;top:0;left:0;right:0;padding:6px 12px;
+    background:linear-gradient(180deg,rgba(2,3,8,.82),transparent);
+    transition:opacity .28s,transform .28s var(--ease)}
+
+  body.has-video #np .np-ctrl{
+    position:absolute;z-index:8;left:0;right:0;bottom:0;width:auto;margin:0;
+    padding:26px 14px max(8px,env(safe-area-inset-bottom));gap:2px;
+    background:linear-gradient(0deg,rgba(2,3,8,.88),rgba(2,3,8,.45) 55%,transparent);
+    transition:opacity .28s,transform .28s var(--ease)}
+
+  body.has-video #np .np-meta{margin:0 0 2px}
+  body.has-video #np .np-titles h2{font-size:14.5px}
+  body.has-video #np .np-titles p{font-size:11.5px}
+  body.has-video #np .np-tools{display:none}
+  body.has-video #np .times{font-size:10.5px;margin-top:-2px}
+  body.has-video #np .transport{gap:2px;margin-top:0}
+  body.has-video #np .play-btn{width:50px;height:50px;margin:0 4px}
+  body.has-video #np .play-btn .ic{width:23px;height:23px}
+  body.has-video #np .icon-btn.big{width:38px;height:38px}
+  body.has-video #np .np-meta .fav{width:34px;height:34px}
+  body.has-video .vtools{right:6px;gap:2px;padding:4px;border-radius:15px}
+  body.has-video .vtools .icon-btn{width:31px;height:31px}
+  body.has-video .vtools .icon-btn .ic{width:16px;height:16px}
+
+  /* tap the picture to hide the chrome; cinema keeps it hidden */
+  body.has-video.cinema #np .np-top,
+  body.has-video.cinema #np .np-ctrl{opacity:0;pointer-events:none}
+  body.has-video.cinema #np .np-top{transform:translateY(-8px)}
+  body.has-video.cinema #np .np-ctrl{transform:translateY(10px)}
+  body.has-video.cinema.ui-show #np .np-top,
+  body.has-video.cinema.ui-show #np .np-ctrl{opacity:1;pointer-events:auto;transform:none}
+
+  /* audio in landscape: art beside the controls instead of a squashed column */
+  body:not(.has-video) #np .np-body{flex-direction:row;align-items:stretch;gap:18px;padding:2px 16px 12px}
+  body:not(.has-video) #np .stage{flex:0 0 min(42vw,46vh)}
+  body:not(.has-video) #np .np-ctrl{flex:1;justify-content:center;width:auto;margin:0}
+  body:not(.has-video) #np .np-tools{display:flex}
+}
+
+/* very short screens (gesture-nav phones in landscape) */
+@media (orientation:landscape) and (max-height:430px){
+  body.has-video #np .np-ctrl{padding-top:18px}
+  body.has-video #np .np-meta{display:none}
+}
+
+/* ============================================================
+   System picture-in-picture: the Activity shrinks, so strip the
+   UI down to just the picture.
+   ============================================================ */
+body.in-pip #topbar,body.in-pip #rail,body.in-pip #minibar,
+body.in-pip .np-top,body.in-pip .np-ctrl,body.in-pip .vtools,
+body.in-pip #toasts,body.in-pip .aurora{display:none !important}
+body.in-pip #np{transform:none !important;visibility:visible}
+body.in-pip #np .np-body{padding:0}
+body.in-pip .stage{border-radius:0;box-shadow:none}

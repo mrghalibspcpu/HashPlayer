@@ -16,20 +16,37 @@
   }
   HP.on('theme', readColors);
 
-  function size() {
+  /* Quality budget. Measuring the canvas forces a layout, so it happens on
+     resize only — never inside the animation loop. */
+  let maxFps = 60, frameGap = 16, lastFrame = 0;
+  function retune() {
+    const perf = !!S.perf;
+    maxFps = perf ? 30 : 60;
+    frameGap = 1000 / maxFps - 1;
+    dpr = Math.min(w.devicePixelRatio || 1, perf ? 1.25 : 2);
+    size(true);
+  }
+  V.retune = retune;
+
+  function size(force) {
     if (!cvs) return;
     const r = cvs.getBoundingClientRect();
-    dpr = Math.min(w.devicePixelRatio || 1, 2);
-    W = Math.max(1, Math.round(r.width * dpr));
-    H = Math.max(1, Math.round(r.height * dpr));
-    if (cvs.width !== W || cvs.height !== H) { cvs.width = W; cvs.height = H; }
+    const nw = Math.max(1, Math.round(r.width * dpr));
+    const nh = Math.max(1, Math.round(r.height * dpr));
+    if (force || nw !== W || nh !== H) {
+      W = nw; H = nh;
+      if (cvs.width !== W || cvs.height !== H) { cvs.width = W; cvs.height = H; }
+    }
   }
 
   V.init = function (canvas) {
-    cvs = canvas; ctx = cvs.getContext('2d');
-    readColors(); size();
-    if (w.ResizeObserver) new ResizeObserver(size).observe(cvs);
-    else w.addEventListener('resize', size);
+    cvs = canvas;
+    ctx = cvs.getContext('2d', { alpha: true, desynchronized: true });
+    readColors(); retune();
+    const onResize = () => size(true);
+    if (w.ResizeObserver) new ResizeObserver(onResize).observe(cvs);
+    else w.addEventListener('resize', onResize);
+    w.addEventListener('orientationchange', () => setTimeout(onResize, 250));
   };
   V.setMode = function (m) {
     V.mode = m; S.vis = m; HP.save();
@@ -44,8 +61,10 @@
     if (!V.running) return;
     raf = requestAnimationFrame(loop);
     if (!ctx || V.mode === 'off' || document.hidden || !V.visible()) return;
+    const now = performance.now();
+    if (now - lastFrame < frameGap) return;        // honour the frame budget
+    lastFrame = now;
     const an = HP.Engine.analyser;
-    size();
     ctx.clearRect(0, 0, W, H);
     if (!an) { idle(); return; }
     const n = an.frequencyBinCount;

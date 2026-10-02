@@ -230,6 +230,12 @@
       </div>
     </div>
 
+    <div class="yt-warn" id="eq-yt-warn">
+      <svg class="ic"><use href="#i-info"/></svg>
+      <span>A YouTube video is playing. YouTube delivers its own audio, so the equaliser,
+      effects and visualiser cannot reach it — they will work again on your next local track.</span>
+    </div>
+
     <div class="panel">
       <div class="panel-title"><svg class="ic"><use href="#i-eq"/></svg><span data-i18n="presets">Presets</span></div>
       <div class="chips wrap" id="eq-presets"></div>
@@ -311,6 +317,7 @@
       <label class="switch row"><input type="checkbox" id="set-autotheme" checked><i></i><span data-i18n="autoTheme">Tint the UI with album-art colours</span></label>
       <label class="switch row"><input type="checkbox" id="set-motion" checked><i></i><span data-i18n="animations">Animated background &amp; effects</span></label>
       <label class="switch row"><input type="checkbox" id="set-simple"><i></i><span data-i18n="simpleMode">Simple mode (hide pro controls)</span></label>
+      <label class="switch row"><input type="checkbox" id="set-perf"><i></i><span data-i18n="perfMode">Smooth mode — drop heavy blur &amp; glow (best on phones)</span></label>
     </div>
 
     <div class="panel">
@@ -331,6 +338,9 @@
       <label class="switch row"><input type="checkbox" id="set-resume" checked><i></i><span data-i18n="resume">Resume where I left off</span></label>
       <label class="switch row"><input type="checkbox" id="set-autoplay" checked><i></i><span data-i18n="autoplayNext">Autoplay next track</span></label>
       <label class="switch row"><input type="checkbox" id="set-keepawake" checked><i></i><span data-i18n="keepAwake">Keep screen awake during video</span></label>
+      <label class="switch row"><input type="checkbox" id="set-autoland" checked><i></i><span data-i18n="autoLandscape">Rotate to landscape → full-screen video</span></label>
+      <label class="switch row"><input type="checkbox" id="set-autopip" checked><i></i><span data-i18n="autoPip">Keep playing in a floating window when I leave the app</span></label>
+      <label class="switch row"><input type="checkbox" id="set-autoscan" checked><i></i><span data-i18n="autoScan">Scan this device for media automatically</span></label>
       <div class="set-row">
         <div><b data-i18n="seekStep">Double-tap seek</b><small data-i18n="seekStepSub">Seconds jumped by a double tap / arrow key.</small></div>
         <label class="select"><select id="set-seekstep"><option>5</option><option selected>10</option><option>15</option><option>30</option></select></label>
@@ -405,6 +415,7 @@
     <!-- stage: video + art + visualizer -->
     <div class="stage" id="stage">
       <video id="media" playsinline webkit-playsinline preload="metadata" crossorigin="anonymous"></video>
+      <div class="yt-mount" id="yt-mount" hidden></div>
       <div class="art-wrap" id="art-wrap">
         <div class="art-disc" id="art-disc">
           <img id="art-img" alt="">
@@ -428,6 +439,7 @@
         <button class="icon-btn" id="v-shot" title="Screenshot"><svg class="ic"><use href="#i-cam"/></svg></button>
         <button class="icon-btn" id="v-cc" title="Subtitles"><svg class="ic"><use href="#i-cc"/></svg></button>
         <button class="icon-btn" id="v-pip" title="Picture in picture"><svg class="ic"><use href="#i-pip"/></svg></button>
+        <button class="icon-btn" id="v-yt" title="Open in YouTube"><svg class="ic"><use href="#i-link"/></svg></button>
         <button class="icon-btn" id="v-full" title="Fullscreen"><svg class="ic"><use href="#i-expand"/></svg></button>
       </div>
     </div>
@@ -517,8 +529,8 @@
 
 <div class="sheet" id="sheet-url" hidden>
   <h3 data-i18n="addUrlTitle">Open media URL</h3>
-  <p class="muted" data-i18n="addUrlSub">Direct link to an audio or video file (mp3, mp4, webm…).</p>
-  <input type="url" id="url-input" placeholder="https://example.com/song.mp3" spellcheck="false">
+  <p class="muted" data-i18n="addUrlSub">Paste a YouTube link, or a direct link to an audio/video file (mp3, mp4, webm, m3u8…).</p>
+  <input type="url" id="url-input" placeholder="https://youtu.be/… or https://site.com/song.mp3" spellcheck="false">
   <div class="sheet-foot">
     <button class="btn ghost" data-close data-i18n="cancel">Cancel</button>
     <button class="btn primary" id="url-add" data-i18n="add">Add &amp; play</button>
@@ -549,8 +561,10 @@
 
 <div class="sheet" id="sheet-lyrics" hidden>
   <h3 data-i18n="lyricsTools">Lyrics</h3>
+  <div id="lrc-results" class="lrc-results" hidden></div>
   <p class="muted" data-i18n="lyricsSub">Load an .lrc / .txt file, or paste lyrics. Timed .lrc lines scroll automatically.</p>
   <div class="head-actions">
+    <button class="btn small primary" id="lrc-online"><svg class="ic"><use href="#i-search"/></svg><span data-i18n="findLyrics">Find online</span></button>
     <button class="btn small" id="lrc-load"><svg class="ic"><use href="#i-file"/></svg><span data-i18n="loadFile">Load file</span></button>
     <div class="offset"><span data-i18n="offset">Offset</span>
       <button class="btn tiny" id="lrc-minus">−0.5s</button><b id="lrc-offset">0.0s</b><button class="btn tiny" id="lrc-plus">+0.5s</button>
@@ -577,6 +591,7 @@
 <script src="js/meta.js"></script>
 <script src="js/engine.js"></script>
 <script src="js/visual.js"></script>
+<script src="js/yt.js"></script>
 <script src="js/library.js"></script>
 <script src="js/player.js"></script>
 <script src="js/app.js"></script>

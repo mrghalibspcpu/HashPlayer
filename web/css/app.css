@@ -342,3 +342,67 @@ body[dir=rtl] .notice .btn{margin-left:0;margin-right:auto}
 @media (max-width:520px){
   #btn-add-top{display:none}
 }
+
+/* ============================================================
+   Smooth mode (body.perf)
+
+   A phone GPU pays for every blurred layer on every single frame.
+   Stacked backdrop-filters plus a 90px-blurred animated aurora are
+   what make audio and video hitch on mid-range hardware, so the
+   light renderer trades the glass look for a steady frame clock.
+   ============================================================ */
+body.perf .aurora{filter:none;opacity:.42}
+body.perf .aurora .blob{mix-blend-mode:normal;animation-duration:70s}
+body.perf .aurora .blob.b3{display:none}
+body.perf .np-bg img{filter:saturate(1.3) brightness(.45);transform:scale(1.08)}
+body.perf #vis{mix-blend-mode:normal;opacity:.8}
+body.perf .art-disc{animation:none !important;transform:none;
+  box-shadow:0 14px 36px rgba(0,0,0,.5),0 0 0 1px rgba(255,255,255,.07)}
+body.perf .card{animation:none}
+body.perf .card:hover{transform:none}
+body.perf #btn-install{animation:none}
+body.perf .empty-art{animation:none}
+
+/* every frosted surface becomes a plain one */
+body.perf #topbar,body.perf #rail,body.perf #minibar,body.perf #np,
+body.perf #queue-panel,body.perf .sheet,body.perf .ctx,body.perf .toast,
+body.perf #scrim,body.perf #dropzone,body.perf .card-badge,body.perf .card-fav,
+body.perf .btn,body.perf .icon-btn,body.perf .gfx,body.perf .gbar,
+body.perf .badge-speed,body.perf .vtools,body.perf .lyrics{
+  backdrop-filter:none !important;-webkit-backdrop-filter:none !important}
+body.perf #topbar{background:color-mix(in srgb,var(--bg) 97%,transparent)}
+body.perf #rail{background:color-mix(in srgb,var(--bg) 97%,transparent)}
+body.perf #minibar{background:color-mix(in srgb,var(--bg2) 99%,transparent)}
+body.perf #np{background:var(--bg)}
+body.perf #queue-panel{background:var(--bg2)}
+body.perf .sheet,body.perf .ctx,body.perf .toast{background:var(--bg2)}
+
+/* An opaque video covers the aurora anyway — stop compositing it. */
+body.has-video.playing .aurora{display:none}
+
+/* ============================================================
+   Online lyrics results
+   ============================================================ */
+.lrc-results{display:flex;flex-direction:column;gap:6px;max-height:46vh;overflow-y:auto;
+  margin:2px 0 8px;padding:6px;border-radius:16px;background:var(--panel);border:1px solid var(--line)}
+.lrc-note{font-size:12.5px;color:var(--dim);padding:8px 10px;line-height:1.5}
+.lrc-hit{display:flex;align-items:center;gap:10px;width:100%;text-align:left;cursor:pointer;
+  padding:9px 11px;border-radius:12px;border:1px solid transparent;background:transparent;
+  color:inherit;font:inherit;transition:background .18s,border-color .18s}
+body[dir=rtl] .lrc-hit{text-align:right}
+.lrc-hit:hover,.lrc-hit:focus-visible{background:color-mix(in srgb,var(--a1) 12%,transparent);
+  border-color:color-mix(in srgb,var(--a1) 35%,transparent)}
+.lrc-hit-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.lrc-hit-main b{font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lrc-hit-main small{font-size:11.5px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lrc-hit-tag{flex:none;font-size:10px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;
+  padding:3px 8px;border-radius:999px;background:var(--line);color:var(--dim)}
+.lrc-hit-tag.synced{background:color-mix(in srgb,var(--a1) 22%,transparent);color:var(--a1)}
+
+/* a YouTube embed never reaches the Web Audio graph — say so plainly */
+.yt-warn{display:none;align-items:flex-start;gap:10px;margin:0 0 14px;padding:12px 14px;
+  border-radius:16px;font-size:12.5px;line-height:1.55;color:var(--dim);
+  background:color-mix(in srgb,var(--gold) 12%,transparent);
+  border:1px solid color-mix(in srgb,var(--gold) 32%,transparent)}
+.yt-warn .ic{flex:none;width:17px;height:17px;color:var(--gold);margin-top:1px}
+body.yt-mode .yt-warn{display:flex}

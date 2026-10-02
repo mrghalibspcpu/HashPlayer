@@ -356,5 +356,89 @@
     return out.join('\n');
   }
 
+  /* ============================================================
+     Online lyrics — LRCLIB (free, no key, no account, no tracking)
+     Returns synced .lrc when it exists, plain text otherwise.
+     ============================================================ */
+  const LRCLIB = 'https://lrclib.net/api';
+
+  function cleanName(s) {
+    return String(s || '')
+      .replace(/\.[a-z0-9]{2,5}$/i, '')
+      .replace(/\[[^\]]*\]|\([^)]*\)/g, ' ')
+      .replace(/\b(official|lyrics?|video|audio|hd|4k|full|song|mp3|remastered|live|cover)\b/gi, ' ')
+      .replace(/^\s*\d{1,3}\s*[-._)]\s*/, '')
+      .replace(/[_]+/g, ' ')
+      .replace(/\s{2,}/g, ' ')
+      .trim();
+  }
+  Meta.cleanName = cleanName;
+
+  async function getJSON(url, ms) {
+    const ctl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const timer = setTimeout(() => ctl && ctl.abort(), ms || 9000);
+    try {
+      const r = await fetch(url, { signal: ctl ? ctl.signal : undefined, headers: { Accept: 'application/json' } });
+      if (!r.ok) return null;
+      return await r.json();
+    } catch (e) { return null; }
+    finally { clearTimeout(timer); }
+  }
+
+  function shape(o) {
+    if (!o || o.instrumental) return null;
+    const text = o.syncedLyrics || o.plainLyrics;
+    if (!text) return null;
+    return {
+      id: o.id,
+      title: o.trackName || '',
+      artist: o.artistName || '',
+      album: o.albumName || '',
+      duration: o.duration || 0,
+      synced: !!o.syncedLyrics,
+      text
+    };
+  }
+
+  /**
+   * Look a track up online.
+   * Tries the exact match first (artist + title + duration), then a fuzzy search,
+   * then the bare filename — so untagged files still have a chance.
+   */
+  Meta.findLyrics = async function (track) {
+    if (!navigator.onLine) throw new Error('offline');
+    const title = cleanName(track.title || track.name);
+    const artist = cleanName(track.artist || '');
+    const album = cleanName(track.album || '');
+    const dur = Math.round(track.duration || 0);
+    const q = encodeURIComponent;
+    const out = [];
+    const seen = new Set();
+    const push = list => (Array.isArray(list) ? list : [list]).forEach(o => {
+      const r = shape(o);
+      if (r && !seen.has(r.id)) { seen.add(r.id); out.push(r); }
+    });
+
+    if (artist && title) {
+      let u = LRCLIB + '/get?artist_name=' + q(artist) + '&track_name=' + q(title);
+      if (album) u += '&album_name=' + q(album);
+      if (dur) u += '&duration=' + dur;
+      const exact = await getJSON(u);
+      if (exact) push(exact);
+    }
+    if (out.length < 6) {
+      let u = LRCLIB + '/search?track_name=' + q(title);
+      if (artist) u += '&artist_name=' + q(artist);
+      push(await getJSON(u) || []);
+    }
+    if (!out.length) push(await getJSON(LRCLIB + '/search?q=' + q((artist + ' ' + title).trim())) || []);
+    if (!out.length) throw new Error('none');
+
+    /* prefer synced lyrics, then the closest duration */
+    out.sort((a, b) => (b.synced - a.synced) ||
+      (Math.abs((a.duration || 0) - dur) - Math.abs((b.duration || 0) - dur)));
+    return out.slice(0, 8);
+  };
+
   HP.Meta = Meta;
 })(window);

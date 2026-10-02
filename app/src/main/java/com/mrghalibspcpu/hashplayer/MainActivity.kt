@@ -1,17 +1,25 @@
 package com.mrghalibspcpu.hashplayer
 
 import android.annotation.SuppressLint
+import android.app.PictureInPictureParams
 import android.content.ContentUris
+import android.content.Context
 import android.content.Intent
+import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.graphics.Color
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.ParcelFileDescriptor
 import android.provider.MediaStore
 import android.provider.OpenableColumns
 import android.util.Log
+import android.util.Rational
+import android.view.View
 import android.view.ViewGroup
+import android.view.WindowManager
 import android.webkit.ConsoleMessage
 import android.webkit.PermissionRequest
 import android.webkit.ValueCallback
@@ -21,14 +29,19 @@ import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebViewClient
 import android.webkit.WebView
+import android.widget.FrameLayout
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.webkit.WebViewAssetLoader
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.BufferedInputStream
 import java.io.FilterInputStream
 import java.io.InputStream
 import kotlin.concurrent.thread
@@ -41,11 +54,11 @@ import kotlin.concurrent.thread
  * IndexedDB and the Web Audio API all behave exactly like they do in a browser.
  *
  * The native side adds what a browser cannot do on Android:
- *   • MediaStore scan of every song / video on the device
- *   • streaming those content:// files to the <video> tag *with* Range support
- *   • a real file picker for <input type="file">
+ *   • MediaStore scan of every song / video on the device (automatic on launch)
+ *   • seekable Range streaming of those content:// files into the <video> tag
+ *   • "Open with" / "Share to" from file managers, galleries and YouTube
+ *   • real picture-in-picture, immersive fullscreen and orientation locking
  *   • a media-session notification + foreground service for background playback
- *   • hardware back button handling
  */
 class MainActivity : AppCompatActivity() {
 
@@ -54,15 +67,25 @@ class MainActivity : AppCompatActivity() {
         const val ORIGIN = "https://appassets.androidplatform.net"
         const val START_URL = "$ORIGIN/assets/www/index.html"
         private const val MEDIA_PREFIX = "/media/"
+        private const val PREFS = "hashplayer"
+        private const val KEY_ASKED = "asked_media_permission"
+        private val LINK = Regex("""https?://\S+""")
     }
 
+    private lateinit var root: FrameLayout
     private lateinit var web: WebView
     private lateinit var loader: WebViewAssetLoader
     private var filePathCallback: ValueCallback<Array<Uri>>? = null
     private var pageReady = false
-    private var pendingOpen: String? = null
+    private val pending = ArrayList<String>()
     private var isPlaying = false
+    private var hasVideo = false
+    private var videoRatio = Rational(16, 9)
+    private var autoPip = true
     private var lastBackPress = 0L
+    private var didAutoScan = false
+    private var customView: View? = null
+    private var customCallback: WebChromeClient.CustomViewCallback? = null
 
     private val fileChooser =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { res ->
@@ -73,7 +96,7 @@ class MainActivity : AppCompatActivity() {
 
     private val permissions =
         registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { grants ->
-            if (grants.values.any { it }) scanDevice()
+            if (grants.values.any { it }) scanDevice(false)
             else toast(getString(R.string.need_permission))
         }
 
@@ -98,8 +121,13 @@ class MainActivity : AppCompatActivity() {
             setBackgroundColor(Color.parseColor("#07080C"))
             overScrollMode = WebView.OVER_SCROLL_NEVER
             isVerticalScrollBarEnabled = false
+            setLayerType(View.LAYER_TYPE_HARDWARE, null)
         }
-        setContentView(web)
+        root = FrameLayout(this).apply {
+            setBackgroundColor(Color.BLACK)
+            addView(web)
+        }
+        setContentView(root)
 
         web.settings.apply {
             javaScriptEnabled = true
@@ -113,9 +141,9 @@ class MainActivity : AppCompatActivity() {
             setSupportMultipleWindows(false)
             javaScriptCanOpenWindowsAutomatically = false
             cacheMode = WebSettings.LOAD_DEFAULT
-            mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
+            mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
             textZoom = 100
-            userAgentString = "$userAgentString HashPlayer/2.0"
+            userAgentString = "$userAgentString HashPlayer/2.1"
         }
 
         web.webViewClient = object : WebViewClient() {
@@ -129,8 +157,12 @@ class MainActivity : AppCompatActivity() {
                 return loader.shouldInterceptRequest(url)
             }
 
-            override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean =
-                external(request.url)
+            override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
+                // iframes (the YouTube player) must be allowed to navigate inside the WebView —
+                // only a *top level* jump to another site is handed to the browser.
+                if (!request.isForMainFrame) return false
+                return external(request.url)
+            }
 
             @Deprecated("kept for API 23", ReplaceWith(""))
             override fun shouldOverrideUrlLoading(view: WebView, url: String): Boolean =
@@ -138,14 +170,17 @@ class MainActivity : AppCompatActivity() {
 
             private fun external(u: Uri): Boolean {
                 if (u.host == "appassets.androidplatform.net") return false
-                return try {                            // anything external opens in the browser
+                if (u.host?.contains("youtube.com") == true || u.host == "youtu.be") return false
+                return try {
                     startActivity(Intent(Intent.ACTION_VIEW, u)); true
                 } catch (e: Exception) { true }
             }
 
             override fun onPageFinished(view: WebView, url: String) {
                 pageReady = true
-                pendingOpen?.let { js -> view.evaluateJavascript(js, null); pendingOpen = null }
+                pending.forEach { view.evaluateJavascript(it, null) }
+                pending.clear()
+                if (!didAutoScan) { didAutoScan = true; view.postDelayed({ autoScan() }, 700) }
             }
         }
 
@@ -175,7 +210,35 @@ class MainActivity : AppCompatActivity() {
                 }
             }
 
-            override fun onPermissionRequest(request: PermissionRequest) = request.deny()
+            /* HTML5 fullscreen — without this, "fullscreen video" silently does nothing. */
+            override fun onShowCustomView(view: View, callback: CustomViewCallback) {
+                if (customView != null) { callback.onCustomViewHidden(); return }
+                customView = view
+                customCallback = callback
+                root.addView(
+                    view,
+                    FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
+                    )
+                )
+                web.visibility = View.GONE
+                immersive(true)
+            }
+
+            override fun onHideCustomView() {
+                customView?.let { root.removeView(it) }
+                customView = null
+                web.visibility = View.VISIBLE
+                customCallback?.onCustomViewHidden()
+                customCallback = null
+                immersive(false)
+            }
+
+            override fun onPermissionRequest(request: PermissionRequest) {
+                // Only DRM playback is ever granted; camera/mic are always refused.
+                val drm = request.resources.filter { it == PermissionRequest.RESOURCE_PROTECTED_MEDIA_ID }
+                if (drm.isNotEmpty()) request.grant(drm.toTypedArray()) else request.deny()
+            }
 
             override fun onConsoleMessage(cm: ConsoleMessage): Boolean {
                 if (cm.messageLevel() == ConsoleMessage.MessageLevel.ERROR)
@@ -193,6 +256,7 @@ class MainActivity : AppCompatActivity() {
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
+                if (customView != null) { web.webChromeClient?.onHideCustomView(); return }
                 web.evaluateJavascript("window.HashBridge ? window.HashBridge.onBack() : false") { r ->
                     if (r != "true") {
                         val now = System.currentTimeMillis()
@@ -209,13 +273,13 @@ class MainActivity : AppCompatActivity() {
         })
 
         if (savedInstanceState == null) web.loadUrl(START_URL) else web.restoreState(savedInstanceState)
-        handleViewIntent(intent)
+        handleIntent(intent)
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        handleViewIntent(intent)
+        handleIntent(intent)
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -233,6 +297,24 @@ class MainActivity : AppCompatActivity() {
         web.resumeTimers(); web.onResume()
     }
 
+    /** Home / recents while a video is playing → slide into picture-in-picture. */
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        if (autoPip && isPlaying && hasVideo && customView == null) enterPip()
+    }
+
+    @SuppressLint("NewApi")
+    override fun onPictureInPictureModeChanged(inPip: Boolean, newConfig: Configuration) {
+        super.onPictureInPictureModeChanged(inPip, newConfig)
+        js("window.HashBridge && window.HashBridge.onPip($inPip);")
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        val land = newConfig.orientation == Configuration.ORIENTATION_LANDSCAPE
+        js("window.HashBridge && window.HashBridge.onRotate($land);")
+    }
+
     override fun onDestroy() {
         PlaybackService.transport = null
         PlaybackService.stop(this)
@@ -244,7 +326,7 @@ class MainActivity : AppCompatActivity() {
 
     inner class Bridge {
         @android.webkit.JavascriptInterface
-        fun scanMedia() = runOnUiThread { requestMediaPermission() }
+        fun scanMedia() = runOnUiThread { requestMediaPermission(false) }
 
         @android.webkit.JavascriptInterface
         fun setPlaybackState(playing: Boolean, title: String?, artist: String?) = runOnUiThread {
@@ -256,6 +338,60 @@ class MainActivity : AppCompatActivity() {
             PlaybackService.update(this@MainActivity, playing, title ?: "", artist ?: "")
         }
 
+        /** The web player tells us whether the current track is a video, and its shape. */
+        @android.webkit.JavascriptInterface
+        fun setVideoState(video: Boolean, w: Int, h: Int) = runOnUiThread {
+            hasVideo = video
+            if (w > 0 && h > 0) videoRatio = safeRatio(w, h)
+        }
+
+        @android.webkit.JavascriptInterface
+        fun enterPip() { runOnUiThread { this@MainActivity.enterPip() } }
+
+        @android.webkit.JavascriptInterface
+        fun setAutoPip(on: Boolean) { autoPip = on }
+
+        @android.webkit.JavascriptInterface
+        fun pipSupported(): Boolean =
+            Build.VERSION.SDK_INT >= 26 &&
+                packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)
+
+        /** "auto" | "landscape" | "portrait" */
+        @android.webkit.JavascriptInterface
+        fun setOrientation(mode: String) = runOnUiThread {
+            requestedOrientation = when (mode) {
+                "landscape" -> ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                "portrait" -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                else -> ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            }
+        }
+
+        @android.webkit.JavascriptInterface
+        fun setFullscreen(on: Boolean) = runOnUiThread { immersive(on) }
+
+        @android.webkit.JavascriptInterface
+        fun keepAwake(on: Boolean) = runOnUiThread {
+            if (on) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+
+        @android.webkit.JavascriptInterface
+        fun share(text: String) = runOnUiThread {
+            try {
+                startActivity(
+                    Intent.createChooser(
+                        Intent(Intent.ACTION_SEND).setType("text/plain")
+                            .putExtra(Intent.EXTRA_TEXT, text), null
+                    )
+                )
+            } catch (e: Exception) { }
+        }
+
+        @android.webkit.JavascriptInterface
+        fun openExternal(url: String) = runOnUiThread {
+            try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) } catch (e: Exception) { }
+        }
+
         @android.webkit.JavascriptInterface
         fun exitApp() = runOnUiThread { PlaybackService.stop(this@MainActivity); finishAffinity() }
 
@@ -263,25 +399,78 @@ class MainActivity : AppCompatActivity() {
         fun toastMsg(msg: String) = runOnUiThread { toast(msg) }
 
         @android.webkit.JavascriptInterface
-        fun version(): String = "2.0.0"
+        fun version(): String = "2.1.0"
     }
 
     private fun toast(s: String) = Toast.makeText(this, s, Toast.LENGTH_SHORT).show()
 
-    /* ====================================================== media scan */
-
-    private fun requestMediaPermission() {
-        val needed = if (Build.VERSION.SDK_INT >= 33)
-            arrayOf("android.permission.READ_MEDIA_AUDIO", "android.permission.READ_MEDIA_VIDEO")
-        else arrayOf("android.permission.READ_EXTERNAL_STORAGE")
-        val missing = needed.filter {
-            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
-        }
-        if (missing.isEmpty()) scanDevice() else permissions.launch(missing.toTypedArray())
+    private fun js(code: String) = runOnUiThread {
+        if (pageReady) web.evaluateJavascript(code, null) else pending.add(code)
     }
 
-    private fun scanDevice() {
-        toast(getString(R.string.scanning))
+    /* ====================================================== pip / fullscreen */
+
+    private fun safeRatio(w: Int, h: Int): Rational {
+        // Android rejects aspect ratios outside roughly 1:2.39 … 2.39:1
+        val r = w.toDouble() / h.toDouble()
+        val c = r.coerceIn(0.45, 2.35)
+        return Rational((c * 1000).toInt(), 1000)
+    }
+
+    @SuppressLint("NewApi")
+    private fun enterPip(): Boolean {
+        if (Build.VERSION.SDK_INT < 26) { toast("Picture-in-picture needs Android 8 or newer"); return false }
+        if (!packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)) {
+            toast("This device does not support picture-in-picture"); return false
+        }
+        return try {
+            enterPictureInPictureMode(
+                PictureInPictureParams.Builder().setAspectRatio(videoRatio).build()
+            )
+        } catch (e: Exception) { Log.w(TAG, "pip", e); false }
+    }
+
+    private fun immersive(on: Boolean) {
+        WindowCompat.setDecorFitsSystemWindows(window, !on)
+        val c = WindowInsetsControllerCompat(window, window.decorView)
+        if (on) {
+            c.hide(WindowInsetsCompat.Type.systemBars())
+            c.systemBarsBehavior =
+                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        } else {
+            c.show(WindowInsetsCompat.Type.systemBars())
+        }
+    }
+
+    /* ====================================================== media scan */
+
+    /** Runs once per launch: scan silently if we already have access, otherwise ask once. */
+    private fun autoScan() {
+        val prefs = getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        if (hasMediaPermission()) { scanDevice(true); return }
+        if (prefs.getBoolean(KEY_ASKED, false)) return          // user said no — don't nag every launch
+        prefs.edit().putBoolean(KEY_ASKED, true).apply()
+        requestMediaPermission(true)
+    }
+
+    private fun neededPermissions(): Array<String> =
+        if (Build.VERSION.SDK_INT >= 33)
+            arrayOf("android.permission.READ_MEDIA_AUDIO", "android.permission.READ_MEDIA_VIDEO")
+        else arrayOf("android.permission.READ_EXTERNAL_STORAGE")
+
+    private fun hasMediaPermission() = neededPermissions().any {
+        ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED
+    }
+
+    private fun requestMediaPermission(silent: Boolean) {
+        val missing = neededPermissions().filter {
+            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+        }
+        if (missing.isEmpty()) scanDevice(silent) else permissions.launch(missing.toTypedArray())
+    }
+
+    private fun scanDevice(silent: Boolean) {
+        if (!silent) toast(getString(R.string.scanning))
         thread {
             val out = JSONArray()
             try { collect(out, true) } catch (e: Exception) { Log.w(TAG, "audio scan", e) }
@@ -289,7 +478,8 @@ class MainActivity : AppCompatActivity() {
             val payload = out.toString()
             runOnUiThread {
                 web.evaluateJavascript(
-                    "window.HashBridge && window.HashBridge.onScan(${JSONObject.quote(payload)});", null
+                    "window.HashBridge && window.HashBridge.onScan(${JSONObject.quote(payload)}, $silent);",
+                    null
                 )
             }
         }
@@ -351,8 +541,13 @@ class MainActivity : AppCompatActivity() {
         return try {
             val target = Uri.parse(Uri.decode(path.substring(MEDIA_PREFIX.length)))
             val cr = contentResolver
-            val mime = cr.getType(target) ?: "application/octet-stream"
-            val total = cr.openFileDescriptor(target, "r")?.use { it.statSize } ?: -1L
+            val mime = cr.getType(target) ?: guessMime(target.toString())
+
+            // A seekable descriptor lets us jump straight to the requested byte instead of
+            // reading (and throwing away) everything before it — this is what makes
+            // scrubbing through a large video instant rather than a multi-second freeze.
+            val pfd: ParcelFileDescriptor? = try { cr.openFileDescriptor(target, "r") } catch (e: Exception) { null }
+            val total = pfd?.statSize ?: -1L
 
             val rangeHeader = request.requestHeaders.entries
                 .firstOrNull { it.key.equals("Range", true) }?.value
@@ -367,11 +562,30 @@ class MainActivity : AppCompatActivity() {
             }
             if (total > 0 && (end < 0 || end > total - 1)) end = total - 1
             if (start < 0) start = 0
+            if (total > 0 && start >= total) {
+                pfd?.close()
+                return WebResourceResponse(
+                    mime, null, 416, "Range Not Satisfiable",
+                    hashMapOf("Content-Range" to "bytes */$total"), null
+                )
+            }
 
-            val input = cr.openInputStream(target) ?: return null
-            if (start > 0) skipFully(input, start)
+            val raw: InputStream = if (pfd != null) {
+                val fis = ParcelFileDescriptor.AutoCloseInputStream(pfd)
+                if (start > 0) {
+                    try { fis.channel.position(start) }
+                    catch (e: Exception) { skipFully(fis, start) }   // non-seekable provider
+                }
+                fis
+            } else {
+                val s = cr.openInputStream(target) ?: return null
+                if (start > 0) skipFully(s, start)
+                s
+            }
+
             val length = if (total > 0) end - start + 1 else -1L
-            val body: InputStream = if (length > 0) Limited(input, length) else input
+            val buffered = BufferedInputStream(raw, 256 * 1024)
+            val body: InputStream = if (length > 0) Limited(buffered, length) else buffered
 
             val headers = HashMap<String, String>()
             headers["Accept-Ranges"] = "bytes"
@@ -390,6 +604,14 @@ class MainActivity : AppCompatActivity() {
             Log.w(TAG, "media stream failed", e)
             WebResourceResponse("text/plain", "utf-8", 404, "Not Found", emptyMap(), null)
         }
+    }
+
+    private fun guessMime(s: String): String = when (s.substringAfterLast('.', "").lowercase()) {
+        "mp3" -> "audio/mpeg"; "m4a", "aac" -> "audio/mp4"; "flac" -> "audio/flac"
+        "wav" -> "audio/wav"; "ogg", "oga" -> "audio/ogg"; "opus" -> "audio/opus"
+        "mp4", "m4v" -> "video/mp4"; "webm" -> "video/webm"; "mkv" -> "video/x-matroska"
+        "3gp" -> "video/3gpp"; "mov" -> "video/quicktime"
+        else -> "application/octet-stream"
     }
 
     private fun skipFully(input: InputStream, bytes: Long) {
@@ -416,35 +638,76 @@ class MainActivity : AppCompatActivity() {
         override fun available(): Int = minOf(super.available().toLong(), left).toInt()
     }
 
-    /* ====================================================== "open with" intent */
+    /* ====================================================== incoming intents */
 
-    private fun handleViewIntent(intent: Intent?) {
-        val data = intent?.data ?: return
-        if (intent.action != Intent.ACTION_VIEW) return
-        try {
-            contentResolver.takePersistableUriPermission(data, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        } catch (e: Exception) { /* not persistable — still playable right now */ }
-
-        var name = data.lastPathSegment ?: "Track"
-        var size = 0L
-        try {
-            contentResolver.query(data, null, null, null, null)?.use { c ->
-                if (c.moveToFirst()) {
-                    val n = c.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-                    val s = c.getColumnIndex(OpenableColumns.SIZE)
-                    if (n >= 0) name = c.getString(n) ?: name
-                    if (s >= 0) size = c.getLong(s)
+    @SuppressLint("NewApi")
+    private fun handleIntent(intent: Intent?) {
+        intent ?: return
+        val action = intent.action
+        if (action != Intent.ACTION_VIEW && action != Intent.ACTION_SEND &&
+            action != Intent.ACTION_SEND_MULTIPLE
+        ) return
+        when (action) {
+            Intent.ACTION_VIEW -> {
+                val d = intent.data ?: return
+                if (d.scheme == "http" || d.scheme == "https") openLink(d.toString())
+                else openUris(listOf(d))
+            }
+            Intent.ACTION_SEND -> {
+                @Suppress("DEPRECATION")
+                val stream = intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
+                if (stream != null) openUris(listOf(stream))
+                else {
+                    val text = intent.getStringExtra(Intent.EXTRA_TEXT) ?: return
+                    val link = LINK.find(text)?.value
+                    if (link != null) openLink(link.trimEnd('.', ',', ')'))
+                    else toast("No playable link found in that share")
                 }
             }
-        } catch (e: Exception) { }
+            Intent.ACTION_SEND_MULTIPLE -> {
+                @Suppress("DEPRECATION")
+                val list = intent.getParcelableArrayListExtra<Uri>(Intent.EXTRA_STREAM) ?: return
+                openUris(list)
+            }
+        }
+        intent.action = null      // don't replay the same intent after a rotation
+    }
 
-        val mime = contentResolver.getType(data) ?: ""
-        val o = JSONObject()
-            .put("uri", "$ORIGIN$MEDIA_PREFIX" + Uri.encode(data.toString()))
-            .put("name", name).put("title", "").put("artist", "").put("album", "")
-            .put("size", size).put("mime", mime).put("duration", 0)
-            .put("kind", if (mime.startsWith("video")) "video" else "audio")
-        val js = "window.HashBridge && window.HashBridge.onOpenUri(${JSONObject.quote(o.toString())});"
-        if (pageReady) web.evaluateJavascript(js, null) else pendingOpen = js
+    /** A shared/opened web link (YouTube page, direct mp4, radio stream…). */
+    private fun openLink(url: String) {
+        js("window.HashBridge && window.HashBridge.onOpenLink(${JSONObject.quote(url)});")
+    }
+
+    private fun openUris(uris: List<Uri>) {
+        val arr = JSONArray()
+        uris.forEach { data ->
+            try {
+                contentResolver.takePersistableUriPermission(data, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            } catch (e: Exception) { /* not persistable — still playable right now */ }
+
+            var name = data.lastPathSegment?.substringAfterLast('/') ?: "Track"
+            var size = 0L
+            try {
+                contentResolver.query(data, null, null, null, null)?.use { c ->
+                    if (c.moveToFirst()) {
+                        val n = c.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                        val s = c.getColumnIndex(OpenableColumns.SIZE)
+                        if (n >= 0) name = c.getString(n) ?: name
+                        if (s >= 0) size = c.getLong(s)
+                    }
+                }
+            } catch (e: Exception) { }
+
+            val mime = contentResolver.getType(data) ?: guessMime(name)
+            arr.put(
+                JSONObject()
+                    .put("uri", "$ORIGIN$MEDIA_PREFIX" + Uri.encode(data.toString()))
+                    .put("name", name).put("title", "").put("artist", "").put("album", "")
+                    .put("size", size).put("mime", mime).put("duration", 0)
+                    .put("kind", if (mime.startsWith("video")) "video" else "audio")
+            )
+        }
+        if (arr.length() == 0) return
+        js("window.HashBridge && window.HashBridge.onOpenUri(${JSONObject.quote(arr.toString())});")
     }
 }

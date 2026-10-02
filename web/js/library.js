@@ -168,6 +168,29 @@
   /* remote URL */
   L.addUrl = async function (url) {
     url = String(url || '').trim();
+    if (url && !/^[a-z]+:\/\//i.test(url)) url = 'https://' + url;
+
+    /* YouTube links get their own kind of track — see js/yt.js */
+    const yt = HP.YT && HP.YT.parse(url);
+    if (yt) {
+      const known = [...L.tracks.values()].find(t => t.ytId === yt.id);
+      if (known) { HP.toast('Already in your library', 'ok'); return known; }
+      const t = {
+        id: HP.uid(), key: 'yt:' + yt.id, name: 'YouTube video', title: 'YouTube video',
+        artist: 'YouTube', album: '', genre: '', year: '', trackNo: '',
+        duration: 0, size: 0, mime: 'video/youtube', kind: 'video',
+        source: 'yt', ytId: yt.id, thumb: HP.YT.thumb(yt.id), file: null, handle: null,
+        nativeUri: null, url: yt.url, cover: null, folder: '', added: Date.now(),
+        plays: 0, lastPlayed: 0, fav: false, pos: yt.start || 0, lrc: null, sub: null,
+        bookmarks: [], tagged: true
+      };
+      L.tracks.set(t.id, t);
+      await saveTrack(t);
+      HP.emit('library');
+      HP.toast('YouTube video added', 'ok');
+      return t;
+    }
+
     if (!/^https?:\/\//i.test(url)) { HP.toast('Enter a full http(s) link', 'err'); return null; }
     const name = decodeURIComponent(url.split('/').pop().split('?')[0]) || 'Stream';
     const kind = HP.kindOf(name) === 'video' ? 'video' : (HP.kindOf(name) || 'audio');
@@ -187,7 +210,8 @@
   };
 
   /* Android native scan (MediaStore via the APK bridge) */
-  L.addNative = async function (items) {
+  L.addNative = async function (items, opts) {
+    opts = opts || {};
     const known = new Map(); L.tracks.forEach(t => { if (t.nativeUri) known.set(t.nativeUri, t); });
     const add = [];
     (items || []).forEach(it => {
@@ -205,7 +229,7 @@
     add.forEach(t => L.tracks.set(t.id, t));
     if (add.length) await DB.bulkPut('tracks', add);
     HP.emit('library');
-    HP.toast(add.length ? add.length + ' tracks found on device' : 'No new tracks found', add.length ? 'ok' : '');
+    if (!opts.quiet) HP.toast(add.length ? add.length + ' tracks found on device' : 'No new tracks found', add.length ? 'ok' : '');
     return add;
   };
 
@@ -268,6 +292,7 @@
   const MAX_SRC = 6;
   L.resolveSrc = async function (t, silent) {
     if (!t) return null;
+    if (t.source === 'yt') return 'yt:' + t.ytId;
     if (t.source === 'url') return t.url;
     if (t.nativeUri) return t.nativeUri;
     if (srcCache.has(t.id)) return srcCache.get(t.id);
@@ -294,7 +319,8 @@
   /* cover art object URLs (LRU) */
   const coverCache = new Map();
   L.coverUrl = function (t) {
-    if (!t || !t.cover) return null;
+    if (!t) return null;
+    if (!t.cover) return t.thumb || null;      // YouTube videos use their own thumbnail
     if (coverCache.has(t.id)) return coverCache.get(t.id);
     let u;
     try { u = URL.createObjectURL(t.cover); } catch (e) { return null; }

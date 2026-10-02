@@ -23,10 +23,12 @@
     P.b.style.display = 'none';
     document.body.appendChild(P.b);
     P.active = P.a;
+    P.y = HP.YT ? HP.YT.media($('#yt-mount')) : null;     // YouTube embed, disguised as a media element
     [P.a, P.b].forEach(bind);
+    if (P.y) bind(P.y);
     P.a.volume = 1; P.b.volume = 1;
     HP.Vis.init($('#vis'));
-    HP.Vis.visible = () => $('#np').classList.contains('on');
+    HP.Vis.visible = () => $('#np').classList.contains('on') && !document.body.classList.contains('yt-mode');
     HP.Vis.Energy.attach($('#energy'));
     HP.Vis.setMode(S.vis);
     bindUI();
@@ -52,6 +54,10 @@
   /* =========================================================
      loading & playback
      ========================================================= */
+  const isYT = m => !!(m && m.__yt);
+  function gain(m, v) { if (!isYT(m)) E().elementGain(m, v); }
+  function fade(m, to, ms) { return isYT(m) ? Promise.resolve() : E().fadeElement(m, to, ms); }
+
   async function ensureAudio() {
     await E().resume();
     E().attach(P.a); E().attach(P.b);
@@ -103,6 +109,42 @@
     await ensureAudio();
 
     const isVideo = t.kind === 'video';
+    const yt = t.source === 'yt';
+
+    if (yt && !P.y) { HP.toast('YouTube playback is unavailable here', 'err'); return; }
+    if (!yt && P.y) P.y.stop();                     // leaving YouTube → tear the embed down
+    document.body.classList.toggle('yt-mode', yt);
+
+    if (yt) {
+      P.a.pause(); if (P.b) P.b.pause();
+      P.current = t; P.active = P.y;
+      document.body.classList.add('has-video');
+      paintNowPlaying(t);
+      if (HP.UI && !$('#np').classList.contains('on')) HP.UI.openNP(true);
+      loadLyrics(t);
+      P.ab = { a: null, b: null }; updateAB(); renderMarks();
+      HP.emit('track-changed', t);
+      highlightCards(); renderQueue();
+      try {
+        await P.y.setVideo(t.ytId, startAt != null ? startAt : (S.resume ? t.pos || 0 : 0));
+        P.y.playbackRate = S.speed;
+        P.y.volume = S.volume; P.y.muted = S.muted;
+        if (autoplay) await P.y.play();
+        const info = P.y.info();
+        if (info && info.title && t.title !== info.title) {
+          t.title = info.title; t.name = info.title;
+          t.artist = info.author || t.artist;
+          L().saveTrack(t); paintNowPlaying(t); HP.emit('track-updated', t);
+        }
+      } catch (err) {
+        const why = (err && err.message) || 'failed';
+        HP.toast(why === 'offline' || why === 'blocked'
+          ? 'YouTube needs an internet connection'
+          : 'This video ' + why, 'err');
+      }
+      return;
+    }
+
     let target = P.a;
     if (!isVideo && P.crossing && P.active === P.a) target = P.b;     // crossfade lands on B
     if (!P.crossing) {
@@ -118,13 +160,13 @@
     if (target.src !== src) { target.src = src; target.load(); }
 
     document.body.classList.toggle('has-video', isVideo);
-    E().elementGain(target, S.fade && autoplay ? 0 : 1);
+    gain(target, S.fade && autoplay ? 0 : 1);
 
     const pos = startAt != null ? startAt : (S.resume && t.pos > 3 && (!t.duration || t.pos < t.duration - 8) ? t.pos : 0);
     const go = () => {
       try { if (pos) target.currentTime = pos; } catch (e) { }
       if (autoplay) target.play().then(() => {
-        if (S.fade) E().fadeElement(target, 1, 420); else E().elementGain(target, 1);
+        if (S.fade) fade(target, 1, 420); else gain(target, 1);
       }).catch(err => {
         console.warn('[play]', err);
         if (err && err.name === 'NotAllowedError') HP.toast('Tap play to start (browser autoplay rules)');
@@ -153,8 +195,19 @@
   }
   P.load = load;
 
+  function reportVideo() {
+    try {
+      const n = window.HashNative;
+      if (!n || !n.setVideoState) return;
+      const v = document.body.classList.contains('has-video');
+      n.setVideoState(v, P.a.videoWidth || 1280, P.a.videoHeight || 720);
+    } catch (e) { }
+  }
+  P.reportVideo = reportVideo;
+
   function onMeta() {
     const t = P.current; if (!t) return;
+    reportVideo();
     const m = P.active;
     if (isFinite(m.duration) && m.duration > 0 && Math.abs((t.duration || 0) - m.duration) > .6) {
       t.duration = m.duration; L().saveTrack(t); HP.emit('track-updated', t);
@@ -191,13 +244,13 @@
     await ensureAudio();
     try {
       await P.active.play();
-      if (S.fade) E().fadeElement(P.active, 1, 300);
+      if (S.fade) fade(P.active, 1, 300);
     } catch (e) { HP.toast('Tap play again to allow audio'); }
   };
   P.pause = function () {
     if (!P.current) return;
-    if (S.fade && E().ready) {
-      E().fadeElement(P.active, 0, 220).then(() => { P.active.pause(); E().elementGain(P.active, 1); });
+    if (S.fade && E().ready && !isYT(P.active)) {
+      fade(P.active, 0, 220).then(() => { P.active.pause(); gain(P.active, 1); });
       onPause();
     } else P.active.pause();
   };
@@ -268,7 +321,7 @@
   };
   P.setSpeed = function (v) {
     S.speed = clamp(v, .25, 4); HP.save();
-    [P.a, P.b].forEach(m => { m.playbackRate = S.speed; if ('preservesPitch' in m) m.preservesPitch = S.pitch; });
+    [P.a, P.b, P.y].forEach(m => { if (!m) return; m.playbackRate = S.speed; if ('preservesPitch' in m) m.preservesPitch = S.pitch; });
     updateSpeedLabel();
   };
   function updateSpeedLabel() {
@@ -433,20 +486,29 @@
       fill: $('#seek-fill'), knob: $('#seek-knob'), mini: $('#mini-prog-fill'), np: $('#np')
     });
   }
+  let lastTick = 0, lastPct = -1;
   function tick() {
     requestAnimationFrame(tick);
     const m = P.active;
-    if (!m || !P.current) return;
+    if (!m || !P.current || document.hidden) return;
     const now = performance.now();
+    /* The progress bar only needs ~20 updates a second. Spending a whole
+       60 Hz budget on style writes is exactly what makes playback hitch. */
+    if (now - lastTick < (m.paused ? 240 : 48)) return;
+    lastTick = now;
     const cur = m.currentTime || 0, dur = m.duration || P.current.duration || 0;
     const r = refs();
 
     if (!P.seeking) {
       const p = dur ? cur / dur : 0;
-      r.fill.style.width = (p * 100) + '%';
-      r.knob.style.left = (p * 100) + '%';
-      r.mini.style.width = (p * 100) + '%';
-      if (now - lastPaint > 90 && r.np.classList.contains('on')) { lastPaint = now; HP.Vis.Energy.draw(p); }
+      const pct = Math.round(p * 2000) / 20;              // 0.05% resolution
+      if (pct !== lastPct) {
+        lastPct = pct;
+        const npOpen = r.np.classList.contains('on');
+        if (npOpen) { r.fill.style.width = pct + '%'; r.knob.style.left = pct + '%'; }
+        r.mini.style.width = pct + '%';
+      }
+      if (now - lastPaint > 120 && r.np.classList.contains('on')) { lastPaint = now; HP.Vis.Energy.draw(p); }
     }
     if (now - lastEnergy > 240 && !m.paused) {
       lastEnergy = now;
@@ -494,6 +556,7 @@
     const mini = $('#mini-art');
     if (!P.current || P.current.kind !== 'video' || !mini || $('#np').classList.contains('on')) return;
     if (!mini.classList.contains('has-vid')) return;
+    if (P.current.source === 'yt' || document.hidden) return;
     const c = $('#mini-vid'), v = P.a;
     if (!v.videoWidth || v.paused) return;
     const ctx = c.getContext('2d');
@@ -584,7 +647,7 @@
      ========================================================= */
   function checkCrossfade(cur, dur) {
     const xf = S.crossfade | 0;
-    if (!xf || !dur || P.crossing || P.active.paused) return;
+    if (!xf || !dur || P.crossing || P.active.paused || isYT(P.active)) return;
     if (S.repeat === 'one' || !S.autoplayNext) return;
     if (dur - cur > xf || dur - cur <= 0) return;
     const oi = P.order.indexOf(P.index), ni = oi + 1;
@@ -689,7 +752,12 @@
     } catch (e) { }
   }
   async function keepAwake(on) {
-    if (!S.keepAwake || !('wakeLock' in navigator)) return;
+    if (!S.keepAwake) return;
+    try {
+      const n = window.HashNative;
+      if (n && n.keepAwake) { n.keepAwake(!!on); return; }   // real window flag beats the web API
+    } catch (e) { }
+    if (!('wakeLock' in navigator)) return;
     try {
       if (on && !P.wake) { P.wake = await navigator.wakeLock.request('screen'); P.wake.addEventListener('release', () => P.wake = null); }
       else if (!on && P.wake) { await P.wake.release(); P.wake = null; }
@@ -765,14 +833,16 @@
     HP.on('volume', v => { if (document.activeElement !== vol) { vol.value = Math.round(v * 100); rangeFill(vol); } updateMuteIcon(); });
 
     /* video tools */
-    $('#v-pip').addEventListener('click', async () => {
-      try {
-        if (document.pictureInPictureElement) await document.exitPictureInPicture();
-        else if (P.a.requestPictureInPicture) await P.a.requestPictureInPicture();
-        else HP.toast('Picture-in-picture is not supported here', 'err');
-      } catch (e) { HP.toast('PiP unavailable for this video', 'err'); }
-    });
+    $('#v-pip').addEventListener('click', () => P.pip());
     $('#v-full').addEventListener('click', () => P.toggleFullscreen());
+    const ytOut = $('#v-yt');
+    if (ytOut) ytOut.addEventListener('click', () => {
+      const t = P.current;
+      if (!t || t.source !== 'yt') return;
+      const u = 'https://www.youtube.com/watch?v=' + t.ytId;
+      if (window.HashNative && window.HashNative.openExternal) window.HashNative.openExternal(u);
+      else window.open(u, '_blank', 'noopener');
+    });
     $('#v-cc').addEventListener('click', () => P.toggleCC());
     $('#v-shot').addEventListener('click', () => P.screenshot());
     $('#v-mirror').addEventListener('click', () => {
@@ -813,27 +883,67 @@
     if (show) { P.lrcIndex = -1; syncLyrics(P.active.currentTime || 0); }
   };
 
+  /**
+   * Picture-in-picture.
+   * Inside the Android app a WebView cannot do document-PiP, so we ask the
+   * Activity to shrink into a real system PiP window instead.
+   */
+  P.pip = async function () {
+    const n = window.HashNative;
+    if (n && n.enterPip) {
+      try {
+        if (n.pipSupported && !n.pipSupported()) { HP.toast('This device has no picture-in-picture', 'err'); return; }
+        P.reportVideo();
+        n.enterPip();
+        return;
+      } catch (e) { }
+    }
+    try {
+      if (document.pictureInPictureElement) { await document.exitPictureInPicture(); return; }
+      if (P.a.requestPictureInPicture && P.a.videoWidth) { await P.a.requestPictureInPicture(); return; }
+      HP.toast('Picture-in-picture is not supported here', 'err');
+    } catch (e) { HP.toast('PiP unavailable for this video', 'err'); }
+  };
+
+  /** Landscape / portrait lock — real on Android, best-effort in a browser. */
+  P.setOrientation = function (mode) {
+    const n = window.HashNative;
+    if (n && n.setOrientation) { try { n.setOrientation(mode); return true; } catch (e) { } }
+    try {
+      if (mode === 'auto') { screen.orientation && screen.orientation.unlock && screen.orientation.unlock(); }
+      else if (screen.orientation && screen.orientation.lock) screen.orientation.lock(mode).catch(() => { });
+      return true;
+    } catch (e) { return false; }
+  };
+
   P.toggleFullscreen = function () {
     const node = $('#np');
     if (!document.fullscreenElement) {
-      (node.requestFullscreen ? node.requestFullscreen() : node.webkitRequestFullscreen && node.webkitRequestFullscreen());
+      const req = node.requestFullscreen || node.webkitRequestFullscreen;
+      if (req) { try { req.call(node); } catch (e) { } }
       document.body.classList.add('cinema');
-      if (screen.orientation && screen.orientation.lock && P.current && P.current.kind === 'video')
-        screen.orientation.lock('landscape').catch(() => { });
+      try { window.HashNative && window.HashNative.setFullscreen && window.HashNative.setFullscreen(true); } catch (e) { }
+      if (P.current && P.current.kind === 'video') P.setOrientation('landscape');
     } else {
       document.exitFullscreen && document.exitFullscreen();
       document.body.classList.remove('cinema');
-      if (screen.orientation && screen.orientation.unlock) try { screen.orientation.unlock(); } catch (e) { }
+      try { window.HashNative && window.HashNative.setFullscreen && window.HashNative.setFullscreen(false); } catch (e) { }
+      P.setOrientation('auto');
     }
   };
   document.addEventListener('fullscreenchange', () => {
     const fs = !!document.fullscreenElement;
     document.body.classList.toggle('cinema', fs);
+    try { window.HashNative && window.HashNative.setFullscreen && window.HashNative.setFullscreen(fs); } catch (e) { }
+    $('#v-full').querySelector('use').setAttribute('href', fs ? '#i-collapse' : '#i-expand');
+  });
+  HP.on('fullscreen-ui', fs => {
     $('#v-full').querySelector('use').setAttribute('href', fs ? '#i-collapse' : '#i-expand');
   });
 
   P.screenshot = function () {
     const v = P.a;
+    if (P.current && P.current.source === 'yt') { HP.toast('YouTube blocks frame capture', 'err'); return; }
     if (!v.videoWidth) { HP.toast('Screenshots work on video only', 'err'); return; }
     try {
       const c = document.createElement('canvas');

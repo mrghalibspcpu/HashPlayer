@@ -4,6 +4,8 @@
     <string name="channel_desc">Shows what HashPlayer is playing</string>
     <string name="nothing_playing">Nothing playing</string>
     <string name="press_back">Press back again to exit</string>
-    <string name="need_permission">Allow access to your music and videos to scan this device</string>
+    <string name="need_permission">Allow access to your music and videos so HashPlayer can find them</string>
     <string name="scanning">Scanning your device…</string>
+    <string name="open_with">Play with HashPlayer</string>
+    <string name="play_in_hashplayer">Play in HashPlayer</string>
 </resources>

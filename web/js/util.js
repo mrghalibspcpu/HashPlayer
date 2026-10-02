@@ -62,12 +62,29 @@
     volume: 1, muted: false, repeat: 'off', shuffle: false, speed: 1, viewMode: 'grid', sort: 'added',
     filter: 'all', eqOn: false, eqGains: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0], eqPreset: 'flat',
     preamp: 0, bass: 0, treble: 0, reverb: 0, width: 100, balance: 0, boost: 100, crossfade: 0,
-    mono: false, normalize: false, fade: true, pitch: true, lastId: null, lastPos: 0, lyricsOn: false
+    mono: false, normalize: false, fade: true, pitch: true, lastId: null, lastPos: 0, lyricsOn: false,
+    perf: null, autoPip: true, autoScan: true, autoLandscape: true
   };
+  /* ---------- how much eye-candy can this device actually afford? ---------- */
+  const ua = navigator.userAgent || '';
+  const DEV = {
+    android: /Android/i.test(ua),
+    inApp: /HashPlayer\//.test(ua),
+    ios: /iPad|iPhone|iPod/.test(ua),
+    touch: matchMedia ? matchMedia('(hover:none)').matches : false,
+    cores: navigator.hardwareConcurrency || 4,
+    mem: navigator.deviceMemory || 4
+  };
+  /* A WebView on a phone pays for every blurred layer twice; default those devices
+     to the lighter renderer so playback never competes with the compositor. */
+  DEV.weak = DEV.inApp || DEV.android || DEV.ios || DEV.cores <= 4 || DEV.mem <= 4;
+  HP.DEV = DEV;
+
   let S;
   try { S = Object.assign({}, DEFAULTS, JSON.parse(localStorage.getItem(LS) || '{}')); }
   catch (e) { S = Object.assign({}, DEFAULTS); }
   if (!Array.isArray(S.eqGains) || S.eqGains.length !== 10) S.eqGains = DEFAULTS.eqGains.slice();
+  if (S.perf === null || S.perf === undefined) S.perf = DEV.weak;    // first run: pick for them
   HP.S = S;
   HP.DEFAULTS = DEFAULTS;
   const saveNow = () => { try { localStorage.setItem(LS, JSON.stringify(S)); } catch (e) { } };
@@ -115,9 +132,15 @@
       loop: 'لوپ', equalizer: 'ایکولائزر', lyrics: 'بول', sleep: 'سلیپ', bookmark: 'بک مارک', queue: 'قطار',
       close: 'بند کریں', sleepTimer: 'سلیپ ٹائمر', sleepSub: 'آواز دھیرے دھیرے بند ہو جائے گی۔',
       endOfTrack: 'ٹریک کے اختتام پر', off: 'بند', addUrlTitle: 'میڈیا لنک کھولیں',
-      addUrlSub: 'آڈیو یا ویڈیو فائل کا براہِ راست لنک۔', cancel: 'منسوخ', add: 'شامل کریں', save: 'محفوظ',
+      addUrlSub: 'یوٹیوب لنک، یا آڈیو/ویڈیو فائل کا براہِ راست لنک۔', cancel: 'منسوخ', add: 'شامل کریں', save: 'محفوظ',
       trackInfo: 'ٹریک معلومات', lyricsTools: 'بول', lyricsSub: '.lrc فائل لوڈ کریں یا بول پیسٹ کریں۔',
-      loadFile: 'فائل لوڈ کریں', offset: 'آفسیٹ', remove: 'ہٹائیں', dropHere: 'لائبریری میں شامل کرنے کے لیے چھوڑیں'
+      loadFile: 'فائل لوڈ کریں', offset: 'آفسیٹ', remove: 'ہٹائیں', dropHere: 'لائبریری میں شامل کرنے کے لیے چھوڑیں',
+      perfMode: 'اسموتھ موڈ — بھاری بلر اور گلو بند کریں (فون کے لیے بہترین)',
+      autoLandscape: 'لینڈ اسکیپ میں ویڈیو پوری اسکرین پر',
+      autoPip: 'ایپ سے نکلنے پر چھوٹی ونڈو میں چلتا رہے',
+      autoScan: 'ڈیوائس کی آڈیو/ویڈیو خودکار تلاش کریں',
+      findLyrics: 'آن لائن بول تلاش کریں', scan: 'ڈیوائس اسکین کریں',
+      addUrlSub2: 'یوٹیوب لنک یا آڈیو/ویڈیو فائل کا براہِ راست لنک۔'
     }
   };
   HP.t = k => (STR[S.lang] && STR[S.lang][k]) || STR.en[k] || k;

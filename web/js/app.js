@@ -182,6 +182,34 @@
     $('.view-head', $('#view-playlists')).hidden = false;
   }
 
+  /* ---- landscape: a phone turned sideways means "I want the video big" ---- */
+  let landscapeAuto = false;
+  UI.autoLandscape = function (isLandscape) {
+    if (!S.autoLandscape) return;
+    const video = document.body.classList.contains('has-video');
+    const small = Math.min(w.innerWidth, w.innerHeight) < 560;
+    if (isLandscape && video && small && $('#np').classList.contains('on')) {
+      if (!document.body.classList.contains('cinema')) {
+        landscapeAuto = true;
+        document.body.classList.add('cinema');
+        HP.Native.call('setFullscreen', true);
+        HP.emit('fullscreen-ui', true);
+      }
+    } else if (!isLandscape && landscapeAuto) {
+      landscapeAuto = false;
+      document.body.classList.remove('cinema');
+      HP.Native.call('setFullscreen', false);
+      HP.emit('fullscreen-ui', false);
+    }
+  };
+  /* browsers (and PWAs) get the same behaviour without the native callback */
+  if (w.matchMedia) {
+    const mq = w.matchMedia('(orientation:landscape)');
+    const onMq = e => UI.autoLandscape(e.matches);
+    if (mq.addEventListener) mq.addEventListener('change', onMq);
+    else if (mq.addListener) mq.addListener(onMq);
+  }
+
   /* ---- lyrics / subtitle tools ---- */
   UI.lyricsTool = function (t) {
     t = t || P.current;
@@ -197,6 +225,8 @@
     };
     $('#lrc-clear').onclick = () => { $('#lrc-text').value = ''; };
     $('#lrc-load').onclick = () => UI.loadSidecar(t, 'lrc');
+    $('#lrc-results').hidden = true;
+    $('#lrc-online').onclick = () => UI.findLyricsOnline(t);
     const bump = d => {
       if (!P.lyrics) return;
       P.lyrics.offset = +((P.lyrics.offset || 0) + d).toFixed(1);
@@ -206,6 +236,54 @@
     $('#lrc-minus').onclick = () => bump(-.5);
     $('#lrc-plus').onclick = () => bump(.5);
   };
+  /** One tap: look the current song up on LRCLIB and offer the matches. */
+  UI.findLyricsOnline = async function (t) {
+    t = t || P.current;
+    if (!t) { HP.toast('Play a track first'); return; }
+    const box = $('#lrc-results'), btn = $('#lrc-online');
+    box.hidden = false;
+    box.innerHTML = '';
+    box.appendChild(el('div', { class: 'lrc-note', text: 'Searching for “' + (HP.Meta.cleanName(t.title || t.name) || t.name) + '”…' }));
+    btn.disabled = true;
+    try {
+      const hits = await HP.Meta.findLyrics(t);
+      box.innerHTML = '';
+      hits.forEach(h => {
+        const row = el('button', { class: 'lrc-hit', type: 'button' }, [
+          el('span', { class: 'lrc-hit-main' }, [
+            el('b', { text: h.title || '(untitled)' }),
+            el('small', { text: (h.artist || 'Unknown') + (h.album ? ' · ' + h.album : '') })
+          ]),
+          el('span', { class: 'lrc-hit-tag' + (h.synced ? ' synced' : ''), text: h.synced ? 'Synced' : 'Plain' })
+        ]);
+        row.addEventListener('click', () => {
+          $('#lrc-text').value = h.text;
+          t.lrc = h.text;
+          L.saveTrack(t);
+          if (P.current && P.current.id === t.id) { P.loadLyrics(t); P.toggleLyrics(true); }
+          box.hidden = true;
+          HP.toast(h.synced ? 'Synced lyrics added' : 'Lyrics added', 'ok');
+        });
+        box.appendChild(row);
+      });
+    } catch (e) {
+      const why = e && e.message;
+      box.innerHTML = '';
+      box.appendChild(el('div', { class: 'lrc-note', text:
+        why === 'offline' ? 'You are offline — connect and try again.'
+          : why === 'none' ? 'No lyrics found. Try fixing the title/artist, or paste them below.'
+            : 'Lyrics service unreachable right now.' }));
+      const g = el('button', { class: 'btn small ghost', type: 'button', text: 'Search the web instead' });
+      g.addEventListener('click', () => {
+        const q = encodeURIComponent(((t.artist || '') + ' ' + (t.title || t.name) + ' lyrics').trim());
+        const u = 'https://duckduckgo.com/?q=' + q;
+        if (w.HashNative && w.HashNative.openExternal) w.HashNative.openExternal(u);
+        else w.open(u, '_blank', 'noopener');
+      });
+      box.appendChild(g);
+    } finally { btn.disabled = false; }
+  };
+
   UI.loadSidecar = function (t, kind) {
     const inp = $('#side-input');
     inp.value = '';
@@ -358,6 +436,7 @@
       .replace(/theme-\w+/g, '').replace(/surface-\w+/g, '').trim();
     document.body.classList.add('theme-' + S.theme, 'surface-' + S.surface);
     document.body.classList.toggle('no-motion', !S.motion);
+    document.body.classList.toggle('perf', !!S.perf);
     document.body.classList.toggle('mode-simple', !!S.simple);
     document.body.classList.toggle('mode-pro', !S.simple);
     const meta = $('meta[name=theme-color]');
@@ -392,14 +471,17 @@
       });
     });
     const sw = [['#set-autotheme', 'autoTheme'], ['#set-motion', 'motion'], ['#set-simple', 'simple'],
-    ['#set-gestures', 'gestures'], ['#set-resume', 'resume'], ['#set-autoplay', 'autoplayNext'],
-    ['#set-keepawake', 'keepAwake']];
+    ['#set-perf', 'perf'], ['#set-gestures', 'gestures'], ['#set-resume', 'resume'],
+    ['#set-autoplay', 'autoplayNext'], ['#set-keepawake', 'keepAwake'],
+    ['#set-autoland', 'autoLandscape'], ['#set-autopip', 'autoPip'], ['#set-autoscan', 'autoScan']];
     sw.forEach(([sel, key]) => {
       const c = $(sel); if (!c) return;
       c.checked = !!S[key];
       c.addEventListener('change', () => {
         S[key] = c.checked; HP.save();
-        if (key === 'motion' || key === 'simple') applyTheme();
+        HP.emit('setting', { k: key, v: c.checked });
+        if (key === 'motion' || key === 'simple' || key === 'perf') applyTheme();
+        if (key === 'perf') { HP.Vis.retune && HP.Vis.retune(); HP.toast(c.checked ? 'Smooth mode on — fewer effects, steadier playback' : 'Full effects on', 'ok'); }
         if (key === 'autoTheme') { if (!c.checked) P.clearTint(); else if (P.current) HP.emit('track-changed', P.current); }
       });
     });
@@ -611,16 +693,49 @@
     notify(playing) {
       try { w.HashNative && w.HashNative.setPlaybackState && w.HashNative.setPlaybackState(!!playing, P.current ? (P.current.title || P.current.name) : '', P.current ? (P.current.artist || '') : ''); } catch (e) { }
     },
-    exit() { try { w.HashNative && w.HashNative.exitApp && w.HashNative.exitApp(); } catch (e) { } }
+    exit() { try { w.HashNative && w.HashNative.exitApp && w.HashNative.exitApp(); } catch (e) { } },
+    call(fn) {
+      const n = w.HashNative;
+      if (!n || typeof n[fn] !== 'function') return undefined;
+      try { return n[fn].apply(n, Array.prototype.slice.call(arguments, 1)); } catch (e) { return undefined; }
+    }
   };
   HP.Native = Native;
 
   /* called from Kotlin */
   w.HashBridge = {
-    onScan(json) {
-      try { L.addNative(JSON.parse(json)).then(() => L.render()); }
-      catch (e) { HP.toast('Scan result could not be read', 'err'); }
+    /** silent = the automatic scan at launch; stay quiet unless we actually found something */
+    onScan(json, silent) {
+      try {
+        L.addNative(JSON.parse(json), { quiet: !!silent }).then(added => {
+          L.render();
+          if (silent && added && added.length) HP.toast(added.length + ' tracks added from this device', 'ok');
+        });
+      } catch (e) { if (!silent) HP.toast('Scan result could not be read', 'err'); }
     },
+
+    /** A link shared or opened from another app (YouTube, a browser, a chat…). */
+    onOpenLink(url) {
+      (async () => {
+        try {
+          const t = await L.addUrl(url);
+          if (!t) return;
+          L.render();
+          P.context = 'Shared link';
+          await P.playTrack(t.id, [t.id]);
+          UI.openNP(true);
+        } catch (e) { HP.toast('Could not open that link', 'err'); }
+      })();
+    },
+
+    /** The Activity entered or left system picture-in-picture. */
+    onPip(active) {
+      document.body.classList.toggle('in-pip', !!active);
+      if (active) { UI.closeAll(); UI.toggleQueue(false); }
+    },
+
+    /** Device rotated — offer full-screen video in landscape. */
+    onRotate(landscape) { UI.autoLandscape(!!landscape); },
     onBack() {
       if (!$('#ctx').hidden) { $('#ctx').hidden = true; $('#scrim').classList.remove('on'); return true; }
       if (openSheetId) { UI.closeAll(); return true; }
@@ -631,12 +746,21 @@
     },
     onOpenUri(json) {
       try {
-        const it = JSON.parse(json);
-        L.addNative([it]).then(added => {
+        let items = JSON.parse(json);
+        if (!Array.isArray(items)) items = [items];
+        if (!items.length) return;
+        L.addNative(items, { quiet: true }).then(added => {
           L.render();
-          let t = (added && added[0]) || null;
-          if (!t) L.tracks.forEach(x => { if (!t && x.nativeUri === it.uri) t = x; });
-          if (t) { P.context = 'Opened file'; P.playTrack(t.id, [t.id]); UI.openNP(true); }
+          const ids = [];
+          items.forEach(it => {
+            let t = (added || []).find(x => x.nativeUri === it.uri);
+            if (!t) L.tracks.forEach(x => { if (x.nativeUri === it.uri) t = x; });
+            if (t) ids.push(t.id);
+          });
+          if (!ids.length) { HP.toast('Could not open that file', 'err'); return; }
+          P.context = ids.length > 1 ? ids.length + ' shared files' : 'Opened file';
+          P.playTrack(ids[0], ids);
+          UI.openNP(true);
         });
       } catch (e) { HP.toast('Could not open that file', 'err'); }
     },
@@ -838,6 +962,21 @@
       };
       $('#mini-play').addEventListener('click', resume, true);
     }
+
+    /* tell the Android shell how the user wants it to behave */
+    if (Native.available) {
+      HP.Native.call('setAutoPip', !!S.autoPip);
+      HP.Native.call('keepAwake', !!S.keepAwake);
+      const scanBtn = $('#btn-scan');
+      if (scanBtn) { scanBtn.hidden = false; scanBtn.querySelector('span').textContent = 'Rescan device'; }
+      /* the shell scans by itself on launch; this covers a reload with the page already granted */
+      if (S.autoScan && !L.tracks.size) setTimeout(() => HP.Native.call('scanMedia'), 900);
+      HP.on('setting', ({ k, v }) => {
+        if (k === 'autoPip') HP.Native.call('setAutoPip', !!v);
+        if (k === 'keepAwake') HP.Native.call('keepAwake', !!v);
+      });
+    }
+    if (HP.YT && navigator.onLine && [...L.tracks.values()].some(t => t.source === 'yt')) HP.YT.preload();
 
     registerSW();
     setTimeout(() => $('#boot').classList.add('gone'), 420);
