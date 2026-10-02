@@ -3,6 +3,7 @@ name: Build HashPlayer APK
 on:
   push:
     branches: [main, 'arena/**']
+    tags: ['v*']
     paths-ignore: ['**.md', 'legacy/**', '.github/workflows/pages.yml']
   pull_request:
     branches: [main]
@@ -60,9 +61,10 @@ jobs:
       - name: Rename artifacts
         run: |
           mkdir -p dist
-          cp app/build/outputs/apk/debug/app-debug.apk "dist/HashPlayer-${{ github.run_number }}-debug.apk"
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then V="$GITHUB_REF_NAME"; else V="build${{ github.run_number }}"; fi
+          cp app/build/outputs/apk/debug/app-debug.apk "dist/HashPlayer-$V-debug.apk"
           if [ -f app/build/outputs/apk/release/app-release.apk ]; then
-            cp app/build/outputs/apk/release/app-release.apk "dist/HashPlayer-${{ github.run_number }}-release.apk"
+            cp app/build/outputs/apk/release/app-release.apk "dist/HashPlayer-$V-release.apk"
           fi
           ls -lh dist
 
@@ -89,9 +91,24 @@ jobs:
           if-no-files-found: error
           retention-days: 90
 
-      - name: Attach to release (tags only)
+      - name: Publish a downloadable release (tags only)
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           files: dist/*.apk
+          name: HashPlayer ${{ github.ref_name }}
+          prerelease: ${{ contains(github.ref_name, '-') }}
           generate_release_notes: true
+          body: |
+            ## HashPlayer ${{ github.ref_name }} — install on your phone
+
+            1. Download **HashPlayer-${{ github.ref_name }}-release.apk** below (or the debug build).
+            2. Open it on your Android phone and tap **Install**.
+            3. Android will ask to allow installs from this source — that is normal for apps outside the Play Store.
+
+            Prefer no install? The same player runs in any browser from the `web/` folder
+            and can be added to your home screen as a PWA.
+
+            **What's inside:** 10-band equaliser · 5 visualisers · lyrics (.lrc) · subtitles (.srt/.vtt/.ass) ·
+            video gestures · picture-in-picture · playlists & smart shuffle · sleep timer · A-B loop ·
+            crossfade · album-art theming · English + اردو · works fully offline, nothing is uploaded.
