@@ -629,6 +629,17 @@
       if (document.body.dataset.view !== 'library') { UI.nav('library'); return true; }
       return false;
     },
+    onOpenUri(json) {
+      try {
+        const it = JSON.parse(json);
+        L.addNative([it]).then(added => {
+          L.render();
+          let t = (added && added[0]) || null;
+          if (!t) L.tracks.forEach(x => { if (!t && x.nativeUri === it.uri) t = x; });
+          if (t) { P.context = 'Opened file'; P.playTrack(t.id, [t.id]); UI.openNP(true); }
+        });
+      } catch (e) { HP.toast('Could not open that file', 'err'); }
+    },
     onTransport(action) {
       ({ play: () => P.play(), pause: () => P.pause(), next: () => P.next(), prev: () => P.prev(), toggle: () => P.toggle() }[action] || (() => { }))();
     }

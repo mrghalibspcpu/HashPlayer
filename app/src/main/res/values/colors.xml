@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="hash_bg">#FF07080C</color>
+    <color name="hash_accent">#FF00E5FF</color>
+    <color name="ic_launcher_background">#FF07080C</color>
+</resources>

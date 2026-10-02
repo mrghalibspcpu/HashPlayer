@@ -1,0 +1,77 @@
+plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+}
+
+android {
+    namespace 'com.mrghalibspcpu.hashplayer'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.mrghalibspcpu.hashplayer"
+        minSdk 23
+        targetSdk 34
+        versionCode 2
+        versionName "2.0.0"
+        resourceConfigurations += ["en", "ur"]
+    }
+
+    buildTypes {
+        debug {
+            minifyEnabled false
+        }
+        release {
+            minifyEnabled false
+            shrinkResources false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            // unsigned by default; CI signs with a throwaway key so the APK installs
+            signingConfig signingConfigs.debug
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    kotlinOptions {
+        jvmTarget = '17'
+    }
+    lint {
+        abortOnError false
+        checkReleaseBuilds false
+    }
+    packagingOptions {
+        resources.excludes += ['META-INF/*.version', 'META-INF/LICENSE*', 'kotlin/**']
+    }
+}
+
+dependencies {
+    implementation 'androidx.core:core-ktx:1.13.1'
+    implementation 'androidx.appcompat:appcompat:1.7.0'
+    implementation 'androidx.activity:activity-ktx:1.9.3'
+    implementation 'androidx.webkit:webkit:1.12.1'
+    implementation 'androidx.media:media:1.7.0'
+}
+
+/* ------------------------------------------------------------------
+   The Android app is a thin native shell around the very same web app
+   that lives in /web — copy it into assets/www at build time so there
+   is only ever one copy of the player source in the repository.
+   ------------------------------------------------------------------ */
+def generatedAssets = layout.buildDirectory.dir("generated/webassets")
+
+def syncWebAssets = tasks.register('syncWebAssets', Sync) {
+    description = 'Copies /web into the APK assets as www/'
+    group = 'build'
+    from rootProject.file('web')
+    into generatedAssets.map { it.dir('www') }
+    exclude '**/.DS_Store', '**/*.map'
+}
+
+android.sourceSets.main.assets.srcDir(generatedAssets)
+
+tasks.configureEach { t ->
+    if (t.name ==~ /(?i)(merge|package|generate).*assets.*/ || t.name == 'preBuild') {
+        t.dependsOn(syncWebAssets)
+    }
+}
