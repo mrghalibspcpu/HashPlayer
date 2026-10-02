@@ -4,7 +4,7 @@
 (function (w) {
   'use strict';
   const HP = w.HP, S = HP.S;
-  const V = { mode: S.vis || 'bars', running: false };
+  const V = { mode: S.vis || 'bars', running: false, visible: () => true };
   let cvs, ctx, dpr = 1, W = 0, H = 0, raf = 0, freq = null, time = null, parts = [], t0 = performance.now();
   let a1 = '#00e5ff', a2 = '#b61bff', gold = '#ffcf6b';
 
@@ -43,7 +43,7 @@
   function loop() {
     if (!V.running) return;
     raf = requestAnimationFrame(loop);
-    if (!ctx || V.mode === 'off' || document.hidden) return;
+    if (!ctx || V.mode === 'off' || document.hidden || !V.visible()) return;
     const an = HP.Engine.analyser;
     size();
     ctx.clearRect(0, 0, W, H);

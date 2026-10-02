@@ -26,6 +26,7 @@
     [P.a, P.b].forEach(bind);
     P.a.volume = 1; P.b.volume = 1;
     HP.Vis.init($('#vis'));
+    HP.Vis.visible = () => $('#np').classList.contains('on');
     HP.Vis.Energy.attach($('#energy'));
     HP.Vis.setMode(S.vis);
     bindUI();
@@ -144,6 +145,8 @@
     renderMarks();
 
     paintNowPlaying(t);
+    /* a video you cannot see is just an awkward podcast — open the player for it */
+    if (isVideo && HP.UI && !$('#np').classList.contains('on')) HP.UI.openNP(true);
     HP.emit('track-changed', t);
     highlightCards();
     renderQueue();

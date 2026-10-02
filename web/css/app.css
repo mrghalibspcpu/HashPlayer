@@ -36,7 +36,7 @@
 .brand-txt b{font-weight:800;color:var(--a1)}
 @media (max-width:420px){.brand-txt{display:none}}
 
-.search{flex:1;max-width:460px;margin-inline:auto;display:flex;align-items:center;gap:8px;
+.search{flex:1;min-width:0;max-width:460px;margin-inline:auto;display:flex;align-items:center;gap:8px;
   padding:0 12px;height:40px;border-radius:14px;background:var(--panel);border:1px solid var(--line);
   transition:border-color .2s,box-shadow .2s}
 .search:focus-within{border-color:var(--a1);box-shadow:0 0 0 3px color-mix(in srgb,var(--a1) 18%,transparent)}
@@ -213,11 +213,11 @@ body.surface-light .card-art{background:linear-gradient(145deg,#e3e8f5,#f7f9ff)}
 body.surface-light .eq-curve{background:rgba(255,255,255,.5)}
 
 /* ---------- sheets / dialogs ---------- */
-#scrim{position:fixed;inset:0;z-index:90;background:rgba(3,4,8,.62);backdrop-filter:blur(6px);
+#scrim{position:fixed;inset:0;z-index:125;background:rgba(3,4,8,.62);backdrop-filter:blur(6px);
   opacity:0;visibility:hidden;transition:.3s var(--ease)}
 #scrim.on{opacity:1;visibility:visible}
 .sheet{
-  position:fixed;z-index:95;left:50%;bottom:0;transform:translate(-50%,16px);width:min(520px,100%);
+  position:fixed;z-index:140;left:50%;bottom:0;transform:translate(-50%,16px);width:min(520px,100%);
   background:color-mix(in srgb,var(--bg2) 94%,transparent);border:1px solid var(--line);
   border-radius:var(--r-xl) var(--r-xl) 0 0;padding:22px 22px calc(22px + env(safe-area-inset-bottom));
   box-shadow:var(--shadow);backdrop-filter:blur(26px);display:flex;flex-direction:column;gap:12px;
@@ -322,3 +322,23 @@ body.mode-simple [data-pro]{display:none !important}
 .no-results{grid-column:1/-1;text-align:center;color:var(--dim);padding:40px 10px;font-size:14px}
 .no-results b{display:block;color:var(--text);font-size:16px;margin-bottom:4px}
 .sentinel{height:1px;grid-column:1/-1}
+
+/* ---------- touch devices: no hover, so always show the quick actions ---------- */
+@media (hover:none){
+  .card-fav{opacity:.9}
+  .card-play{opacity:1;transform:none}
+  .card:active{transform:scale(.97)}
+}
+
+/* ---------- right-to-left (اردو) ---------- */
+body[dir=rtl] #rail{left:auto;right:0;border-right:0;border-left:1px solid var(--line)}
+body[dir=rtl] #views{left:0;right:var(--rail-w)}
+body[dir=rtl] .nav-item.active::before{left:auto;right:0}
+body[dir=rtl] .notice .btn{margin-left:0;margin-right:auto}
+@media (max-width:859px){
+  body[dir=rtl] #rail{right:0;left:0;border-left:0;border-top:1px solid var(--line)}
+  body[dir=rtl] #views{right:0}
+}
+@media (max-width:520px){
+  #btn-add-top{display:none}
+}

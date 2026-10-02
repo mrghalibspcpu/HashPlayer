@@ -234,7 +234,7 @@
     rack.innerHTML = '';
     E.FREQS.forEach((f, i) => {
       const val = el('span', { class: 'eq-val', text: fmtDb(S.eqGains[i]) });
-      const r = el('input', { type: 'range', min: -12, max: 12, step: .5, value: S.eqGains[i], 'aria-label': f + ' hertz' });
+      const r = el('input', { type: 'range', min: -12, max: 12, step: .5, value: S.eqGains[i], orient: 'vertical', 'aria-label': f + ' hertz' });
       r.addEventListener('input', () => {
         const v = +r.value;
         val.textContent = fmtDb(v);
