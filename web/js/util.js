@@ -15,39 +15,46 @@
       else if (k === 'html') n.innerHTML = props[k];
       else if (k === 'text') n.textContent = props[k];
       else if (k.slice(0, 2) === 'on') n.addEventListener(k.slice(2), props[k]);
-      else if (props[k] !== null && props[k] !== undefined && props[k] !== false) n.setAttribute(k, props[k]);
+      else n.setAttribute(k, props[k]);
     }
-    (kids || []).forEach(c => c && n.appendChild(typeof c === 'string' ? document.createTextNode(c) : c));
+    if (kids) kids.forEach(k => { if (k) n.appendChild(typeof k === 'string' ? document.createTextNode(k) : k); });
     return n;
   }
-  const icon = (name, cls) => {
+  function icon(name, cls) {
     const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     s.setAttribute('class', 'ic' + (cls ? ' ' + cls : ''));
+    s.setAttribute('aria-hidden', 'true');
     const u = document.createElementNS('http://www.w3.org/2000/svg', 'use');
-    u.setAttribute('href', '#i-' + name);
+    u.setAttributeNS('http://www.w3.org/1999/xlink', 'href', '#i-' + name);
     s.appendChild(u);
     return s;
-  };
+  }
 
-  /* ---------- format ---------- */
-  function fmtTime(s) {
-    if (!isFinite(s) || s < 0) s = 0;
-    s = Math.floor(s);
-    const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), x = s % 60;
-    return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(x).padStart(2, '0');
+  /* ---------- formatting ---------- */
+  function fmtTime(sec) {
+    if (!isFinite(sec) || sec < 0) return '0:00';
+    sec = Math.floor(sec);
+    const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
+    const ss = s < 10 ? '0' + s : s;
+    if (h > 0) { const mm = m < 10 ? '0' + m : m; return h + ':' + mm + ':' + ss; }
+    return m + ':' + ss;
   }
   function fmtBytes(b) {
-    if (!b && b !== 0) return '—';
+    if (!b || b < 0) return '0 B';
     const u = ['B', 'KB', 'MB', 'GB', 'TB'];
     let i = 0; while (b >= 1024 && i < u.length - 1) { b /= 1024; i++; }
-    return (i ? b.toFixed(b < 10 ? 1 : 0) : b) + ' ' + u[i];
+    return (i === 0 ? b : b.toFixed(1)) + ' ' + u[i];
   }
-  const fmtDate = t => t ? new Date(t).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '—';
-  const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
-  const uid = () => 'h' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
-  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  function debounce(fn, ms) { let t; return function () { clearTimeout(t); const a = arguments, s = this; t = setTimeout(() => fn.apply(s, a), ms); }; }
-  function throttle(fn, ms) { let last = 0, t; return function () { const n = Date.now(), a = arguments, s = this; if (n - last >= ms) { last = n; fn.apply(s, a); } else { clearTimeout(t); t = setTimeout(() => { last = Date.now(); fn.apply(s, a); }, ms - (n - last)); } }; }
+  function fmtDate(ms) {
+    if (!ms) return '';
+    try { return new Date(ms).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }); }
+    catch (e) { return ''; }
+  }
+  function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+  function uid() { return 'hp_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8); }
+  function esc(s) { return String(s || '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+  function debounce(fn, ms) { let t; return function (...a) { clearTimeout(t); t = setTimeout(() => fn.apply(this, a), ms); }; }
+  function throttle(fn, ms) { let last = 0, t; return function (...a) { const now = Date.now(), s = this; if (now - last >= ms) { last = now; fn.apply(s, a); } else { clearTimeout(t); t = setTimeout(() => { last = Date.now(); fn.apply(s, a); }, ms - (now - last)); } }; }
 
   /* ---------- tiny event bus ---------- */
   const bus = {};
@@ -90,7 +97,13 @@
 
   /* ---------- i18n ---------- */
   const STR = {
-    en: {},
+    en: {
+      searchOnline: 'Search Online (1-Tap)',
+      lyricsOnline: 'Online Lyrics Search',
+      lockScreen: 'Lock Screen',
+      unlockScreen: 'Unlock Screen',
+      pip: 'Picture in Picture'
+    },
     ur: {
       search: 'تلاش کریں…', library: 'لائبریری', playlists: 'پلے لسٹ', favorites: 'پسندیدہ', sound: 'آواز',
       settings: 'ترتیبات', tracks: 'ٹریکس', addFiles: 'فائلیں شامل کریں', addFolder: 'فولڈر', addUrl: 'لنک',
@@ -114,10 +127,12 @@
       shortcuts: 'شارٹ کٹس', install: 'ایپ انسٹال کریں', nowPlaying: 'اب چل رہا ہے', speed: 'رفتار',
       loop: 'لوپ', equalizer: 'ایکولائزر', lyrics: 'بول', sleep: 'سلیپ', bookmark: 'بک مارک', queue: 'قطار',
       close: 'بند کریں', sleepTimer: 'سلیپ ٹائمر', sleepSub: 'آواز دھیرے دھیرے بند ہو جائے گی۔',
-      endOfTrack: 'ٹریک کے اختتام پر', off: 'بند', addUrlTitle: 'میڈیا لنک کھولیں',
-      addUrlSub: 'آڈیو یا ویڈیو فائل کا براہِ راست لنک۔', cancel: 'منسوخ', add: 'شامل کریں', save: 'محفوظ',
-      trackInfo: 'ٹریک معلومات', lyricsTools: 'بول', lyricsSub: '.lrc فائل لوڈ کریں یا بول پیسٹ کریں۔',
-      loadFile: 'فائل لوڈ کریں', offset: 'آفسیٹ', remove: 'ہٹائیں', dropHere: 'لائبریری میں شامل کرنے کے لیے چھوڑیں'
+      endOfTrack: 'ٹریک کے اختتام پر', off: 'بند', addUrlTitle: 'میڈیا یا یوٹیوب لنک کھولیں',
+      addUrlSub: 'آڈیو، ویڈیو، یا یوٹیوب ویڈیو کا لنک۔', cancel: 'منسوخ', add: 'شامل کریں', save: 'محفوظ',
+      trackInfo: 'ٹریک معلومات', lyricsTools: 'بول', lyricsSub: '.lrc فائل لوڈ کریں یا ایک ٹیپ سے آن لائن سرچ کریں۔',
+      loadFile: 'فائل لوڈ کریں', searchOnline: 'آن لائن سرچ (ایک ٹیپ)', lyricsOnline: 'آن لائن بول تلاش کریں',
+      offset: 'آفسیٹ', remove: 'ہٹائیں', dropHere: 'لائبریری میں شامل کرنے کے لیے چھوڑیں',
+      lockScreen: 'اسکرین لاک', unlockScreen: 'اسکرین انلاک', pip: 'پکچر ان پکچر'
     }
   };
   HP.t = k => (STR[S.lang] && STR[S.lang][k]) || STR.en[k] || k;
@@ -143,7 +158,7 @@
         const r = d[i], g = d[i + 1], b = d[i + 2], a = d[i + 3];
         if (a < 125) continue;
         const mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2, sat = mx - mn;
-        if (l < 28 || l > 238) continue;                         // skip near black / white
+        if (l < 28 || l > 238) continue;
         const key = (r >> 4) + ',' + (g >> 4) + ',' + (b >> 4);
         const o = buckets[key] || (buckets[key] = { r: 0, g: 0, b: 0, n: 0, s: 0 });
         o.r += r; o.g += g; o.b += b; o.n++; o.s += sat;
@@ -158,7 +173,6 @@
       return [pick(first), pick(second)];
     } catch (e) { return null; }
   }
-  /* push colour toward a bright neon-ish version so UI stays readable */
   function vivid(r, g, b) {
     let [h, s, l] = rgb2hsl(r, g, b);
     s = clamp(s * 1.45 + .12, .42, 1);
@@ -202,7 +216,7 @@
   HP.baseName = n => String(n).replace(/\.[^.]+$/, '');
   HP.prettyName = function (name) {
     let s = HP.baseName(name).replace(/[_]+/g, ' ').replace(/\s{2,}/g, ' ').trim();
-    s = s.replace(/^\d{1,3}\s*[-.)]\s*/, '');                 // leading track number
+    s = s.replace(/^\d{1,3}\s*[-.)]\s*/, '');
     s = s.replace(/\b(192|128|320)\s?kbps\b/gi, '').replace(/\[[^\]]*\]|\((official|lyrics?|audio|video|hd|4k)[^)]*\)/gi, '');
     return s.trim() || name;
   };

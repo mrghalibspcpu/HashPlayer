@@ -1,6 +1,7 @@
 /* ============================================================
    HashPlayer · library.js — import, metadata pipeline, storage,
-   grid rendering, playlists, search / sort / filter
+   grid rendering, playlists, search / sort / filter,
+   and YouTube / stream resolution.
    ============================================================ */
 (function (w) {
   'use strict';
@@ -49,7 +50,7 @@
     return Object.assign({
       id: HP.uid(), key: keyOf(file), name: file.name, title: g.title, artist: g.artist || '',
       album: '', genre: '', year: '', trackNo: '', duration: 0, size: file.size, mime: file.type || '',
-      kind, source: 'file', file, handle: null, nativeUri: null, url: null, cover: null,
+      kind, source: 'file', file, handle: null, nativeUri: null, url: null, cover: null, coverUrl: null,
       folder: (file.webkitRelativePath || '').split('/').slice(0, -1).join('/'),
       added: Date.now(), modified: file.lastModified || 0, plays: 0, lastPlayed: 0, fav: false,
       pos: 0, lrc: null, sub: null, bookmarks: [], tagged: false
@@ -69,7 +70,7 @@
       if (kind === 'lrc' || kind === 'sub') { sidecars.push({ f, kind }); continue; }
       if (!kind) continue;
       const k = keyOf(f), ex = known.get(k);
-      if (ex) {                                   // already known → refresh the file handle
+      if (ex) {
         if (!ex.file) { ex.file = f; ex.source = 'file'; relinked++; saveTrack(ex); }
         else dupes++;
         continue;
@@ -133,51 +134,41 @@
     return L.addFiles(files);
   };
 
-  /* File System Access API (keeps permission across sessions on desktop) */
-  L.pickWithHandles = async function (dir) {
-    if (!HP.supportsFS) return null;
-    const handles = new Map(), files = [];
-    try {
-      if (dir) {
-        const d = await w.showDirectoryPicker({ id: 'hashplayer-media', mode: 'read' });
-        const walk = async (h, path) => {
-          for await (const [name, entry] of h.entries()) {
-            if (entry.kind === 'file') {
-              const k = HP.kindOf(name);
-              if (!k) continue;
-              const f = await entry.getFile();
-              try { Object.defineProperty(f, 'webkitRelativePath', { value: path + name }); } catch (e) { }
-              handles.set(f, entry); files.push(f);
-            } else if (entry.kind === 'directory' && path.split('/').length < 7) {
-              await walk(entry, path + name + '/');
-            }
-          }
-        };
-        await walk(d, d.name + '/');
-      } else {
-        const picked = await w.showOpenFilePicker({
-          multiple: true, id: 'hashplayer-files',
-          types: [{ description: 'Media', accept: { 'audio/*': ['.mp3', '.m4a', '.flac', '.wav', '.ogg', '.opus', '.aac'], 'video/*': ['.mp4', '.webm', '.mkv', '.mov', '.m4v'], 'text/plain': ['.lrc', '.srt', '.vtt'] } }]
-        });
-        for (const h of picked) { const f = await h.getFile(); handles.set(f, h); files.push(f); }
-      }
-    } catch (e) { if (e && e.name === 'AbortError') return []; console.warn(e); return null; }
-    return L.addFiles(files, { handles });
-  };
-
-  /* remote URL */
+  /* remote URL & YouTube links */
   L.addUrl = async function (url) {
     url = String(url || '').trim();
-    if (!/^https?:\/\//i.test(url)) { HP.toast('Enter a full http(s) link', 'err'); return null; }
+    if (!/^https?:\/\//i.test(url)) { HP.toast('Enter a valid link (http/https)', 'err'); return null; }
+
+    // Check if YouTube
+    if (HP.Meta.isYouTube(url)) {
+      HP.toast('Resolving YouTube stream…');
+      const yt = await HP.Meta.resolveYouTube(url);
+      if (yt) {
+        const t = {
+          id: HP.uid(), key: url, name: yt.title, title: yt.title, artist: yt.artist || 'YouTube',
+          album: 'YouTube', genre: '', year: '', trackNo: '', duration: yt.duration || 0, size: 0,
+          mime: 'video/mp4', kind: 'video', source: 'url', file: null, handle: null, nativeUri: null,
+          url: yt.streamUrl, origUrl: url, coverUrl: yt.cover, isEmbed: !!yt.isEmbed, youtubeId: yt.id,
+          folder: '', added: Date.now(), plays: 0, lastPlayed: 0, fav: false, pos: 0, lrc: null,
+          sub: null, bookmarks: [], tagged: true
+        };
+        L.tracks.set(t.id, t);
+        await saveTrack(t);
+        HP.emit('library');
+        HP.toast('YouTube video added 🎉', 'ok');
+        return t;
+      }
+    }
+
     const name = decodeURIComponent(url.split('/').pop().split('?')[0]) || 'Stream';
     const kind = HP.kindOf(name) === 'video' ? 'video' : (HP.kindOf(name) || 'audio');
     const g = HP.splitArtistTitle(name);
     const t = {
       id: HP.uid(), key: url, name, title: g.title || name, artist: g.artist || new URL(url).hostname,
       album: '', genre: '', year: '', trackNo: '', duration: 0, size: 0, mime: '', kind,
-      source: 'url', file: null, handle: null, nativeUri: null, url, cover: null, folder: '',
-      added: Date.now(), plays: 0, lastPlayed: 0, fav: false, pos: 0, lrc: null, sub: null,
-      bookmarks: [], tagged: true
+      source: 'url', file: null, handle: null, nativeUri: null, url, origUrl: url, cover: null, coverUrl: null,
+      folder: '', added: Date.now(), plays: 0, lastPlayed: 0, fav: false, pos: 0, lrc: null,
+      sub: null, bookmarks: [], tagged: true
     };
     L.tracks.set(t.id, t);
     await saveTrack(t);
@@ -186,26 +177,37 @@
     return t;
   };
 
-  /* Android native scan (MediaStore via the APK bridge) */
+  L.addAndPlayUrl = async function (url) {
+    const t = await L.addUrl(url);
+    if (t) {
+      await HP.Player.playTrack(t.id, [t.id]);
+      if (HP.UI) HP.UI.openNP(true);
+    }
+  };
+
+  /* Android native scan (MediaStore via APK bridge) */
   L.addNative = async function (items) {
     const known = new Map(); L.tracks.forEach(t => { if (t.nativeUri) known.set(t.nativeUri, t); });
     const add = [];
     (items || []).forEach(it => {
       if (known.has(it.uri)) return;
       const g = HP.splitArtistTitle(it.name || 'Track');
+      const thumbUrl = it.thumb || (it.uri ? it.uri.replace('/media/', '/thumbnail/') : null);
       add.push({
         id: HP.uid(), key: it.uri, name: it.name || 'Track', title: it.title || g.title,
         artist: it.artist || g.artist || '', album: it.album || '', genre: '', year: '', trackNo: '',
         duration: (it.duration || 0) / 1000, size: it.size || 0, mime: it.mime || '',
         kind: it.kind || 'audio', source: 'native', file: null, handle: null, nativeUri: it.uri,
-        url: null, cover: null, folder: it.folder || '', added: Date.now(), plays: 0, lastPlayed: 0,
-        fav: false, pos: 0, lrc: null, sub: null, bookmarks: [], tagged: true
+        url: null, coverUrl: thumbUrl, cover: null, folder: it.folder || '', added: Date.now(),
+        plays: 0, lastPlayed: 0, fav: false, pos: 0, lrc: null, sub: null, bookmarks: [], tagged: true
       });
     });
     add.forEach(t => L.tracks.set(t.id, t));
     if (add.length) await DB.bulkPut('tracks', add);
     HP.emit('library');
-    HP.toast(add.length ? add.length + ' tracks found on device' : 'No new tracks found', add.length ? 'ok' : '');
+    if (add.length) {
+      HP.toast(add.length + ' tracks found on device', 'ok');
+    }
     return add;
   };
 
@@ -234,59 +236,58 @@
           if (m.trackNo) t.trackNo = m.trackNo;
           if (m.cover) t.cover = m.cover;
           if (m.lyrics && !t.lrc) t.lrc = m.lyrics;
-          if (m.duration) t.duration = m.duration;
+          if (m.duration && !t.duration) t.duration = m.duration;
+          t.tagged = true;
+          changed++;
+          if (changed % 4 === 0) saveSoon();
+          HP.emit('track-updated', t);
         }
-        if (!t.duration) {
-          const src = await L.resolveSrc(t, true);
-          if (src) t.duration = await HP.Meta.probe(src, t.kind === 'video');
-        }
-        t.tagged = true;
-        changed++;
-        saveTrack(t);
-        HP.emit('track-updated', t);
-      } catch (e) { t.tagged = true; }
-      if (changed % 12 === 0) await new Promise(r => setTimeout(r, 16));
+      } catch (e) { }
     }
+    if (changed) saveSoon();
     working = false;
-    if (changed) HP.emit('library');
   }
 
   async function fileOf(t) {
     if (t.file) return t.file;
     if (t.handle) {
       try {
-        const p = await t.handle.queryPermission({ mode: 'read' });
-        if (p === 'granted') return await t.handle.getFile();
-      } catch (e) { }
+        const f = await t.handle.getFile();
+        t.file = f;
+        return f;
+      } catch (e) { return null; }
     }
     return null;
   }
-  L.fileOf = fileOf;
 
-  /* ---------------- source resolution ---------------- */
-  const srcCache = new Map();           // id → objectURL
-  const MAX_SRC = 6;
-  L.resolveSrc = async function (t, silent) {
+  /* ---------------- resolution for <audio>/<video> src ---------------- */
+  const srcCache = new Map();
+  L.resolveSrc = async function (t) {
     if (!t) return null;
-    if (t.source === 'url') return t.url;
     if (t.nativeUri) return t.nativeUri;
-    if (srcCache.has(t.id)) return srcCache.get(t.id);
-    let f = t.file;
-    if (!f && t.handle) {
-      try {
-        let p = await t.handle.queryPermission({ mode: 'read' });
-        if (p === 'prompt' && !silent) p = await t.handle.requestPermission({ mode: 'read' });
-        if (p === 'granted') f = await t.handle.getFile();
-      } catch (e) { }
+    if (t.source === 'url' && t.url) {
+      // Re-resolve YouTube stream if needed
+      if (t.youtubeId && (!t.url || t.url.includes('googlevideo.com'))) {
+        try {
+          const fresh = await HP.Meta.resolveYouTube(t.origUrl || t.youtubeId);
+          if (fresh && fresh.streamUrl) {
+            t.url = fresh.streamUrl;
+            t.isEmbed = fresh.isEmbed;
+            saveTrack(t);
+          }
+        } catch (_) {}
+      }
+      return t.url;
     }
+    if (srcCache.has(t.id)) return srcCache.get(t.id);
+    const f = await fileOf(t);
     if (!f) return null;
-    try { await f.slice(0, 1).arrayBuffer(); }    // verify the file still exists on disk
-    catch (e) { t.file = null; L.countRelink(); HP.emit('library'); return null; }
-    const u = URL.createObjectURL(f);
+    let u;
+    try { u = URL.createObjectURL(f); } catch (e) { return null; }
     srcCache.set(t.id, u);
-    if (srcCache.size > MAX_SRC) {
+    if (srcCache.size > 20) {
       const k = srcCache.keys().next().value;
-      if (k !== t.id) { URL.revokeObjectURL(srcCache.get(k)); srcCache.delete(k); }
+      URL.revokeObjectURL(srcCache.get(k)); srcCache.delete(k);
     }
     return u;
   };
@@ -294,7 +295,9 @@
   /* cover art object URLs (LRU) */
   const coverCache = new Map();
   L.coverUrl = function (t) {
-    if (!t || !t.cover) return null;
+    if (!t) return null;
+    if (t.coverUrl) return t.coverUrl;
+    if (!t.cover) return null;
     if (coverCache.has(t.id)) return coverCache.get(t.id);
     let u;
     try { u = URL.createObjectURL(t.cover); } catch (e) { return null; }
@@ -392,11 +395,22 @@
     const isVid = t.kind === 'video';
     const art = el('div', { class: 'card-art' });
     const cu = L.coverUrl(t);
-    if (cu) art.appendChild(el('img', { src: cu, alt: '', loading: 'lazy' }));
-    else art.appendChild(icon(isVid ? 'video' : 'music', 'ph'));
+    if (cu) {
+      const img = el('img', { src: cu, alt: '', loading: 'lazy' });
+      img.onerror = () => {
+        img.remove();
+        if (!art.querySelector('.ph')) {
+          art.appendChild(icon(isVid ? 'video' : 'music', 'ph'));
+        }
+      };
+      art.appendChild(img);
+    } else {
+      art.appendChild(icon(isVid ? 'video' : 'music', 'ph'));
+    }
+
     const badges = el('div', { class: 'card-badges' });
     if (isVid) badges.appendChild(el('span', { class: 'badge v', text: 'VIDEO' }));
-    if (t.source === 'url') badges.appendChild(el('span', { class: 'badge', text: 'LINK' }));
+    if (t.source === 'url') badges.appendChild(el('span', { class: 'badge', text: t.album === 'YouTube' ? 'YT' : 'LINK' }));
     if (!t.file && !t.handle && !t.nativeUri && t.source !== 'url') badges.appendChild(el('span', { class: 'badge', text: 'RELINK' }));
     art.appendChild(badges);
     art.appendChild(el('span', { class: 'badge dur', text: t.duration ? HP.fmtTime(t.duration) : '—' }));

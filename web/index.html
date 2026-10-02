@@ -66,6 +66,7 @@
 <symbol id="i-mark" viewBox="0 0 24 24"><path d="M19 21 12 16l-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></symbol>
 <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6M10 11v6M14 11v6"/></symbol>
 <symbol id="i-save" viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M4 21h16"/></symbol>
+<symbol id="i-dl" viewBox="0 0 24 24"><path d="M12 3v13M7 11l5 5 5-5M4 20h16"/></symbol>
 <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></symbol>
 <symbol id="i-list" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01"/></symbol>
 <symbol id="i-rotate" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></symbol>
@@ -85,6 +86,9 @@
 <symbol id="i-mirror" viewBox="0 0 24 24"><path d="M12 3v18M5 7l4 5-4 5zM19 7l-4 5 4 5z"/></symbol>
 <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M2 12h2M20 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4"/></symbol>
 <symbol id="i-kbd" viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2.5"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M8 14h8"/></symbol>
+<symbol id="i-lock" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></symbol>
+<symbol id="i-unlock" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></symbol>
+<symbol id="i-yt" viewBox="0 0 24 24"><path d="M22.54 6.42a2.78 2.78 0 0 0-1.94-2C18.88 4 12 4 12 4s-6.88 0-8.6.46a2.78 2.78 0 0 0-1.94 2A29 29 0 0 0 1 11.75a29 29 0 0 0 .46 5.33A2.78 2.78 0 0 0 3.4 19c1.72.46 8.6.46 8.6.46s6.88 0 8.6-.46a2.78 2.78 0 0 0 1.94-2 29 29 0 0 0 .46-5.25 29 29 0 0 0-.46-5.33z"/><polygon points="9.75 15.02 15.5 11.75 9.75 8.48 9.75 15.02"/></symbol>
 </defs></svg>
 
 <!-- ════ boot splash ════ -->
@@ -107,16 +111,17 @@
     <button class="icon-btn tiny" id="search-clear" hidden aria-label="Clear"><svg class="ic"><use href="#i-x"/></svg></button>
   </div>
   <div class="top-actions">
-    <button class="icon-btn" id="btn-install" hidden title="Install app" data-i18n-t="install"><svg class="ic"><use href="#i-install"/></svg></button>
-    <button class="icon-btn only-desk" id="btn-help" title="Keyboard shortcuts"><svg class="ic"><use href="#i-kbd"/></svg></button>
-    <button class="icon-btn" id="btn-lang" title="Language"><svg class="ic"><use href="#i-globe"/></svg></button>
-    <button class="icon-btn" id="btn-add-top" title="Add media"><svg class="ic"><use href="#i-plus"/></svg></button>
+    <button class="btn small primary only-desk" id="btn-add-top"><svg class="ic"><use href="#i-plus"/></svg><span data-i18n="addFiles">Add media</span></button>
+    <button class="icon-btn" id="btn-install" hidden title="Install app"><svg class="ic"><use href="#i-install"/></svg></button>
+    <button class="icon-btn" id="btn-lang" title="Language (English / اردو)"><svg class="ic"><use href="#i-globe"/></svg></button>
+    <button class="icon-btn" id="btn-help" title="Shortcuts &amp; help"><svg class="ic"><use href="#i-info"/></svg></button>
   </div>
 </header>
 
-<!-- ════ nav rail / bottom bar ════ -->
+<!-- ════ navigation rail / bottom bar ════ -->
 <nav id="rail">
   <button class="nav-item active" data-nav="library"><svg class="ic"><use href="#i-music"/></svg><span data-i18n="library">Library</span></button>
+  <button class="nav-item" data-nav="youtube"><svg class="ic"><use href="#i-yt"/></svg><span>YouTube</span></button>
   <button class="nav-item" data-nav="playlists"><svg class="ic"><use href="#i-queue"/></svg><span data-i18n="playlists">Playlists</span></button>
   <button class="nav-item" data-nav="favorites"><svg class="ic"><use href="#i-heart"/></svg><span data-i18n="favorites">Favorites</span></button>
   <button class="nav-item" data-nav="eq"><svg class="ic"><use href="#i-eq"/></svg><span data-i18n="sound">Sound</span></button>
@@ -126,22 +131,30 @@
   </div>
 </nav>
 
-<!-- ════ views ════ -->
+<!-- ════ views container ════ -->
 <main id="views">
 
-  <!-- LIBRARY -->
+  <!-- ── view: library ── -->
   <section class="view active" id="view-library">
     <div class="view-head">
       <div>
         <h1 id="lib-title" data-i18n="library">Library</h1>
-        <p class="sub" id="lib-sub">—</p>
+        <p class="sub" id="lib-sub">Loading your tracks…</p>
       </div>
       <div class="head-actions">
-        <button class="btn primary" id="btn-add-files"><svg class="ic"><use href="#i-plus"/></svg><span data-i18n="addFiles">Add files</span></button>
-        <button class="btn" id="btn-add-folder"><svg class="ic"><use href="#i-folder"/></svg><span data-i18n="addFolder">Folder</span></button>
-        <button class="btn ghost" id="btn-add-url"><svg class="ic"><use href="#i-link"/></svg><span data-i18n="addUrl">URL</span></button>
-        <button class="btn ghost only-android" id="btn-scan" hidden><svg class="ic"><use href="#i-sparkle"/></svg><span data-i18n="scan">Scan device</span></button>
+        <button class="btn small" id="btn-add-files"><svg class="ic"><use href="#i-plus"/></svg><span data-i18n="addFiles">Files</span></button>
+        <button class="btn small" id="btn-add-folder"><svg class="ic"><use href="#i-folder"/></svg><span data-i18n="addFolder">Folder</span></button>
+        <button class="btn small" id="btn-add-url"><svg class="ic"><use href="#i-link"/></svg><span data-i18n="addUrl">URL / YouTube</span></button>
+        <button class="btn small primary" id="btn-scan" hidden><svg class="ic"><use href="#i-sparkle"/></svg><span data-i18n="scan">Scan device</span></button>
       </div>
+    </div>
+
+    <!-- relink notice when browser drops permissions -->
+    <div class="notice" id="relink-bar" hidden>
+      <svg class="ic"><use href="#i-info"/></svg>
+      <div><b data-i18n="relink">Re-link files:</b> <span id="relink-count">0</span> <span data-i18n="relinkMsg">tracks need to be opened again.</span></div>
+      <button class="btn small primary" id="btn-relink" data-i18n="addFiles">Re-select files</button>
+      <button class="icon-btn tiny" id="btn-relink-hide"><svg class="ic"><use href="#i-x"/></svg></button>
     </div>
 
     <div class="toolbar">
@@ -149,260 +162,290 @@
         <button class="chip active" data-filter="all" data-i18n="all">All</button>
         <button class="chip" data-filter="audio"><svg class="ic"><use href="#i-music"/></svg><span data-i18n="audio">Audio</span></button>
         <button class="chip" data-filter="video"><svg class="ic"><use href="#i-video"/></svg><span data-i18n="video">Video</span></button>
-        <button class="chip" data-filter="recent"><svg class="ic"><use href="#i-clock"/></svg><span data-i18n="recent">Recent</span></button>
-        <button class="chip" data-filter="most"><svg class="ic"><use href="#i-sparkle"/></svg><span data-i18n="mostPlayed">Most played</span></button>
+        <button class="chip" data-filter="fav"><svg class="ic"><use href="#i-heart"/></svg><span data-i18n="favorites">Favorites</span></button>
+        <button class="chip" data-filter="recent" data-i18n="recent">Recent</button>
+        <button class="chip" data-filter="most" data-i18n="mostPlayed">Most played</button>
       </div>
       <div class="tool-right">
-        <label class="select">
+        <button class="btn small" id="btn-play-all"><svg class="ic"><use href="#i-play"/></svg><span data-i18n="playAll">Play all</span></button>
+        <button class="btn small" id="btn-shuffle-all"><svg class="ic"><use href="#i-shuffle"/></svg><span data-i18n="shuffle">Shuffle</span></button>
+        <div class="select">
           <svg class="ic"><use href="#i-sort"/></svg>
-          <select id="sort-by">
+          <select id="sort-by" aria-label="Sort tracks">
             <option value="added">Recently added</option>
-            <option value="title">Title A–Z</option>
-            <option value="artist">Artist</option>
+            <option value="title">Title (A-Z)</option>
+            <option value="artist">Artist (A-Z)</option>
             <option value="album">Album</option>
             <option value="duration">Duration</option>
-            <option value="plays">Play count</option>
+            <option value="plays">Most played</option>
             <option value="size">File size</option>
           </select>
-        </label>
-        <button class="icon-btn" id="btn-view-mode" title="Grid / list"><svg class="ic"><use href="#i-grid"/></svg></button>
-        <button class="btn ghost" id="btn-play-all"><svg class="ic"><use href="#i-play"/></svg><span data-i18n="playAll">Play all</span></button>
-        <button class="btn ghost" id="btn-shuffle-all"><svg class="ic"><use href="#i-shuffle"/></svg><span data-i18n="shuffle">Shuffle</span></button>
+        </div>
+        <button class="icon-btn" id="btn-view-mode" title="Toggle grid / list"><svg class="ic"><use href="#i-grid"/></svg></button>
       </div>
     </div>
 
-    <div id="relink-bar" class="notice" hidden>
-      <svg class="ic"><use href="#i-info"/></svg>
-      <span><b id="relink-count">0</b> <span data-i18n="relinkMsg">tracks need to be re-opened (browsers can't keep file access forever).</span></span>
-      <button class="btn small" id="btn-relink" data-i18n="relink">Re-open files</button>
-      <button class="icon-btn tiny" id="btn-relink-hide"><svg class="ic"><use href="#i-x"/></svg></button>
-    </div>
-
+    <!-- media grid / list -->
     <div id="grid" class="grid"></div>
 
+    <!-- empty state -->
     <div id="empty" class="empty">
-      <div class="empty-art"><img src="icons/icon-192.png" alt=""></div>
-      <h2 data-i18n="emptyTitle">Drop your media here</h2>
-      <p data-i18n="emptyText">Add songs or videos from your device. Everything stays on your device — nothing is uploaded, ever.</p>
+      <div class="empty-art"><img src="icons/icon-192.png" alt=""><div class="empty-glow"></div></div>
+      <h2 data-i18n="emptyTitle">Drop your media files here</h2>
+      <p class="muted" data-i18n="emptyText">Add songs or videos from your device. Everything stays 100% on your device — nothing is ever uploaded.</p>
       <div class="empty-actions">
-        <button class="btn primary big" id="btn-empty-files"><svg class="ic"><use href="#i-plus"/></svg><span data-i18n="addFiles">Add files</span></button>
-        <button class="btn big" id="btn-empty-folder"><svg class="ic"><use href="#i-folder"/></svg><span data-i18n="addFolder">Add folder</span></button>
-      </div>
-      <div class="empty-hints">
-        <span><svg class="ic"><use href="#i-music"/></svg> mp3 · flac · wav · ogg · m4a · opus</span>
-        <span><svg class="ic"><use href="#i-video"/></svg> mp4 · webm · mkv · mov · m4v</span>
-        <span><svg class="ic"><use href="#i-lyrics"/></svg> .lrc lyrics · .srt/.vtt subtitles</span>
+        <button class="btn big primary" id="btn-empty-files"><svg class="ic"><use href="#i-plus"/></svg><span data-i18n="addFiles">Select files</span></button>
+        <button class="btn big" id="btn-empty-folder"><svg class="ic"><use href="#i-folder"/></svg><span data-i18n="addFolder">Choose folder</span></button>
       </div>
     </div>
   </section>
 
-  <!-- PLAYLISTS -->
-  <section class="view" id="view-playlists">
+  <!-- ── view: YouTube In-App Browse & Search ── -->
+  <section class="view" id="view-youtube">
     <div class="view-head">
-      <div><h1 data-i18n="playlists">Playlists</h1><p class="sub" data-i18n="playlistsSub">Collections you build, saved on this device.</p></div>
+      <div>
+        <h1>YouTube</h1>
+        <p class="sub">Search &amp; stream videos instantly or download to device.</p>
+      </div>
       <div class="head-actions">
-        <button class="btn primary" id="btn-new-playlist"><svg class="ic"><use href="#i-plus"/></svg><span data-i18n="newPlaylist">New playlist</span></button>
-        <button class="btn ghost" id="btn-save-queue"><svg class="ic"><use href="#i-save"/></svg><span data-i18n="saveQueue">Save queue</span></button>
+        <button class="btn small" id="yt-open-link"><svg class="ic"><use href="#i-link"/></svg><span>Paste URL</span></button>
       </div>
     </div>
-    <div id="playlist-grid" class="pl-grid"></div>
-    <div id="playlist-detail" hidden>
-      <div class="pl-head">
+
+    <div class="yt-search-bar">
+      <div class="search yt-search-input-wrap">
+        <svg class="ic"><use href="#i-search"/></svg>
+        <input id="yt-search-input" type="search" placeholder="Search YouTube videos, songs, artists…" autocomplete="off" spellcheck="false">
+        <button class="icon-btn tiny" id="yt-search-clear" hidden aria-label="Clear"><svg class="ic"><use href="#i-x"/></svg></button>
+      </div>
+      <button class="btn primary small" id="yt-search-go"><svg class="ic"><use href="#i-search"/></svg><span>Search</span></button>
+    </div>
+
+    <div class="chips wrap" id="yt-trending-chips">
+      <button class="chip active" data-q="Trending Music 2024">Trending Music</button>
+      <button class="chip" data-q="Lofi Hip Hop chill beats">Lofi Chill</button>
+      <button class="chip" data-q="Acoustic songs unplugged">Acoustic</button>
+      <button class="chip" data-q="Top Global Pop Hits">Top Hits</button>
+      <button class="chip" data-q="Relaxing Piano instrumental">Relaxing</button>
+      <button class="chip" data-q="Synthwave retro electronic">Synthwave</button>
+    </div>
+
+    <div id="yt-loading" class="yt-loading" hidden><div class="spin"></div><span>Searching YouTube…</span></div>
+    <div id="yt-results" class="yt-grid"></div>
+  </section>
+
+  <!-- ── view: playlists ── -->
+  <section class="view" id="view-playlists">
+    <div class="view-head">
+      <div>
+        <h1 data-i18n="playlists">Playlists</h1>
+        <p class="sub" data-i18n="playlistsSub">Custom collections, saved on this device.</p>
+      </div>
+      <div class="head-actions">
+        <button class="btn small primary" id="btn-new-playlist"><svg class="ic"><use href="#i-plus"/></svg><span data-i18n="newPlaylist">New playlist</span></button>
+        <button class="btn small" id="btn-save-queue"><svg class="ic"><use href="#i-save"/></svg><span data-i18n="saveQueue">Save current queue</span></button>
+      </div>
+    </div>
+
+    <div id="playlist-grid" class="playlist-grid"></div>
+
+    <div id="playlist-detail" class="playlist-detail" hidden>
+      <div class="pl-detail-head">
         <button class="icon-btn" id="pl-back"><svg class="ic"><use href="#i-left"/></svg></button>
-        <h2 id="pl-name">Playlist</h2>
-        <span class="sub" id="pl-meta"></span>
+        <div>
+          <h2 id="pl-name">Playlist</h2>
+          <p class="sub" id="pl-meta">0 tracks</p>
+        </div>
         <div class="spacer"></div>
-        <button class="btn" id="pl-play"><svg class="ic"><use href="#i-play"/></svg><span data-i18n="play">Play</span></button>
-        <button class="btn ghost" id="pl-shuffle"><svg class="ic"><use href="#i-shuffle"/></svg></button>
-        <button class="btn ghost danger" id="pl-delete"><svg class="ic"><use href="#i-trash"/></svg></button>
+        <button class="btn small primary" id="pl-play"><svg class="ic"><use href="#i-play"/></svg><span data-i18n="play">Play</span></button>
+        <button class="btn small" id="pl-shuffle"><svg class="ic"><use href="#i-shuffle"/></svg><span data-i18n="shuffle">Shuffle</span></button>
+        <button class="btn small danger ghost" id="pl-delete"><svg class="ic"><use href="#i-trash"/></svg></button>
       </div>
       <div id="pl-tracks" class="grid list"></div>
     </div>
   </section>
 
-  <!-- SOUND / EQ -->
+  <!-- ── view: EQ / Sound Lab ── -->
   <section class="view" id="view-eq">
     <div class="view-head">
-      <div><h1 data-i18n="soundLab">Sound Lab</h1><p class="sub" data-i18n="soundLabSub">10-band equaliser, effects and playback engine.</p></div>
+      <div>
+        <h1 data-i18n="soundLab">Sound Lab</h1>
+        <p class="sub" data-i18n="soundLabSub">10-band equalizer, DSP effects and processing graph.</p>
+      </div>
       <div class="head-actions">
         <label class="switch"><input type="checkbox" id="eq-enable"><i></i><span data-i18n="eqOn">EQ on</span></label>
-        <button class="btn ghost" id="eq-reset" data-i18n="reset">Reset</button>
+        <button class="btn small" id="eq-reset" data-i18n="reset">Reset</button>
       </div>
     </div>
 
-    <div class="panel">
-      <div class="panel-title"><svg class="ic"><use href="#i-eq"/></svg><span data-i18n="presets">Presets</span></div>
-      <div class="chips wrap" id="eq-presets"></div>
-    </div>
-
+    <!-- EQ rack -->
     <div class="panel eq-panel">
-      <div class="panel-title"><svg class="ic"><use href="#i-wave"/></svg><span data-i18n="bands">Bands</span><span class="hint" id="eq-readout">Flat</span></div>
+      <div class="eq-head">
+        <h3 data-i18n="presets">Presets</h3>
+        <span class="muted" id="eq-readout">Flat</span>
+      </div>
+      <div class="chips wrap" id="eq-presets"></div>
+      <div class="eq-curve-wrap"><canvas id="eq-curve"></canvas></div>
       <div class="eq-rack" id="eq-rack"></div>
-      <canvas id="eq-curve" class="eq-curve" height="90"></canvas>
     </div>
 
-    <div class="panel grid-2">
-      <div class="knob-row">
-        <label data-i18n="preamp">Pre-amp</label>
-        <input type="range" id="fx-preamp" min="-12" max="12" step="0.5" value="0"><output>0 dB</output>
+    <!-- FX panel -->
+    <div class="panel fx-panel">
+      <h3 data-i18n="effects">Effects</h3>
+      <div class="fx-grid">
+        <div class="fx-item"><label data-i18n="preamp">Preamp</label><input type="range" id="fx-preamp" min="-12" max="12" step=".5" value="0"><output>0 dB</output></div>
+        <div class="fx-item"><label data-i18n="bassBoost">Bass boost</label><input type="range" id="fx-bass" min="0" max="14" step=".5" value="0"><output>0 dB</output></div>
+        <div class="fx-item"><label data-i18n="trebleBoost">Treble</label><input type="range" id="fx-treble" min="-8" max="12" step=".5" value="0"><output>0 dB</output></div>
+        <div class="fx-item"><label data-i18n="reverb">Reverb / space</label><input type="range" id="fx-reverb" min="0" max="100" step="1" value="0"><output>0%</output></div>
+        <div class="fx-item"><label data-i18n="widener">Stereo width</label><input type="range" id="fx-width" min="0" max="200" step="5" value="100"><output>100%</output></div>
+        <div class="fx-item"><label data-i18n="balance">Balance</label><input type="range" id="fx-balance" min="-100" max="100" step="5" value="0"><output>C</output></div>
+        <div class="fx-item"><label data-i18n="volBoost">Volume boost</label><input type="range" id="fx-boost" min="100" max="250" step="5" value="100"><output>100%</output></div>
+        <div class="fx-item"><label data-i18n="crossfade">Crossfade</label><input type="range" id="fx-crossfade" min="0" max="10" step=".5" value="0"><output>Off</output></div>
       </div>
-      <div class="knob-row">
-        <label data-i18n="bassBoost">Bass boost</label>
-        <input type="range" id="fx-bass" min="0" max="18" step="0.5" value="0"><output>0 dB</output>
+      <div class="fx-switches">
+        <label class="switch"><input type="checkbox" id="fx-mono"><i></i><span data-i18n="mono">Mono audio</span></label>
+        <label class="switch"><input type="checkbox" id="fx-normalize"><i></i><span data-i18n="normalize">Night mode (dynamic compressor)</span></label>
+        <label class="switch"><input type="checkbox" id="fx-fade" checked><i></i><span data-i18n="fadePause">Fade on play / pause</span></label>
+        <label class="switch"><input type="checkbox" id="fx-pitch" checked><i></i><span data-i18n="pitch">Preserve pitch when changing speed</span></label>
       </div>
-      <div class="knob-row">
-        <label data-i18n="trebleBoost">Treble</label>
-        <input type="range" id="fx-treble" min="-6" max="12" step="0.5" value="0"><output>0 dB</output>
-      </div>
-      <div class="knob-row">
-        <label data-i18n="reverb">Reverb / space</label>
-        <input type="range" id="fx-reverb" min="0" max="100" step="1" value="0"><output>0%</output>
-      </div>
-      <div class="knob-row">
-        <label data-i18n="widener">Stereo width</label>
-        <input type="range" id="fx-width" min="0" max="200" step="1" value="100"><output>100%</output>
-      </div>
-      <div class="knob-row">
-        <label data-i18n="balance">Balance</label>
-        <input type="range" id="fx-balance" min="-100" max="100" step="1" value="0"><output>C</output>
-      </div>
-      <div class="knob-row">
-        <label data-i18n="volBoost">Volume boost</label>
-        <input type="range" id="fx-boost" min="100" max="300" step="5" value="100"><output>100%</output>
-      </div>
-      <div class="knob-row">
-        <label data-i18n="crossfade">Crossfade</label>
-        <input type="range" id="fx-crossfade" min="0" max="12" step="1" value="0"><output>Off</output>
-      </div>
-    </div>
-
-    <div class="panel toggles">
-      <label class="switch"><input type="checkbox" id="fx-mono"><i></i><span data-i18n="mono">Mono downmix</span></label>
-      <label class="switch"><input type="checkbox" id="fx-normalize"><i></i><span data-i18n="normalize">Night mode (compressor)</span></label>
-      <label class="switch"><input type="checkbox" id="fx-fade"><i></i><span data-i18n="fadePause">Fade on play / pause</span></label>
-      <label class="switch"><input type="checkbox" id="fx-pitch"><i></i><span data-i18n="pitch">Preserve pitch on speed change</span></label>
     </div>
   </section>
 
-  <!-- SETTINGS -->
+  <!-- ── view: settings ── -->
   <section class="view" id="view-settings">
-    <div class="view-head"><div><h1 data-i18n="settings">Settings</h1><p class="sub">HashPlayer · <span id="app-version">v2.0</span></p></div></div>
+    <div class="view-head">
+      <div>
+        <h1 data-i18n="settings">Settings</h1>
+        <p class="sub">Preferences, theme, gestures and data storage.</p>
+      </div>
+    </div>
 
-    <div class="panel">
-      <div class="panel-title"><svg class="ic"><use href="#i-sparkle"/></svg><span data-i18n="appearance">Appearance</span></div>
-      <div class="set-row">
-        <div><b data-i18n="theme">Theme</b><small data-i18n="themeSub">Accent colour of the whole app.</small></div>
-        <div class="chips" id="theme-chips">
-          <button class="chip swatch" data-theme="neon" style="--sw:#00e5ff;--sw2:#b61bff">Neon</button>
-          <button class="chip swatch" data-theme="sunset" style="--sw:#ff8a3d;--sw2:#ff2d78">Sunset</button>
-          <button class="chip swatch" data-theme="matrix" style="--sw:#2bff88;--sw2:#00c2a8">Matrix</button>
-          <button class="chip swatch" data-theme="royal" style="--sw:#ffd166;--sw2:#8a5cff">Royal</button>
-          <button class="chip swatch" data-theme="ice" style="--sw:#8ab4ff;--sw2:#c3f0ff">Ice</button>
+    <div class="settings-grid">
+      <div class="panel">
+        <h3 data-i18n="appearance">Appearance</h3>
+        <div class="setting-row">
+          <div><b data-i18n="theme">Accent theme</b><small class="muted" data-i18n="themeSub">Player highlights &amp; visual mood.</small></div>
+          <div class="chips" id="theme-chips">
+            <button class="chip swatch" style="--sw:#00e5ff;--sw2:#b61bff" data-theme="neon">Neon</button>
+            <button class="chip swatch" style="--sw:#ff9a3d;--sw2:#ff2d78" data-theme="sunset">Sunset</button>
+            <button class="chip swatch" style="--sw:#2bff95;--sw2:#00c2a8" data-theme="matrix">Matrix</button>
+            <button class="chip swatch" style="--sw:#ffd166;--sw2:#8a5cff" data-theme="royal">Royal</button>
+            <button class="chip swatch" style="--sw:#8ab4ff;--sw2:#c9f2ff" data-theme="ice">Ice</button>
+          </div>
+        </div>
+        <div class="setting-row">
+          <div><b data-i18n="surface">Surface style</b><small class="muted" data-i18n="surfaceSub">AMOLED saves battery on OLED screens.</small></div>
+          <div class="chips" id="surface-chips">
+            <button class="chip active" data-surface="dark">Dark</button>
+            <button class="chip" data-surface="amoled">AMOLED black</button>
+            <button class="chip" data-surface="light">Light</button>
+          </div>
+        </div>
+        <label class="switch row"><input type="checkbox" id="set-autotheme" checked><i></i><span data-i18n="autoTheme">Adaptive album-art theming</span></label>
+        <label class="switch row"><input type="checkbox" id="set-motion" checked><i></i><span data-i18n="animations">Animations &amp; background aurora</span></label>
+        <label class="switch row"><input type="checkbox" id="set-simple"><i></i><span data-i18n="simpleMode">Simple player mode</span></label>
+      </div>
+
+      <div class="panel">
+        <h3 data-i18n="playback">Playback</h3>
+        <div class="setting-row">
+          <div><b data-i18n="visualizer">Visualizer style</b><small class="muted">Live Web Audio visuals.</small></div>
+          <div class="chips" id="vis-chips">
+            <button class="chip" data-vis="bars">Bars</button>
+            <button class="chip" data-vis="mirror">Mirror</button>
+            <button class="chip" data-vis="wave">Wave</button>
+            <button class="chip" data-vis="radial">Radial</button>
+            <button class="chip" data-vis="nebula">Nebula</button>
+            <button class="chip" data-vis="off">Off</button>
+          </div>
+        </div>
+        <label class="switch row"><input type="checkbox" id="set-gestures" checked><i></i><span data-i18n="gestures">Stage gestures (brightness, volume, seek)</span></label>
+        <label class="switch row"><input type="checkbox" id="set-resume" checked><i></i><span data-i18n="resume">Resume last played track</span></label>
+        <label class="switch row"><input type="checkbox" id="set-autoplay" checked><i></i><span data-i18n="autoplayNext">Autoplay next track in queue</span></label>
+        <label class="switch row"><input type="checkbox" id="set-keepawake" checked><i></i><span data-i18n="keepAwake">Keep screen awake while playing</span></label>
+        <div class="setting-row">
+          <div><b data-i18n="seekStep">Double-tap seek step</b><small class="muted" data-i18n="seekStepSub">Seconds skipped on double tap.</small></div>
+          <div class="select">
+            <select id="set-seekstep">
+              <option value="5">5 seconds</option>
+              <option value="10">10 seconds</option>
+              <option value="15">15 seconds</option>
+              <option value="30">30 seconds</option>
+            </select>
+          </div>
         </div>
       </div>
-      <div class="set-row">
-        <div><b data-i18n="surface">Background</b><small data-i18n="surfaceSub">AMOLED black saves battery on OLED screens.</small></div>
-        <div class="chips" id="surface-chips">
-          <button class="chip active" data-surface="dark">Dark</button>
-          <button class="chip" data-surface="amoled">AMOLED</button>
-          <button class="chip" data-surface="light">Light</button>
+
+      <div class="panel">
+        <h3 data-i18n="data">Library &amp; Data</h3>
+        <p class="muted" id="storage-info" data-i18n="storageUsed">IndexedDB local storage</p>
+        <div class="btn-row">
+          <button class="btn small" id="btn-export"><svg class="ic"><use href="#i-save"/></svg><span data-i18n="export">Export library JSON</span></button>
+          <button class="btn small" id="btn-import"><svg class="ic"><use href="#i-folder"/></svg><span data-i18n="import">Import JSON</span></button>
+          <button class="btn small danger ghost" id="btn-clear"><svg class="ic"><use href="#i-trash"/></svg><span data-i18n="clear">Clear library</span></button>
         </div>
+        <label class="switch row"><input type="checkbox" id="set-persist"><i></i><span data-i18n="persistStorage">Request persistent storage permission</span></label>
       </div>
-      <label class="switch row"><input type="checkbox" id="set-autotheme" checked><i></i><span data-i18n="autoTheme">Tint the UI with album-art colours</span></label>
-      <label class="switch row"><input type="checkbox" id="set-motion" checked><i></i><span data-i18n="animations">Animated background &amp; effects</span></label>
-      <label class="switch row"><input type="checkbox" id="set-simple"><i></i><span data-i18n="simpleMode">Simple mode (hide pro controls)</span></label>
-    </div>
 
-    <div class="panel">
-      <div class="panel-title"><svg class="ic"><use href="#i-wave"/></svg><span data-i18n="visualizer">Visualizer</span></div>
-      <div class="chips wrap" id="vis-chips">
-        <button class="chip" data-vis="bars">Bars</button>
-        <button class="chip" data-vis="mirror">Mirror</button>
-        <button class="chip" data-vis="wave">Wave</button>
-        <button class="chip" data-vis="radial">Radial</button>
-        <button class="chip" data-vis="nebula">Nebula</button>
-        <button class="chip" data-vis="off">Off</button>
-      </div>
-    </div>
-
-    <div class="panel">
-      <div class="panel-title"><svg class="ic"><use href="#i-video"/></svg><span data-i18n="playback">Playback</span></div>
-      <label class="switch row"><input type="checkbox" id="set-gestures" checked><i></i><span data-i18n="gestures">Video gestures (swipe seek / volume / brightness)</span></label>
-      <label class="switch row"><input type="checkbox" id="set-resume" checked><i></i><span data-i18n="resume">Resume where I left off</span></label>
-      <label class="switch row"><input type="checkbox" id="set-autoplay" checked><i></i><span data-i18n="autoplayNext">Autoplay next track</span></label>
-      <label class="switch row"><input type="checkbox" id="set-keepawake" checked><i></i><span data-i18n="keepAwake">Keep screen awake during video</span></label>
-      <div class="set-row">
-        <div><b data-i18n="seekStep">Double-tap seek</b><small data-i18n="seekStepSub">Seconds jumped by a double tap / arrow key.</small></div>
-        <label class="select"><select id="set-seekstep"><option>5</option><option selected>10</option><option>15</option><option>30</option></select></label>
-      </div>
-    </div>
-
-    <div class="panel">
-      <div class="panel-title"><svg class="ic"><use href="#i-save"/></svg><span data-i18n="data">Library &amp; data</span></div>
-      <div class="set-row">
-        <div><b data-i18n="storageUsed">On-device storage</b><small id="storage-info">—</small></div>
-        <div class="head-actions">
-          <button class="btn ghost small" id="btn-export"><svg class="ic"><use href="#i-save"/></svg><span data-i18n="export">Export</span></button>
-          <button class="btn ghost small" id="btn-import"><svg class="ic"><use href="#i-file"/></svg><span data-i18n="import">Import</span></button>
-          <button class="btn ghost small danger" id="btn-clear"><svg class="ic"><use href="#i-trash"/></svg><span data-i18n="clear">Clear</span></button>
+      <div class="panel">
+        <h3 data-i18n="about">About HashPlayer</h3>
+        <p class="muted" data-i18n="aboutText">A private, high-performance audio &amp; video player with zero ads, zero trackers, and offline capability. Your files stay strictly on your device.</p>
+        <div class="about-meta">
+          <span>Version: <b id="app-version">v2.1.0</b></span>
+          <span>Environment: <b id="about-env">app</b></span>
         </div>
-      </div>
-      <label class="switch row"><input type="checkbox" id="set-persist"><i></i><span data-i18n="persistStorage">Ask the browser to never evict my library</span></label>
-    </div>
-
-    <div class="panel about">
-      <div class="panel-title"><svg class="ic"><use href="#i-info"/></svg><span data-i18n="about">About</span></div>
-      <p><b>HashPlayer</b> — <span data-i18n="aboutText">a private, offline-first audio &amp; video player. Your files never leave your device: there is no server, no account and no tracking.</span></p>
-      <p class="muted">Built by HASH TECH · <span id="about-env">web</span></p>
-      <div class="head-actions">
-        <button class="btn ghost small" id="btn-help2"><svg class="ic"><use href="#i-kbd"/></svg><span data-i18n="shortcuts">Shortcuts</span></button>
-        <button class="btn ghost small" id="btn-install2" hidden><svg class="ic"><use href="#i-install"/></svg><span data-i18n="install">Install app</span></button>
+        <div class="btn-row">
+          <button class="btn small" id="btn-help2"><svg class="ic"><use href="#i-kbd"/></svg><span data-i18n="shortcuts">Keyboard shortcuts</span></button>
+          <button class="btn small" id="btn-install2" hidden><svg class="ic"><use href="#i-install"/></svg><span data-i18n="install">Install app</span></button>
+        </div>
       </div>
     </div>
   </section>
 </main>
 
-<!-- ════ mini player ════ -->
-<div id="minibar" hidden>
-  <div class="mini-prog"><i id="mini-prog-fill"></i></div>
-  <button class="mini-art" id="mini-art">
+<!-- ════ mini player bar ════ -->
+<aside id="minibar" hidden>
+  <div class="mini-prog"><i id="mini-fill"></i></div>
+  <div class="mini-art" id="mini-art">
     <img id="mini-img" alt="">
-    <canvas id="mini-vid" width="96" height="96"></canvas>
     <svg class="ic ph"><use href="#i-music"/></svg>
-  </button>
-  <button class="mini-meta" id="mini-meta">
-    <strong id="mini-title">Nothing playing</strong>
-    <small id="mini-artist">—</small>
-  </button>
-  <div class="mini-ctrls">
-    <button class="icon-btn only-desk" id="mini-prev"><svg class="ic"><use href="#i-prev"/></svg></button>
-    <button class="icon-btn play" id="mini-play"><svg class="ic"><use href="#i-play"/></svg></button>
-    <button class="icon-btn" id="mini-next"><svg class="ic"><use href="#i-next"/></svg></button>
-    <button class="icon-btn only-desk" id="mini-fav"><svg class="ic"><use href="#i-heart"/></svg></button>
-    <div class="vol only-desk">
-      <button class="icon-btn" id="mini-mute"><svg class="ic"><use href="#i-vol"/></svg></button>
-      <input type="range" id="mini-vol" min="0" max="100" value="100">
-    </div>
-    <button class="icon-btn" id="mini-queue"><svg class="ic"><use href="#i-queue"/></svg></button>
-    <button class="icon-btn" id="mini-expand"><svg class="ic"><use href="#i-up"/></svg></button>
   </div>
-</div>
+  <div class="mini-meta" id="mini-meta">
+    <strong id="mini-title">Nothing playing</strong>
+    <small id="mini-artist">Select a track</small>
+  </div>
+  <div class="mini-ctrls">
+    <button class="icon-btn fav" id="mini-fav" aria-label="Favourite"><svg class="ic"><use href="#i-heart"/></svg></button>
+    <button class="icon-btn play" id="mini-play" aria-label="Play / Pause"><svg class="ic"><use href="#i-play"/></svg></button>
+    <button class="icon-btn" id="mini-next" aria-label="Next"><svg class="ic"><use href="#i-next"/></svg></button>
+    <div class="vol only-desk">
+      <button class="icon-btn tiny" id="mini-mute"><svg class="ic"><use href="#i-vol"/></svg></button>
+      <input type="range" id="mini-vol" min="0" max="100" value="100" aria-label="Volume">
+    </div>
+    <button class="icon-btn only-mobile" id="mini-queue" aria-label="Queue"><svg class="ic"><use href="#i-queue"/></svg></button>
+    <button class="icon-btn" id="mini-expand" aria-label="Expand player"><svg class="ic"><use href="#i-up"/></svg></button>
+  </div>
+</aside>
 
-<!-- ════ NOW PLAYING ════ -->
+<!-- ════ now playing modal (expanded view) ════ -->
 <section id="np" aria-hidden="true">
   <div class="np-bg"><img id="np-bg-img" alt=""></div>
 
+  <!-- portrait top bar -->
   <header class="np-top">
     <button class="icon-btn" id="np-close"><svg class="ic"><use href="#i-down"/></svg></button>
     <div class="np-top-mid">
-      <small id="np-source" data-i18n="nowPlaying">Now playing</small>
+      <small data-i18n="nowPlaying">NOW PLAYING</small>
       <span id="np-context">Library</span>
     </div>
-    <button class="icon-btn" id="np-more"><svg class="ic"><use href="#i-dots"/></svg></button>
+    <div class="np-top-actions">
+      <button class="icon-btn" id="np-download" title="Download / Save to Device"><svg class="ic"><use href="#i-dl"/></svg></button>
+      <button class="icon-btn" id="np-more"><svg class="ic"><use href="#i-dots"/></svg></button>
+    </div>
   </header>
 
   <div class="np-body">
-    <!-- stage: video + art + visualizer -->
+    <!-- stage: video + art + visualizer + landscape overlay HUD -->
     <div class="stage" id="stage">
       <video id="media" playsinline webkit-playsinline preload="metadata" crossorigin="anonymous"></video>
       <div class="art-wrap" id="art-wrap">
@@ -414,25 +457,46 @@
       <canvas id="vis"></canvas>
       <div class="lyrics" id="lyrics" hidden><div class="lyrics-scroll" id="lyrics-scroll"></div></div>
 
-      <!-- gesture feedback -->
+      <!-- gesture feedback HUD -->
       <div class="gfx" id="gfx"><svg class="ic"><use href="#i-ff"/></svg><span id="gfx-text">+10s</span></div>
       <div class="gbar" id="gbar"><svg class="ic" id="gbar-icon"><use href="#i-vol"/></svg><div class="gbar-track"><i id="gbar-fill"></i></div><span id="gbar-val">50</span></div>
       <div class="ripple" id="ripple-l"></div><div class="ripple" id="ripple-r"></div>
       <div class="badge-speed" id="speed-badge" hidden>2x</div>
 
-      <!-- video quick tools -->
-      <div class="vtools" id="vtools">
-        <button class="icon-btn" id="v-aspect" title="Aspect / zoom"><svg class="ic"><use href="#i-aspect"/></svg></button>
-        <button class="icon-btn" id="v-rotate" title="Rotate"><svg class="ic"><use href="#i-rotate"/></svg></button>
-        <button class="icon-btn" id="v-mirror" title="Mirror"><svg class="ic"><use href="#i-mirror"/></svg></button>
-        <button class="icon-btn" id="v-shot" title="Screenshot"><svg class="ic"><use href="#i-cam"/></svg></button>
-        <button class="icon-btn" id="v-cc" title="Subtitles"><svg class="ic"><use href="#i-cc"/></svg></button>
-        <button class="icon-btn" id="v-pip" title="Picture in picture"><svg class="ic"><use href="#i-pip"/></svg></button>
-        <button class="icon-btn" id="v-full" title="Fullscreen"><svg class="ic"><use href="#i-expand"/></svg></button>
+      <!-- floating video overlay HUD (Landscape & Fullscreen) -->
+      <div class="v-overlay" id="v-overlay">
+        <!-- top HUD bar -->
+        <div class="v-top-bar">
+          <button class="icon-btn" id="v-back" title="Back"><svg class="ic"><use href="#i-left"/></svg></button>
+          <div class="v-info">
+            <b id="v-title">Title</b>
+            <small id="v-sub">Artist</small>
+          </div>
+          <div class="v-top-actions">
+            <button class="icon-btn" id="v-download" title="Download / Save to Device"><svg class="ic"><use href="#i-dl"/></svg></button>
+            <button class="icon-btn" id="v-aspect" title="Aspect ratio"><svg class="ic"><use href="#i-aspect"/></svg></button>
+            <button class="icon-btn" id="v-rotate" title="Rotate"><svg class="ic"><use href="#i-rotate"/></svg></button>
+            <button class="icon-btn" id="v-mirror" title="Mirror"><svg class="ic"><use href="#i-mirror"/></svg></button>
+            <button class="icon-btn" id="v-shot" title="Screenshot"><svg class="ic"><use href="#i-cam"/></svg></button>
+            <button class="icon-btn" id="v-cc" title="Subtitles"><svg class="ic"><use href="#i-cc"/></svg></button>
+            <button class="icon-btn" id="v-pip" title="Picture in picture"><svg class="ic"><use href="#i-pip"/></svg></button>
+            <button class="icon-btn" id="v-full" title="Fullscreen"><svg class="ic"><use href="#i-expand"/></svg></button>
+          </div>
+        </div>
+
+        <!-- center play/pause HUD button -->
+        <div class="v-center-ctrls">
+          <button class="v-center-btn" id="v-play-center" aria-label="Play / Pause"><svg class="ic"><use href="#i-play"/></svg></button>
+        </div>
+
+        <!-- unlock screen floating button when locked -->
+        <div class="v-lock-badge" id="v-lock-badge">
+          <button class="btn tiny" id="v-unlock-btn"><svg class="ic"><use href="#i-unlock"/></svg><span data-i18n="unlockScreen">Unlock Screen</span></button>
+        </div>
       </div>
     </div>
 
-    <!-- meta + controls -->
+    <!-- meta + controls panel -->
     <div class="np-ctrl">
       <div class="np-meta">
         <div class="np-titles">
@@ -453,13 +517,13 @@
       <div class="times"><span id="t-cur">0:00</span><span id="t-rem">-0:00</span></div>
 
       <div class="transport">
-        <button class="icon-btn" id="btn-shuf"><svg class="ic"><use href="#i-shuffle"/></svg></button>
-        <button class="icon-btn" id="btn-prev"><svg class="ic"><use href="#i-prev"/></svg></button>
-        <button class="icon-btn big" id="btn-rw"><svg class="ic"><use href="#i-rw"/></svg></button>
-        <button class="play-btn" id="btn-play"><svg class="ic"><use href="#i-play"/></svg></button>
-        <button class="icon-btn big" id="btn-ff"><svg class="ic"><use href="#i-ff"/></svg></button>
-        <button class="icon-btn" id="btn-next"><svg class="ic"><use href="#i-next"/></svg></button>
-        <button class="icon-btn" id="btn-rep"><svg class="ic"><use href="#i-repeat"/></svg></button>
+        <button class="icon-btn" id="btn-shuf" title="Shuffle"><svg class="ic"><use href="#i-shuffle"/></svg></button>
+        <button class="icon-btn" id="btn-prev" title="Previous"><svg class="ic"><use href="#i-prev"/></svg></button>
+        <button class="icon-btn big" id="btn-rw" title="Rewind 10s"><svg class="ic"><use href="#i-rw"/></svg></button>
+        <button class="play-btn" id="btn-play" title="Play / Pause"><svg class="ic"><use href="#i-play"/></svg></button>
+        <button class="icon-btn big" id="btn-ff" title="Fast-forward 10s"><svg class="ic"><use href="#i-ff"/></svg></button>
+        <button class="icon-btn" id="btn-next" title="Next"><svg class="ic"><use href="#i-next"/></svg></button>
+        <button class="icon-btn" id="btn-rep" title="Repeat"><svg class="ic"><use href="#i-repeat"/></svg></button>
       </div>
 
       <div class="np-tools">
@@ -470,6 +534,7 @@
         <button class="tool" id="t-sleep"><svg class="ic"><use href="#i-timer"/></svg><span data-i18n="sleep">Sleep</span></button>
         <button class="tool" id="t-mark" data-pro><svg class="ic"><use href="#i-mark"/></svg><span data-i18n="bookmark">Bookmark</span></button>
         <button class="tool" id="t-vis" data-pro><svg class="ic"><use href="#i-wave"/></svg><span data-i18n="visualizer">Visualizer</span></button>
+        <button class="tool" id="v-lock" data-pro><svg class="ic"><use href="#i-lock"/></svg><span data-i18n="lockScreen">Lock</span></button>
         <button class="tool" id="t-queue"><svg class="ic"><use href="#i-queue"/></svg><span data-i18n="queue">Queue</span></button>
       </div>
     </div>
@@ -488,7 +553,7 @@
   <div id="q-list"></div>
 </aside>
 
-<!-- ════ overlays ════ -->
+<!-- ════ overlays & sheets ════ -->
 <div id="scrim"></div>
 
 <div class="sheet" id="sheet-speed" hidden>
@@ -516,9 +581,9 @@
 </div>
 
 <div class="sheet" id="sheet-url" hidden>
-  <h3 data-i18n="addUrlTitle">Open media URL</h3>
-  <p class="muted" data-i18n="addUrlSub">Direct link to an audio or video file (mp3, mp4, webm…).</p>
-  <input type="url" id="url-input" placeholder="https://example.com/song.mp3" spellcheck="false">
+  <h3 data-i18n="addUrlTitle">Open media or YouTube link</h3>
+  <p class="muted" data-i18n="addUrlSub">Direct link to audio/video or a YouTube video URL.</p>
+  <input type="url" id="url-input" placeholder="https://youtube.com/watch?v=... or https://example.com/audio.mp3" spellcheck="false">
   <div class="sheet-foot">
     <button class="btn ghost" data-close data-i18n="cancel">Cancel</button>
     <button class="btn primary" id="url-add" data-i18n="add">Add &amp; play</button>
@@ -549,8 +614,9 @@
 
 <div class="sheet" id="sheet-lyrics" hidden>
   <h3 data-i18n="lyricsTools">Lyrics</h3>
-  <p class="muted" data-i18n="lyricsSub">Load an .lrc / .txt file, or paste lyrics. Timed .lrc lines scroll automatically.</p>
+  <p class="muted" data-i18n="lyricsSub">Search online with 1 tap, load an .lrc/.txt file, or edit lyrics.</p>
   <div class="head-actions">
+    <button class="btn primary small" id="lrc-search-online"><svg class="ic"><use href="#i-search"/></svg><span data-i18n="searchOnline">Search Online (1-Tap)</span></button>
     <button class="btn small" id="lrc-load"><svg class="ic"><use href="#i-file"/></svg><span data-i18n="loadFile">Load file</span></button>
     <div class="offset"><span data-i18n="offset">Offset</span>
       <button class="btn tiny" id="lrc-minus">−0.5s</button><b id="lrc-offset">0.0s</b><button class="btn tiny" id="lrc-plus">+0.5s</button>
@@ -560,6 +626,19 @@
   <div class="sheet-foot">
     <button class="btn ghost danger" id="lrc-clear" data-i18n="remove">Remove</button>
     <button class="btn primary" id="lrc-save" data-i18n="save">Save</button>
+  </div>
+</div>
+
+<div class="sheet" id="sheet-lyrics-search" hidden>
+  <h3 data-i18n="lyricsOnline">Online Lyrics Search</h3>
+  <p class="muted">Search LRCLIB for synchronized .lrc and plain lyrics.</p>
+  <div class="lrc-search-box">
+    <input type="text" id="lrc-search-q" placeholder="Song title or artist…" spellcheck="false">
+    <button class="btn primary" id="lrc-search-btn"><svg class="ic"><use href="#i-search"/></svg> <span data-i18n="search">Search</span></button>
+  </div>
+  <div class="lrc-results-list" id="lrc-search-results"></div>
+  <div class="sheet-foot">
+    <button class="btn ghost" data-close data-i18n="close">Close</button>
   </div>
 </div>
 

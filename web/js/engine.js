@@ -1,7 +1,8 @@
 /* ============================================================
    HashPlayer · engine.js — Web Audio graph
    source → preamp → 10-band EQ → bass/treble → compressor →
-   stereo width → balance → master → analyser → out  (+ reverb)
+   stereo width → balance → master → analyser → out  (+ optional reverb)
+   Optimized for mobile CPU efficiency & zero-stutter audio.
    ============================================================ */
 (function (w) {
   'use strict';
@@ -45,7 +46,7 @@
     try { E.ctx = new AC({ latencyHint: 'playback' }); } catch (e) { return false; }
     const c = E.ctx;
 
-    E.inGain = c.createGain();            // all element sources land here
+    E.inGain = c.createGain();
     E.preamp = c.createGain();
     E.bands = FREQS.map((f, i) => {
       const b = c.createBiquadFilter();
@@ -75,12 +76,16 @@
 
     E.pan = c.createStereoPanner ? c.createStereoPanner() : null;
     E.master = c.createGain();
-    E.conv = c.createConvolver(); E.conv.buffer = impulse(c, 2.1, 2.6);
+    E.conv = c.createConvolver();
+    E.reverbLoaded = false;
     E.wet = c.createGain(); E.wet.gain.value = 0;
-    E.analyser = c.createAnalyser();
-    E.analyser.fftSize = 2048; E.analyser.smoothingTimeConstant = .78; E.analyser.minDecibels = -92;
 
-    /* wire */
+    E.analyser = c.createAnalyser();
+    E.analyser.fftSize = 1024; // 1024 is optimized for mobile CPU
+    E.analyser.smoothingTimeConstant = .75;
+    E.analyser.minDecibels = -90;
+
+    /* wire graph */
     E.inGain.connect(E.preamp);
     let node = E.preamp;
     E.bands.forEach(b => { node.connect(b); node = b; });
@@ -101,7 +106,6 @@
     const tail = E.pan || E.merge;
     if (E.pan) E.merge.connect(E.pan);
     tail.connect(E.master);
-    tail.connect(E.conv); E.conv.connect(E.wet); E.wet.connect(E.master);
     E.master.connect(E.analyser);
     E.analyser.connect(c.destination);
 
@@ -110,19 +114,30 @@
     return true;
   }
 
-  /* synthetic impulse response — warm hall */
+  function ensureReverb() {
+    if (!E.ctx || E.reverbLoaded) return;
+    try {
+      E.conv.buffer = impulse(E.ctx, 1.8, 2.4);
+      const tail = E.pan || E.merge;
+      tail.connect(E.conv);
+      E.conv.connect(E.wet);
+      E.wet.connect(E.master);
+      E.reverbLoaded = true;
+    } catch (_) {}
+  }
+
+  /* synthetic impulse response — warm room */
   function impulse(c, seconds, decay) {
     const rate = c.sampleRate, len = Math.floor(rate * seconds), buf = c.createBuffer(2, len, rate);
     for (let ch = 0; ch < 2; ch++) {
       const d = buf.getChannelData(ch);
       for (let i = 0; i < len; i++) {
         const t = i / len;
-        d[i] = (Math.random() * 2 - 1) * Math.pow(1 - t, decay) * (1 - t * .25);
+        d[i] = (Math.random() * 2 - 1) * Math.pow(1 - t, decay) * (1 - t * .2);
       }
-      // early reflections
-      [0.011, 0.023, 0.037, 0.051].forEach((ms, k) => {
+      [0.012, 0.025, 0.040].forEach((ms, k) => {
         const idx = Math.floor(ms * rate);
-        if (idx < len) d[idx] += (k % 2 ? -1 : 1) * 0.45 / (k + 1);
+        if (idx < len) d[idx] += (k % 2 ? -1 : 1) * 0.4 / (k + 1);
       });
     }
     return buf;
@@ -180,7 +195,7 @@
   E.applyVolume = function () {
     const vol = S.muted ? 0 : S.volume * (S.boost / 100);
     if (E.ready) ramp(E.master.gain, vol, 60);
-    else if (HP.Player) {                       // no Web Audio → drive the elements directly
+    else if (HP.Player) {
       [HP.Player.a, HP.Player.b].forEach(m => { if (m) m.volume = clamp(vol, 0, 1); });
     }
     HP.emit('volume', S.volume);
@@ -192,7 +207,14 @@
     ramp(E.preamp.gain, db2gain(S.preamp || 0), 80);
     ramp(E.bass.gain, S.bass || 0, 80);
     ramp(E.treble.gain, S.treble || 0, 80);
-    ramp(E.wet.gain, (S.reverb || 0) / 140, 120);
+
+    if (S.reverb > 0) {
+      ensureReverb();
+      ramp(E.wet.gain, (S.reverb || 0) / 140, 120);
+    } else {
+      ramp(E.wet.gain, 0, 120);
+    }
+
     ramp(E.sideW.gain, S.mono ? 0 : (S.width || 100) / 100, 90);
     if (E.pan) ramp(E.pan.pan, clamp((S.balance || 0) / 100, -1, 1), 90);
     ramp(E.compWet.gain, S.normalize ? 1 : 0, 150);

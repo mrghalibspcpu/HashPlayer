@@ -1,28 +1,40 @@
 /* ============================================================
    HashPlayer · app.js — shell wiring, settings, EQ UI,
-   shortcuts, drag & drop, PWA install, Android bridge
+   shortcuts, drag & drop, PWA install, Android bridge,
+   YouTube search & stream player, and One-Tap Online Lyrics.
    ============================================================ */
 (function (w) {
   'use strict';
   const HP = w.HP, S = HP.S, $ = HP.$, $$ = HP.$$, el = HP.el, icon = HP.icon, clamp = HP.clamp;
   const L = HP.Lib, P = HP.Player, E = HP.Engine, UI = {};
-  const APP_VERSION = '2.0.0';
+  const APP_VERSION = '2.1.0';
 
   /* =========================================================
      views & navigation
      ========================================================= */
   UI.nav = function (view) {
-    const map = { library: 'library', playlists: 'playlists', favorites: 'library', eq: 'eq', settings: 'settings' };
+    const map = {
+      library: 'library',
+      youtube: 'youtube',
+      playlists: 'playlists',
+      favorites: 'library',
+      eq: 'eq',
+      settings: 'settings'
+    };
     const target = map[view] || 'library';
     L.view = view;
     document.body.dataset.view = view;
     $$('.view').forEach(v => v.classList.toggle('active', v.id === 'view-' + target));
     $$('.nav-item').forEach(n => n.classList.toggle('active', n.dataset.nav === view));
     $('#views').scrollTop = 0;
+
     if (target === 'library') {
       $('#lib-title').textContent = view === 'favorites' ? (HP.t('favorites') || 'Favorites') : (HP.t('library') || 'Library');
       $('#type-chips').style.display = view === 'favorites' ? 'none' : '';
       L.render();
+    }
+    if (target === 'youtube') {
+      UI.loadYouTubeDefault();
     }
     if (target === 'playlists') { closePlaylistDetail(); L.renderPlaylists(); }
     if (target === 'eq') drawCurve();
@@ -61,6 +73,71 @@
     np.setAttribute('aria-hidden', show ? 'false' : 'true');
     document.body.classList.toggle('np-open', show);
     if (show && S.lyricsOn) $('#lyrics').hidden = false;
+    if (show) P.showHud();
+  };
+
+  /* =========================================================
+     download / save media to device
+     ========================================================= */
+  UI.downloadMedia = async function (t) {
+    t = t || P.current;
+    if (!t) { HP.toast('Select a track or video first'); return; }
+
+    if (t.source === 'native' || t.file) {
+      HP.toast('Already saved on your device storage 📁', 'ok');
+      return;
+    }
+
+    const title = HP.prettyName(t.title || t.name || 'Media');
+    let ext = t.kind === 'video' ? '.mp4' : '.mp3';
+    let mime = t.mime || (t.kind === 'video' ? 'video/mp4' : 'audio/mpeg');
+    let streamUrl = t.url;
+
+    HP.toast('Preparing download…');
+
+    // If YouTube item without direct progressive stream url yet
+    if (t.youtubeId || (t.origUrl && HP.Meta.isYouTube(t.origUrl))) {
+      try {
+        const id = t.youtubeId || HP.Meta.extractYouTubeId(t.origUrl);
+        const yt = await HP.Meta.resolveYouTube(id);
+        if (yt && yt.streamUrl && !yt.isEmbed) {
+          streamUrl = yt.streamUrl;
+        } else if (yt && yt.audioUrl) {
+          streamUrl = yt.audioUrl;
+          ext = '.m4a';
+          mime = 'audio/mp4';
+        }
+      } catch (_) {}
+    }
+
+    if (!streamUrl) {
+      HP.toast('Could not get download stream link', 'err');
+      return;
+    }
+
+    const filename = (title.replace(/[/\\?%*:|"<>]/g, '_')) + ext;
+
+    // Android native bridge
+    if (w.HashNative && w.HashNative.downloadMedia) {
+      try {
+        w.HashNative.downloadMedia(streamUrl, filename, mime);
+        HP.toast('Download started in background ⬇', 'ok');
+        return;
+      } catch (e) {
+        console.warn('[native dl error]', e);
+      }
+    }
+
+    // Web browser fallback
+    try {
+      const a = el('a', { href: streamUrl, download: filename, target: '_blank', rel: 'noopener noreferrer' });
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => a.remove(), 2000);
+      HP.toast('Download requested ⬇', 'ok');
+    } catch (_) {
+      w.open(streamUrl, '_blank');
+    }
   };
 
   /* =========================================================
@@ -80,7 +157,9 @@
     m.appendChild(el('div', { class: 'sep' }));
     item('heart', t.fav ? 'Remove from favourites' : 'Add to favourites', () => L.toggleFav(t.id));
     item('plus', 'Add to playlist…', () => UI.playlistPicker([t.id]));
-    item('lyrics', 'Lyrics…', () => UI.lyricsTool(t));
+    item('dl', 'Download / Save to device', () => UI.downloadMedia(t));
+    item('lyrics', 'Search lyrics online…', () => UI.searchLyricsOnline(t));
+    item('lyrics', 'Edit lyrics…', () => UI.lyricsTool(t));
     if (t.kind === 'video') item('cc', 'Load subtitles…', () => UI.loadSidecar(t, 'sub'));
     item('info', 'Track info', () => UI.trackInfo(t));
     m.appendChild(el('div', { class: 'sep' }));
@@ -182,6 +261,202 @@
     $('.view-head', $('#view-playlists')).hidden = false;
   }
 
+  /* =========================================================
+     YouTube In-App Browser & Search
+     ========================================================= */
+  let ytLoadedQuery = null;
+
+  UI.searchYouTube = async function (query) {
+    query = String(query || '').trim();
+    if (!query) return;
+    ytLoadedQuery = query;
+
+    const loader = $('#yt-loading');
+    const resultsBox = $('#yt-results');
+    if (loader) loader.hidden = false;
+    if (resultsBox) resultsBox.innerHTML = '';
+
+    const items = await HP.Meta.searchYouTube(query);
+    if (loader) loader.hidden = true;
+
+    if (!items || !items.length) {
+      if (resultsBox) {
+        resultsBox.innerHTML = `
+          <div class="no-results">
+            <b>No YouTube videos found</b>
+            <span>Check your network connection or try different search keywords.</span>
+          </div>`;
+      }
+      return;
+    }
+
+    if (resultsBox) {
+      items.forEach(it => {
+        const card = el('div', { class: 'yt-card' });
+
+        const thumb = el('div', { class: 'yt-thumb' }, [
+          el('img', { src: it.cover, alt: '', loading: 'lazy' }),
+          it.duration ? el('span', { class: 'yt-dur', text: HP.fmtTime(it.duration) }) : null,
+          el('div', { class: 'yt-play-overlay' }, [
+            el('div', { class: 'yt-play-btn-circle' }, [icon('play')])
+          ])
+        ]);
+
+        const info = el('div', { class: 'yt-card-info' }, [
+          el('div', { class: 'yt-card-title', text: it.title }),
+          el('div', { class: 'yt-card-artist', text: it.artist + (it.views ? ' · ' + it.views : '') })
+        ]);
+
+        const actRow = el('div', { class: 'yt-card-actions' });
+        const addBtn = el('button', { class: 'btn tiny' }, [icon('plus'), el('span', { text: 'Library' })]);
+        addBtn.addEventListener('click', async e => {
+          e.stopPropagation();
+          await L.addUrl(it.url);
+        });
+
+        const dlBtn = el('button', { class: 'btn tiny ghost' }, [icon('dl'), el('span', { text: 'Save' })]);
+        dlBtn.addEventListener('click', async e => {
+          e.stopPropagation();
+          const t = await L.addUrl(it.url);
+          if (t) UI.downloadMedia(t);
+        });
+
+        actRow.appendChild(addBtn);
+        actRow.appendChild(dlBtn);
+        info.appendChild(actRow);
+
+        card.appendChild(thumb);
+        card.appendChild(info);
+
+        card.addEventListener('click', async () => {
+          await L.addAndPlayUrl(it.url);
+        });
+
+        resultsBox.appendChild(card);
+      });
+    }
+  };
+
+  UI.loadYouTubeDefault = function () {
+    if (!ytLoadedQuery) {
+      const activeChip = $('#yt-trending-chips .chip.active');
+      const q = activeChip ? activeChip.dataset.q : 'Trending Music 2024';
+      UI.searchYouTube(q);
+    }
+  };
+
+  function bindYouTubeUI() {
+    const inp = $('#yt-search-input');
+    const clearBtn = $('#yt-search-clear');
+    const goBtn = $('#yt-search-go');
+
+    if (inp) {
+      inp.addEventListener('input', () => {
+        if (clearBtn) clearBtn.hidden = !inp.value;
+      });
+      inp.addEventListener('keydown', e => {
+        if (e.key === 'Enter') {
+          $$('#yt-trending-chips .chip').forEach(c => c.classList.remove('active'));
+          UI.searchYouTube(inp.value.trim());
+        }
+      });
+    }
+
+    if (clearBtn) {
+      clearBtn.addEventListener('click', () => {
+        if (inp) { inp.value = ''; inp.focus(); }
+        clearBtn.hidden = true;
+      });
+    }
+
+    if (goBtn) {
+      goBtn.addEventListener('click', () => {
+        if (inp && inp.value.trim()) {
+          $$('#yt-trending-chips .chip').forEach(c => c.classList.remove('active'));
+          UI.searchYouTube(inp.value.trim());
+        }
+      });
+    }
+
+    $$('#yt-trending-chips .chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        $$('#yt-trending-chips .chip').forEach(c => c.classList.remove('active'));
+        chip.classList.add('active');
+        if (inp) inp.value = '';
+        if (clearBtn) clearBtn.hidden = true;
+        UI.searchYouTube(chip.dataset.q);
+      });
+    });
+
+    const pasteBtn = $('#yt-open-link');
+    if (pasteBtn) {
+      pasteBtn.addEventListener('click', () => {
+        $('#url-input').value = '';
+        UI.sheet('sheet-url');
+        setTimeout(() => $('#url-input').focus(), 320);
+      });
+    }
+  }
+
+  /* =========================================================
+     One-Tap Online Lyrics Search (LRCLIB)
+     ========================================================= */
+  UI.searchLyricsOnline = async function (t) {
+    t = t || P.current;
+    if (!t) { HP.toast('Play or pick a track first'); return; }
+
+    const input = $('#lrc-search-q');
+    const resultsBox = $('#lrc-search-results');
+    const defaultQuery = (t.artist ? t.artist + ' ' : '') + (t.title || t.name);
+    input.value = defaultQuery;
+    resultsBox.innerHTML = '<div class="lrc-searching"><div class="boot-ring mini"></div><span>Searching online lyrics…</span></div>';
+    UI.sheet('sheet-lyrics-search');
+
+    async function doSearch(query) {
+      resultsBox.innerHTML = '<div class="lrc-searching"><div class="boot-ring mini"></div><span>Searching online lyrics…</span></div>';
+      const items = await HP.Meta.searchLyricsQuery(query);
+      resultsBox.innerHTML = '';
+
+      if (!items || !items.length) {
+        resultsBox.appendChild(el('div', { class: 'lrc-no-results', text: 'No lyrics found online. Try editing the search query above.' }));
+        return;
+      }
+
+      items.forEach(item => {
+        const hasSync = !!item.syncedLyrics;
+        const durStr = item.duration ? HP.fmtTime(item.duration) : '';
+        const badge = el('span', { class: 'badge ' + (hasSync ? 'v' : ''), text: hasSync ? 'SYNCED LRC' : 'PLAIN' });
+        const titleEl = el('b', { text: item.trackName || 'Unknown Title' });
+        const subEl = el('small', { text: (item.artistName || '—') + (item.albumName ? ' · ' + item.albumName : '') + (durStr ? ' · ' + durStr : '') });
+
+        const row = el('div', { class: 'lrc-res-item' }, [
+          el('div', { class: 'lrc-res-info' }, [titleEl, subEl]),
+          badge
+        ]);
+
+        row.addEventListener('click', () => {
+          const lrcText = item.syncedLyrics || item.plainLyrics;
+          if (!lrcText) return;
+          t.lrc = lrcText;
+          L.saveTrack(t);
+          if (P.current && P.current.id === t.id) {
+            P.loadLyrics(t);
+            P.toggleLyrics(true);
+          }
+          UI.closeAll();
+          HP.toast('Synced lyrics added 🎉', 'ok');
+        });
+        resultsBox.appendChild(row);
+      });
+    }
+
+    $('#lrc-search-btn').onclick = () => doSearch(input.value.trim());
+    input.onkeydown = e => { if (e.key === 'Enter') doSearch(input.value.trim()); };
+
+    // Initial search
+    doSearch(defaultQuery);
+  };
+
   /* ---- lyrics / subtitle tools ---- */
   UI.lyricsTool = function (t) {
     t = t || P.current;
@@ -189,6 +464,9 @@
     $('#lrc-text').value = t.lrc || '';
     $('#lrc-offset').textContent = ((P.lyrics && P.lyrics.offset) || 0).toFixed(1) + 's';
     UI.sheet('sheet-lyrics');
+
+    $('#lrc-search-online').onclick = () => UI.searchLyricsOnline(t);
+
     $('#lrc-save').onclick = () => {
       t.lrc = $('#lrc-text').value.trim() || null;
       L.saveTrack(t);
@@ -206,6 +484,7 @@
     $('#lrc-minus').onclick = () => bump(-.5);
     $('#lrc-plus').onclick = () => bump(.5);
   };
+
   UI.loadSidecar = function (t, kind) {
     const inp = $('#side-input');
     inp.value = '';
@@ -282,7 +561,7 @@
     /* grid */
     ctx.strokeStyle = 'rgba(150,160,190,.16)'; ctx.lineWidth = 1 * d;
     [.25, .5, .75].forEach(p => { ctx.beginPath(); ctx.moveTo(0, H * p); ctx.lineTo(W, H * p); ctx.stroke(); });
-    /* curve through the 10 band gains */
+    /* curve through 10 band gains */
     const n = E.FREQS.length, pts = [];
     for (let i = 0; i < n; i++) {
       const x = (i + .5) / n * W;
@@ -332,38 +611,33 @@
       c.checked = !!S[key];
       c.addEventListener('change', () => {
         S[key] = c.checked; HP.save(); E.applyAll();
-        if (key === 'pitch' && P.a) [P.a, P.b].forEach(m => { if ('preservesPitch' in m) m.preservesPitch = S.pitch; });
       });
     });
-    const en = $('#eq-enable');
-    en.checked = !!S.eqOn;
-    en.addEventListener('change', () => { S.eqOn = en.checked; HP.save(); E.applyEQ(); drawCurve(); readout(); });
+    $('#eq-enable').checked = !!S.eqOn;
+    $('#eq-enable').addEventListener('change', () => {
+      S.eqOn = $('#eq-enable').checked; HP.save(); E.applyEQ(); drawCurve(); readout();
+    });
     $('#eq-reset').addEventListener('click', () => {
       E.setPreset('flat');
-      ['preamp', 'bass', 'treble', 'reverb', 'balance'].forEach(k => S[k] = 0);
-      S.width = 100; S.boost = 100;
-      HP.save(); E.applyAll();
-      bindFX(); syncEQSliders(); drawCurve(); readout();
       $$('#eq-presets .chip').forEach(x => x.classList.toggle('active', x.dataset.preset === 'flat'));
-      HP.toast('Sound reset to flat');
+      syncEQSliders(); drawCurve(); readout();
     });
-    readout();
   }
 
   /* =========================================================
-     settings
+     settings UI
      ========================================================= */
   function applyTheme() {
     document.body.className = document.body.className
-      .replace(/theme-\w+/g, '').replace(/surface-\w+/g, '').trim();
-    document.body.classList.add('theme-' + S.theme, 'surface-' + S.surface);
-    document.body.classList.toggle('no-motion', !S.motion);
-    document.body.classList.toggle('mode-simple', !!S.simple);
-    document.body.classList.toggle('mode-pro', !S.simple);
-    const meta = $('meta[name=theme-color]');
-    if (meta) meta.content = S.surface === 'light' ? '#eef1f8' : S.surface === 'amoled' ? '#000000' : '#07080c';
-    HP.emit('theme');
-    setTimeout(drawCurve, 60);
+      .replace(/\btheme-\S+/g, '')
+      .replace(/\bsurface-\S+/g, '')
+      .replace(/\bmode-\S+/g, '')
+      .replace(/\bno-motion\b/g, '')
+      .trim();
+    document.body.classList.add('theme-' + S.theme, 'surface-' + S.surface, S.simple ? 'mode-simple' : 'mode-pro');
+    if (!S.motion) document.body.classList.add('no-motion');
+    const th = { dark: '#07080c', amoled: '#000000', light: '#f4f6fa' }[S.surface] || '#07080c';
+    $('meta[name="theme-color"]').setAttribute('content', th);
   }
   UI.applyTheme = applyTheme;
 
@@ -373,7 +647,7 @@
       c.addEventListener('click', () => {
         S.theme = c.dataset.theme; HP.save();
         $$('#theme-chips .chip').forEach(x => x.classList.toggle('active', x === c));
-        P.clearTint(); applyTheme();
+        applyTheme();
       });
     });
     $$('#surface-chips .chip').forEach(c => {
@@ -400,7 +674,7 @@
       c.addEventListener('change', () => {
         S[key] = c.checked; HP.save();
         if (key === 'motion' || key === 'simple') applyTheme();
-        if (key === 'autoTheme') { if (!c.checked) P.clearTint(); else if (P.current) HP.emit('track-changed', P.current); }
+        if (key === 'autoTheme') { if (P.current) HP.emit('track-changed', P.current); }
       });
     });
     const ss = $('#set-seekstep');
@@ -424,7 +698,7 @@
       if (pers.checked) {
         const ok = await HP.DB.persist();
         pers.checked = ok;
-        HP.toast(ok ? 'Your library is protected from eviction' : 'The browser declined — keep using the app and try again', ok ? 'ok' : 'err');
+        HP.toast(ok ? 'Your library is protected from eviction' : 'Keep using the app and try again', ok ? 'ok' : 'err');
       }
     });
 
@@ -443,7 +717,7 @@
     const e = await HP.DB.estimate();
     const st = L.stats();
     $('#storage-info').textContent = e && e.usage != null
-      ? HP.fmtBytes(e.usage) + ' used by the app · ' + st.total + ' tracks indexed'
+      ? HP.fmtBytes(e.usage) + ' used · ' + st.total + ' tracks indexed'
       : st.total + ' tracks indexed';
   }
 
@@ -528,9 +802,9 @@
         case 'n': P.next(); break;
         case 'b': P.prev(); break;
         case 'f': P.toggleFullscreen(); break;
-        case 'p': $('#v-pip').click(); break;
-        case 's': P.toggleShuffle(); break;
-        case 'r': P.cycleRepeat(); break;
+        case 'p': P.togglePip(); break;
+        case 's': P.toggleShuffle ? P.toggleShuffle() : $('#btn-shuf').click(); break;
+        case 'r': P.cycleRepeat ? P.cycleRepeat() : $('#btn-rep').click(); break;
         case 'e': UI.nav('eq'); break;
         case 'q': UI.toggleQueue(); break;
         case 'y': UI.openNP(true); P.toggleLyrics(); break;
@@ -576,9 +850,10 @@
     ['#btn-add-folder', '#btn-empty-folder'].forEach(s => $(s) && $(s).addEventListener('click', addFolder));
     $('#btn-add-url').addEventListener('click', () => { $('#url-input').value = ''; UI.sheet('sheet-url'); setTimeout(() => $('#url-input').focus(), 320); });
     $('#url-add').addEventListener('click', async () => {
-      const t = await L.addUrl($('#url-input').value);
+      const u = $('#url-input').value.trim();
+      if (!u) return;
       UI.closeAll();
-      if (t) { L.render(); P.playTrack(t.id, [t.id]); UI.openNP(true); }
+      await L.addAndPlayUrl(u);
     });
     $('#url-input').addEventListener('keydown', e => { if (e.key === 'Enter') $('#url-add').click(); });
     $('#btn-relink').addEventListener('click', addFiles);
@@ -608,8 +883,17 @@
       HP.toast('Scanning your device…');
       try { w.HashNative.scanMedia(); } catch (e) { HP.toast('Scan failed', 'err'); }
     },
-    notify(playing) {
-      try { w.HashNative && w.HashNative.setPlaybackState && w.HashNative.setPlaybackState(!!playing, P.current ? (P.current.title || P.current.name) : '', P.current ? (P.current.artist || '') : ''); } catch (e) { }
+    notify(playing, title, artist, isVideo) {
+      try {
+        if (w.HashNative && w.HashNative.setPlaybackState) {
+          w.HashNative.setPlaybackState(
+            !!playing,
+            title || (P.current ? (P.current.title || P.current.name) : ''),
+            artist || (P.current ? P.current.artist : ''),
+            !!isVideo
+          );
+        }
+      } catch (e) { }
     },
     exit() { try { w.HashNative && w.HashNative.exitApp && w.HashNative.exitApp(); } catch (e) { } }
   };
@@ -618,8 +902,11 @@
   /* called from Kotlin */
   w.HashBridge = {
     onScan(json) {
-      try { L.addNative(JSON.parse(json)).then(() => L.render()); }
-      catch (e) { HP.toast('Scan result could not be read', 'err'); }
+      try {
+        L.addNative(JSON.parse(json)).then(() => L.render());
+      } catch (e) {
+        HP.toast('Scan result could not be read', 'err');
+      }
     },
     onBack() {
       if (!$('#ctx').hidden) { $('#ctx').hidden = true; $('#scrim').classList.remove('on'); return true; }
@@ -639,6 +926,17 @@
           if (t) { P.context = 'Opened file'; P.playTrack(t.id, [t.id]); UI.openNP(true); }
         });
       } catch (e) { HP.toast('Could not open that file', 'err'); }
+    },
+    onOpenUrl(url) {
+      if (url) {
+        L.addAndPlayUrl(url);
+      }
+    },
+    onPipMode(inPip) {
+      document.body.classList.toggle('in-pip', !!inPip);
+      if (inPip && !$('#np').classList.contains('on')) {
+        UI.openNP(true);
+      }
     },
     onTransport(action) {
       ({ play: () => P.play(), pause: () => P.pause(), next: () => P.next(), prev: () => P.prev(), toggle: () => P.toggle() }[action] || (() => { }))();
@@ -681,7 +979,7 @@
     applyTheme();
     HP.applyI18n();
     P.init();
-    buildEQ(); bindFX(); bindSettings(); bindFiles(); bindKeys(); buildKeys();
+    buildEQ(); bindFX(); bindSettings(); bindFiles(); bindKeys(); buildKeys(); bindYouTubeUI();
     $('#app-version').textContent = 'v' + APP_VERSION;
     $('#about-env').textContent = HP.isAndroidApp ? 'Android app' : (matchMedia('(display-mode: standalone)').matches ? 'installed PWA' : 'web');
 
@@ -807,8 +1105,13 @@
     /* load the library */
     await L.load();
     const qp = new URLSearchParams(location.search).get('view');
-    UI.nav(['library', 'playlists', 'favorites', 'eq', 'settings'].indexOf(qp) > -1 ? qp : 'library');
+    UI.nav(['library', 'youtube', 'playlists', 'favorites', 'eq', 'settings'].indexOf(qp) > -1 ? qp : 'library');
     L.queueMeta(Array.from(L.tracks.values()).filter(t => !t.tagged));
+
+    /* auto-scan media on device startup in Android app */
+    if (w.HashNative && w.HashNative.autoScan) {
+      try { w.HashNative.autoScan(); } catch (_) {}
+    }
 
     /* installed-app file handler: "Open with HashPlayer" */
     if ('launchQueue' in w && w.launchQueue && 'setConsumer' in w.launchQueue) {

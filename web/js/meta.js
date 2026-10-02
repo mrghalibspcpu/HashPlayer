@@ -1,7 +1,7 @@
 /* ============================================================
    HashPlayer · meta.js — tag reader (ID3v1/v2, MP4, FLAC, OGG,
-   WAV), album art, LRC lyrics and SRT→VTT subtitles.
-   100% local: nothing is ever uploaded.
+   WAV), album art, LRC lyrics, SRT→VTT subtitles,
+   online lyrics search (LRCLIB), and YouTube stream / search.
    ============================================================ */
 (function (w) {
   'use strict';
@@ -39,7 +39,7 @@
       default: return clean(dec(u8, 'utf-8'));
     }
   }
-  function nullEnd(u8, from, enc) {      // returns index after terminator
+  function nullEnd(u8, from, enc) {
     if (enc === 1 || enc === 2) {
       for (let i = from; i + 1 < u8.length; i += 2) if (!u8[i] && !u8[i + 1]) return i;
       return u8.length;
@@ -53,7 +53,7 @@
     if (!(u8[0] === 0x49 && u8[1] === 0x44 && u8[2] === 0x33)) return 0;
     const ver = u8[3], flags = u8[5], size = syncsafe(u8, 6), end = Math.min(10 + size, u8.length);
     let p = 10;
-    if (flags & 0x40) {                                   // extended header
+    if (flags & 0x40) {
       p += ver === 4 ? syncsafe(u8, p) : be32(u8, p) + 4;
     }
     const v2 = ver === 2, idLen = v2 ? 3 : 4, hdrLen = v2 ? 6 : 10;
@@ -97,7 +97,7 @@
       if (t && t.length > 8) out.lyrics = t;
       return;
     }
-    if (id === 'SYLT') {                                  // synchronised lyrics → lrc
+    if (id === 'SYLT') {
       try {
         const enc = b[0], fmt = b[5];
         let i = nullEnd(b, 6, enc) + (enc === 1 || enc === 2 ? 2 : 1), lines = [];
@@ -135,7 +135,7 @@
         let size = be32(u8, p);
         const type = latin(u8, p + 4, p + 8);
         let hdr = 8;
-        if (size === 1) { hdr = 16; size = be32(u8, p + 12); }     // 64-bit (low word is enough here)
+        if (size === 1) { hdr = 16; size = be32(u8, p + 12); }
         if (size < 8 || p + size > end + 8) break;
         const bodyStart = p + hdr, bodyEnd = Math.min(p + size, end);
         if (type === 'moov' || type === 'udta' || type === 'trak' || type === 'mdia') walk(bodyStart, bodyEnd, depth + 1);
@@ -181,7 +181,7 @@
     while (p + 4 < u8.length && guard++ < 64) {
       const h = u8[p], last = h & 0x80, type = h & 0x7f, len = be24(u8, p + 1), body = p + 4;
       if (body + len > u8.length) break;
-      if (type === 0) {                                   // STREAMINFO → duration
+      if (type === 0) {
         const sr = (u8[body + 10] << 12) | (u8[body + 11] << 4) | (u8[body + 12] >> 4);
         const total = ((u8[body + 13] & 0x0f) * 4294967296) + be32(u8, body + 14);
         if (sr > 0 && total > 0) out.duration = total / sr;
@@ -223,7 +223,7 @@
     } catch (e) { }
   }
 
-  /* ---------------- OGG / Opus (scan first pages) ---------------- */
+  /* ---------------- OGG / Opus ---------------- */
   function parseOGG(u8, out) {
     const find = sig => {
       outer: for (let i = 0; i < u8.length - sig.length; i++) {
@@ -275,7 +275,6 @@
       else if (sig4 === 'RIFF') parseWAV(head, out);
       else if (latin(head, 4, 8) === 'ftyp') parseMP4(head, out);
       else {
-        // mp3 without ID3v2 → try v1; otherwise try mp4 boxes anyway
         if (file.size > 128) { const tail = await readBuf(file, file.size - 128, 128); if (tail) parseID3v1(tail, out); }
         if (!out.title) parseMP4(head, out);
       }
@@ -355,6 +354,219 @@
     });
     return out.join('\n');
   }
+
+  /* ---------------- Online Lyrics Search (LRCLIB API) ---------------- */
+  Meta.cleanTrackQuery = function (str) {
+    if (!str) return '';
+    return str
+      .replace(/\.(mp3|m4a|flac|wav|ogg|opus|aac|mp4|mkv|webm)$/i, '')
+      .replace(/\[[^\]]*\]/g, ' ')
+      .replace(/\((official|video|audio|lyrics?|hd|4k|feat\.?|ft\.?)[^)]*\)/gi, ' ')
+      .replace(/\b(128|192|320)\s?kbps\b/gi, ' ')
+      .replace(/[_\-]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  };
+
+  Meta.fetchOnlineLyrics = async function (track) {
+    if (!track) return null;
+    const title = Meta.cleanTrackQuery(track.title || track.name || '');
+    const artist = Meta.cleanTrackQuery(track.artist || '');
+    const dur = Math.round(track.duration || 0);
+
+    const endpoints = [];
+    if (title && artist) {
+      endpoints.push(`https://lrclib.net/api/get?track_name=${encodeURIComponent(title)}&artist_name=${encodeURIComponent(artist)}${dur > 0 ? '&duration=' + dur : ''}`);
+      endpoints.push(`https://lrclib.net/api/search?track_name=${encodeURIComponent(title)}&artist_name=${encodeURIComponent(artist)}`);
+      endpoints.push(`https://lrclib.net/api/search?q=${encodeURIComponent(artist + ' ' + title)}`);
+    } else if (title) {
+      endpoints.push(`https://lrclib.net/api/search?q=${encodeURIComponent(title)}`);
+    }
+
+    for (const url of endpoints) {
+      try {
+        const ctrl = new AbortController();
+        const timeout = setTimeout(() => ctrl.abort(), 6000);
+        const res = await fetch(url, { signal: ctrl.signal, headers: { 'User-Agent': 'HashPlayer/2.1' } });
+        clearTimeout(timeout);
+        if (!res.ok) continue;
+        const data = await res.json();
+        if (Array.isArray(data) && data.length) {
+          const best = data.find(item => item.syncedLyrics) || data[0];
+          if (best && (best.syncedLyrics || best.plainLyrics)) {
+            return {
+              lrc: best.syncedLyrics || best.plainLyrics,
+              synced: !!best.syncedLyrics,
+              trackName: best.trackName,
+              artistName: best.artistName,
+              albumName: best.albumName,
+              results: data
+            };
+          }
+        } else if (data && (data.syncedLyrics || data.plainLyrics)) {
+          return {
+            lrc: data.syncedLyrics || data.plainLyrics,
+            synced: !!data.syncedLyrics,
+            trackName: data.trackName,
+            artistName: data.artistName,
+            albumName: data.albumName,
+            results: [data]
+          };
+        }
+      } catch (e) { }
+    }
+    return null;
+  };
+
+  Meta.searchLyricsQuery = async function (query) {
+    const q = Meta.cleanTrackQuery(query);
+    if (!q) return [];
+    try {
+      const url = `https://lrclib.net/api/search?q=${encodeURIComponent(q)}`;
+      const ctrl = new AbortController();
+      const timeout = setTimeout(() => ctrl.abort(), 7000);
+      const res = await fetch(url, { signal: ctrl.signal, headers: { 'User-Agent': 'HashPlayer/2.1' } });
+      clearTimeout(timeout);
+      if (!res.ok) return [];
+      const data = await res.json();
+      return Array.isArray(data) ? data : [];
+    } catch (e) {
+      return [];
+    }
+  };
+
+  /* ---------------- YouTube Stream & Search Resolver ---------------- */
+  Meta.isYouTube = function (url) {
+    if (!url) return false;
+    return /(?:youtube\.com\/(?:watch\?.*v=|embed\/|v\/|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/i.test(url);
+  };
+
+  Meta.extractYouTubeId = function (url) {
+    if (!url) return null;
+    const m = /(?:youtube\.com\/(?:watch\?.*v=|embed\/|v\/|shorts\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/i.exec(url);
+    return m ? m[1] : null;
+  };
+
+  Meta.resolveYouTube = async function (urlOrId) {
+    const id = Meta.extractYouTubeId(urlOrId) || urlOrId;
+    if (!id || !/^[a-zA-Z0-9_-]{11}$/.test(id)) return null;
+
+    let meta = {
+      title: 'YouTube Video',
+      artist: 'YouTube',
+      duration: 0,
+      cover: `https://i.ytimg.com/vi/${id}/hqdefault.jpg`,
+      streamUrl: null,
+      audioUrl: null,
+      id
+    };
+
+    // 1. Fetch metadata via oEmbed
+    try {
+      const oEmbedUrl = `https://noembed.com/embed?url=https://www.youtube.com/watch?v=${id}`;
+      const r = await fetch(oEmbedUrl);
+      if (r.ok) {
+        const j = await r.json();
+        if (j.title) meta.title = j.title;
+        if (j.author_name) meta.artist = j.author_name;
+        if (j.thumbnail_url) meta.cover = j.thumbnail_url;
+      }
+    } catch (_) {}
+
+    // 2. Query multi-instance streaming APIs
+    const streamApis = [
+      `https://pipedapi.kavin.rocks/streams/${id}`,
+      `https://api.piped.private.coffee/streams/${id}`,
+      `https://pipedapi.tokhmi.xyz/streams/${id}`,
+      `https://invidious.nerdvpn.de/api/v1/videos/${id}`,
+      `https://inv.tux.pizza/api/v1/videos/${id}`,
+      `https://yt.artemislena.eu/api/v1/videos/${id}`
+    ];
+
+    for (const api of streamApis) {
+      try {
+        const ctrl = new AbortController();
+        const to = setTimeout(() => ctrl.abort(), 4500);
+        const res = await fetch(api, { signal: ctrl.signal });
+        clearTimeout(to);
+        if (!res.ok) continue;
+        const data = await res.json();
+
+        if (data.title) meta.title = data.title;
+        if (data.uploader || data.author) meta.artist = data.uploader || data.author;
+        if (data.duration) meta.duration = Number(data.duration) || 0;
+        if (data.thumbnailUrl) meta.cover = data.thumbnailUrl;
+
+        // Progressive MP4 stream with audio + video
+        if (Array.isArray(data.videoStreams) && data.videoStreams.length) {
+          const prog = data.videoStreams.find(s => s.videoOnly === false && s.mimeType && s.mimeType.includes('mp4'))
+            || data.videoStreams.find(s => s.videoOnly === false)
+            || data.videoStreams[0];
+          if (prog && prog.url) meta.streamUrl = prog.url;
+        }
+
+        if (Array.isArray(data.audioStreams) && data.audioStreams.length) {
+          const bestAudio = data.audioStreams.find(s => s.mimeType && s.mimeType.includes('mp4')) || data.audioStreams[0];
+          if (bestAudio && bestAudio.url) meta.audioUrl = bestAudio.url;
+        }
+
+        if (Array.isArray(data.formatStreams) && data.formatStreams.length) {
+          const prog = data.formatStreams.find(s => s.type && s.type.includes('mp4')) || data.formatStreams[0];
+          if (prog && prog.url) meta.streamUrl = prog.url;
+        }
+
+        if (meta.streamUrl) break;
+      } catch (_) { }
+    }
+
+    if (!meta.streamUrl) {
+      meta.streamUrl = `https://www.youtube.com/embed/${id}?autoplay=1&playsinline=1&enablejsapi=1`;
+      meta.isEmbed = true;
+    }
+
+    return meta;
+  };
+
+  /* ---------------- YouTube In-App Search & Browser ---------------- */
+  Meta.searchYouTube = async function (query) {
+    const q = String(query || '').trim();
+    if (!q) return [];
+    const searchApis = [
+      `https://pipedapi.kavin.rocks/search?q=${encodeURIComponent(q)}&filter=videos`,
+      `https://api.piped.private.coffee/search?q=${encodeURIComponent(q)}&filter=videos`,
+      `https://invidious.nerdvpn.de/api/v1/search?q=${encodeURIComponent(q)}&type=video`,
+      `https://inv.tux.pizza/api/v1/search?q=${encodeURIComponent(q)}&type=video`
+    ];
+
+    for (const api of searchApis) {
+      try {
+        const ctrl = new AbortController();
+        const to = setTimeout(() => ctrl.abort(), 5000);
+        const res = await fetch(api, { signal: ctrl.signal });
+        clearTimeout(to);
+        if (!res.ok) continue;
+        const data = await res.json();
+        const items = Array.isArray(data) ? data : (data.items || []);
+        if (!items.length) continue;
+
+        return items.map(it => {
+          let id = it.videoId || it.id;
+          if (!id && it.url) id = Meta.extractYouTubeId(it.url) || it.url.replace('/watch?v=', '');
+          const thumb = it.thumbnail || it.thumbnailUrl || (it.videoThumbnails && it.videoThumbnails[0] && it.videoThumbnails[0].url) || (id ? `https://i.ytimg.com/vi/${id}/hqdefault.jpg` : '');
+          return {
+            id,
+            url: `https://www.youtube.com/watch?v=${id}`,
+            title: it.title || 'YouTube Video',
+            artist: it.uploaderName || it.author || it.channelTitle || 'YouTube',
+            duration: it.duration || 0,
+            cover: thumb,
+            views: it.views || it.viewCountText || ''
+          };
+        }).filter(it => it.id && it.id.length === 11);
+      } catch (_) { }
+    }
+    return [];
+  };
 
   HP.Meta = Meta;
 })(window);

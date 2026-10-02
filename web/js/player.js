@@ -1,6 +1,7 @@
 /* ============================================================
    HashPlayer · player.js — playback engine, now-playing UI,
-   queue, gestures, lyrics, subtitles, Media Session
+   queue, gestures, landscape video HUD, lyrics, subtitles,
+   Media Session, and Picture-in-Picture.
    ============================================================ */
 (function (w) {
   'use strict';
@@ -11,7 +12,8 @@
     a: null, b: null, active: null, current: null,
     queue: [], order: [], index: -1, context: 'Library',
     ab: { a: null, b: null }, sleep: null, wake: null, lyrics: null, lrcIndex: -1,
-    pendingSrc: null, crossing: false, speedHold: false, brightness: 1, zoom: 1
+    pendingSrc: null, crossing: false, speedHold: false, brightness: 1, zoom: 1,
+    locked: false, hudVisible: true, hudTimer: null
   };
 
   /* =========================================================
@@ -26,7 +28,7 @@
     [P.a, P.b].forEach(bind);
     P.a.volume = 1; P.b.volume = 1;
     HP.Vis.init($('#vis'));
-    HP.Vis.visible = () => $('#np').classList.contains('on');
+    HP.Vis.visible = () => $('#np').classList.contains('on') && !document.body.classList.contains('has-video');
     HP.Vis.Energy.attach($('#energy'));
     HP.Vis.setMode(S.vis);
     bindUI();
@@ -83,7 +85,6 @@
     const n = P.queue.length;
     P.order = Array.from({ length: n }, (_, i) => i);
     if (S.shuffle) {
-      /* weighted shuffle — favourites and rarely played first, current stays put */
       const score = i => {
         const t = L().get(P.queue[i]) || {};
         return Math.random() * (1 + (t.fav ? .45 : 0) + 1 / (1 + (t.plays || 0)));
@@ -95,7 +96,7 @@
   async function load(t, autoplay, startAt) {
     if (!t) return;
     const src = await L().resolveSrc(t);
-    if (!src) {
+    if (!src && !t.isEmbed) {
       HP.toast('“' + (t.title || t.name) + '” needs to be re-opened', 'err');
       HP.Lib.countRelink(); HP.Lib.render();
       return;
@@ -104,7 +105,7 @@
 
     const isVideo = t.kind === 'video';
     let target = P.a;
-    if (!isVideo && P.crossing && P.active === P.a) target = P.b;     // crossfade lands on B
+    if (!isVideo && P.crossing && P.active === P.a) target = P.b;
     if (!P.crossing) {
       if (target === P.a && P.b && !P.b.paused) P.b.pause();
       if (target === P.b && !P.a.paused) P.a.pause();
@@ -114,8 +115,29 @@
     P.active = target;
     target.playbackRate = S.speed;
     if ('preservesPitch' in target) target.preservesPitch = S.pitch;
-    if (t.source === 'url') target.crossOrigin = 'anonymous'; else target.removeAttribute('crossorigin');
-    if (target.src !== src) { target.src = src; target.load(); }
+    if (t.source === 'url' && !t.isEmbed) target.crossOrigin = 'anonymous'; else target.removeAttribute('crossorigin');
+
+    // Handle YouTube embed fallback iframe
+    const oldEmbed = $('#yt-embed');
+    if (t.isEmbed && t.url) {
+      if (!oldEmbed) {
+        const ifr = el('iframe', {
+          id: 'yt-embed',
+          src: t.url,
+          allow: 'autoplay; fullscreen; picture-in-picture',
+          allowfullscreen: 'true'
+        });
+        $('#stage').appendChild(ifr);
+      } else {
+        oldEmbed.src = t.url;
+        oldEmbed.style.display = 'block';
+      }
+      P.a.style.display = 'none';
+    } else {
+      if (oldEmbed) oldEmbed.style.display = 'none';
+      P.a.style.display = isVideo ? 'block' : 'none';
+      if (target.src !== src) { target.src = src; target.load(); }
+    }
 
     document.body.classList.toggle('has-video', isVideo);
     E().elementGain(target, S.fade && autoplay ? 0 : 1);
@@ -123,11 +145,11 @@
     const pos = startAt != null ? startAt : (S.resume && t.pos > 3 && (!t.duration || t.pos < t.duration - 8) ? t.pos : 0);
     const go = () => {
       try { if (pos) target.currentTime = pos; } catch (e) { }
-      if (autoplay) target.play().then(() => {
+      if (autoplay && !t.isEmbed) target.play().then(() => {
         if (S.fade) E().fadeElement(target, 1, 420); else E().elementGain(target, 1);
       }).catch(err => {
         console.warn('[play]', err);
-        if (err && err.name === 'NotAllowedError') HP.toast('Tap play to start (browser autoplay rules)');
+        if (err && err.name === 'NotAllowedError') HP.toast('Tap play to start (autoplay policy)');
       });
     };
     if (target.readyState >= 1) go();
@@ -145,11 +167,11 @@
     renderMarks();
 
     paintNowPlaying(t);
-    /* a video you cannot see is just an awkward podcast — open the player for it */
     if (isVideo && HP.UI && !$('#np').classList.contains('on')) HP.UI.openNP(true);
     HP.emit('track-changed', t);
     highlightCards();
     renderQueue();
+    P.showHud();
   }
   P.load = load;
 
@@ -170,11 +192,22 @@
     const t = P.current; if (!t) return;
     const err = P.active.error;
     console.warn('[media error]', err && err.code, t.name);
-    if (t.source === 'url') HP.toast('Could not play that link (format or CORS blocked)', 'err');
-    else {
+    if (t.source === 'url') {
+      if (t.youtubeId && !t.isEmbed) {
+        // Try fallback embed
+        t.isEmbed = true;
+        t.url = `https://www.youtube.com/embed/${t.youtubeId}?autoplay=1&playsinline=1`;
+        load(t, true);
+        return;
+      }
+      HP.toast('Could not stream that link', 'err');
+    } else if (t.source === 'native' || t.nativeUri) {
+      console.warn('[native error]', err);
+      HP.toast('Could not stream file', 'err');
+    } else {
       t.file = null;
       HP.Lib.countRelink(); HP.Lib.render();
-      HP.toast('File unavailable — re-open it from your device', 'err');
+      HP.toast('File unavailable — re-open from your device', 'err');
     }
   }
 
@@ -207,592 +240,580 @@
 
   function onPlay() {
     document.body.classList.add('playing');
-    $$('#btn-play use, #mini-play use').forEach(u => u.setAttribute('href', '#i-pause'));
-    HP.Vis.start();
+    $$('#btn-play use, #mini-play use, #v-play-center use').forEach(u => u.setAttribute('href', '#i-pause'));
+    if (!document.body.classList.contains('has-video')) HP.Vis.start();
     if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
     keepAwake(true);
-    HP.Native && HP.Native.notify && HP.Native.notify(true);
+    HP.Native && HP.Native.notify && HP.Native.notify(true, P.current ? (P.current.title || P.current.name) : '', P.current ? P.current.artist : '', P.current && P.current.kind === 'video');
     HP.emit('playing', true);
+    P.resetHudTimer();
   }
   function onPause() {
     document.body.classList.remove('playing');
-    $$('#btn-play use, #mini-play use').forEach(u => u.setAttribute('href', '#i-play'));
+    $$('#btn-play use, #mini-play use, #v-play-center use').forEach(u => u.setAttribute('href', '#i-play'));
     if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
     keepAwake(false);
     savePos();
-    HP.Native && HP.Native.notify && HP.Native.notify(false);
+    HP.Native && HP.Native.notify && HP.Native.notify(false, P.current ? (P.current.title || P.current.name) : '', P.current ? P.current.artist : '', P.current && P.current.kind === 'video');
     HP.emit('playing', false);
+    P.showHud();
   }
   function onEnded() {
     const t = P.current;
-    if (t) { t.pos = 0; t.plays = (t.plays || 0) + 1; t.lastPlayed = Date.now(); L().saveTrack(t); }
-    saveEnergy();
-    if (P.sleep && P.sleep.endTrack) { P.cancelSleep(); HP.toast('Sleep timer: stopped'); return; }
-    if (S.repeat === 'one') { P.seek(0); P.play(); return; }
-    P.next(true);
-  }
-
-  /* =========================================================
-     navigation
-     ========================================================= */
-  P.next = function (auto) {
-    if (!P.queue.length) return;
-    const oi = P.order.indexOf(P.index);
-    let ni = oi + 1;
-    if (ni >= P.order.length) {
-      if (S.repeat === 'all' || !auto) { buildOrder(); ni = 0; }
-      else { P.pause(); HP.toast('End of queue'); return; }
+    if (t) {
+      t.plays = (t.plays || 0) + 1;
+      t.lastPlayed = Date.now();
+      t.pos = 0;
+      L().saveTrack(t);
     }
-    if (auto && !S.autoplayNext) { P.pause(); return; }
-    P.index = P.order[ni];
-    load(L().get(P.queue[P.index]), true);
-  };
-  P.prev = function () {
-    if (!P.queue.length) return;
-    if (P.active.currentTime > 4) { P.seek(0); return; }
-    const oi = P.order.indexOf(P.index);
-    const ni = oi - 1 < 0 ? P.order.length - 1 : oi - 1;
-    P.index = P.order[ni];
-    load(L().get(P.queue[P.index]), true);
-  };
-  P.seek = function (t) {
-    if (!P.current) return;
-    const d = P.active.duration || P.current.duration || 0;
-    try { P.active.currentTime = clamp(t, 0, d ? d - .15 : t); } catch (e) { }
-    onTime();
-  };
-  P.seekBy = function (d) {
-    if (!P.current) return;
-    P.seek((P.active.currentTime || 0) + d);
-    flashGfx(d > 0 ? 'ff' : 'rw', (d > 0 ? '+' : '') + Math.round(d) + 's');
-  };
-  P.setSpeed = function (v) {
-    S.speed = clamp(v, .25, 4); HP.save();
-    [P.a, P.b].forEach(m => { m.playbackRate = S.speed; if ('preservesPitch' in m) m.preservesPitch = S.pitch; });
-    updateSpeedLabel();
-  };
-  function updateSpeedLabel() {
-    const l = $('#speed-label'); if (l) l.textContent = S.speed.toFixed(S.speed % 1 ? (S.speed * 100 % 10 ? 2 : 1) : 1).replace(/0$/, '0') + '×';
-    const t = $('#t-speed'); if (t) t.classList.toggle('on', S.speed !== 1);
-    const r = $('#speed-range'); if (r) { r.value = Math.round(S.speed * 100); rangeFill(r); }
-    $$('#speed-chips .chip').forEach(c => c.classList.toggle('active', +c.dataset.sp === S.speed));
-  }
-  P.cycleRepeat = function () {
-    S.repeat = S.repeat === 'off' ? 'all' : S.repeat === 'all' ? 'one' : 'off';
-    HP.save(); syncToggles();
-    HP.toast('Repeat: ' + (S.repeat === 'off' ? 'off' : S.repeat === 'all' ? 'all tracks' : 'this track'));
-  };
-  P.toggleShuffle = function () {
-    S.shuffle = !S.shuffle; HP.save(); buildOrder(); syncToggles();
-    HP.toast('Shuffle ' + (S.shuffle ? 'on — smart order' : 'off'));
-    renderQueue();
-  };
-  function syncToggles() {
-    const r = $('#btn-rep'), s = $('#btn-shuf');
-    if (r) { r.classList.toggle('on', S.repeat !== 'off'); r.querySelector('use').setAttribute('href', S.repeat === 'one' ? '#i-repeat1' : '#i-repeat'); }
-    if (s) s.classList.toggle('on', S.shuffle);
-  }
-  P.syncToggles = syncToggles;
-
-  /* =========================================================
-     queue
-     ========================================================= */
-  P.addNext = function (id) {
-    const at = P.index + 1;
-    P.queue.splice(at, 0, id); buildOrder(); renderQueue();
-    HP.toast('Playing next');
-  };
-  P.addLast = function (id) {
-    P.queue.push(id); buildOrder(); renderQueue();
-    HP.toast('Added to queue');
-  };
-  P.removeFromQueue = function (i) {
-    if (i === P.index) return;
-    P.queue.splice(i, 1);
-    if (i < P.index) P.index--;
-    buildOrder(); renderQueue();
-  };
-  P.clearQueue = function () {
-    const cur = P.queue[P.index];
-    P.queue = cur ? [cur] : []; P.index = cur ? 0 : -1; buildOrder(); renderQueue();
-  };
-
-  function renderQueue() {
-    const box = $('#q-list'); if (!box) return;
-    box.innerHTML = '';
-    $('#q-count').textContent = P.queue.length;
-    if (!P.queue.length) {
-      box.appendChild(el('div', { class: 'q-empty', text: 'Queue is empty. Play something from your library.' }));
+    if (S.repeat === 'one') {
+      P.active.currentTime = 0;
+      P.play();
       return;
     }
-    const seq = S.shuffle ? P.order.slice() : P.queue.map((_, i) => i);
-    seq.forEach(qi => {
-      const t = L().get(P.queue[qi]); if (!t) return;
+    if (P.sleep === 'endtrack') {
+      P.sleep = null;
+      HP.toast('Sleep timer: stopped at end of track');
+      return;
+    }
+    if (S.autoplayNext) P.next(true);
+  }
+
+  P.next = function (auto) {
+    if (!P.queue.length) return;
+    const n = P.queue.length;
+    let nextI = P.index + 1;
+    if (nextI >= n) {
+      if (S.repeat === 'all') nextI = 0;
+      else if (auto) { P.stop(); return; }
+      else nextI = 0;
+    }
+    P.index = nextI;
+    const realId = S.shuffle ? P.queue[P.order[nextI % n]] : P.queue[nextI];
+    load(L().get(realId), true, 0);
+  };
+
+  P.prev = function () {
+    if (!P.queue.length) return;
+    if (P.active.currentTime > 3) { P.seek(0); return; }
+    const n = P.queue.length;
+    let prevI = P.index - 1;
+    if (prevI < 0) prevI = S.repeat === 'all' ? n - 1 : 0;
+    P.index = prevI;
+    const realId = S.shuffle ? P.queue[P.order[prevI]] : P.queue[prevI];
+    load(L().get(realId), true, 0);
+  };
+
+  P.seek = function (t) {
+    if (!P.active) return;
+    const dur = P.active.duration || (P.current && P.current.duration) || 0;
+    const tgt = clamp(t, 0, dur || 99999);
+    try { P.active.currentTime = tgt; } catch (e) { }
+    onTime();
+  };
+  P.seekBy = function (delta) {
+    P.seek((P.active.currentTime || 0) + delta);
+  };
+
+  /* =========================================================
+     HUD Visibility (Landscape Video Player)
+     ========================================================= */
+  P.showHud = function () {
+    P.hudVisible = true;
+    document.body.classList.add('hud-show');
+    P.resetHudTimer();
+  };
+  P.hideHud = function () {
+    if (P.active && P.active.paused) return; // Keep visible when paused
+    P.hudVisible = false;
+    document.body.classList.remove('hud-show');
+    clearTimeout(P.hudTimer);
+  };
+  P.toggleHud = function () {
+    if (P.locked) return;
+    P.hudVisible ? P.hideHud() : P.showHud();
+  };
+  P.resetHudTimer = function () {
+    clearTimeout(P.hudTimer);
+    if (document.body.classList.contains('has-video') && P.active && !P.active.paused && !P.locked) {
+      P.hudTimer = setTimeout(() => P.hideHud(), 3600);
+    }
+  };
+
+  /* =========================================================
+     UI updates on time / progress
+     ========================================================= */
+  function onTime() {
+    const cur = P.active.currentTime || 0, dur = P.active.duration || (P.current && P.current.duration) || 0;
+    const pct = dur > 0 ? (cur / dur) * 100 : 0;
+    $('#seek-fill').style.width = pct + '%';
+    $('#seek-knob').style.left = pct + '%';
+    $('#mini-fill').style.width = pct + '%';
+    $('#t-cur').textContent = HP.fmtTime(cur);
+    $('#t-rem').textContent = dur ? '-' + HP.fmtTime(Math.max(0, dur - cur)) : '0:00';
+
+    if (P.lyrics && P.lyrics.synced && !$('#lyrics').hidden) syncLyrics(cur);
+    if (P.ab.b && cur >= P.ab.b && P.ab.a != null) P.seek(P.ab.a);
+  }
+
+  function drawBuffer() {
+    const m = P.active, dur = m.duration || (P.current && P.current.duration) || 0;
+    if (!dur || !m.buffered.length) return;
+    try {
+      const end = m.buffered.end(m.buffered.length - 1);
+      $('#seek-buf').style.width = clamp((end / dur) * 100, 0, 100) + '%';
+    } catch (_) {}
+  }
+
+  function updateTimes() {
+    const cur = P.active.currentTime || 0, dur = P.active.duration || (P.current && P.current.duration) || 0;
+    $('#t-cur').textContent = HP.fmtTime(cur);
+    $('#t-rem').textContent = dur ? '-' + HP.fmtTime(Math.max(0, dur - cur)) : '0:00';
+  }
+
+  function paintNowPlaying(t) {
+    const title = t.title || t.name, artist = t.artist || (t.kind === 'video' ? 'Video' : 'Unknown artist');
+    $('#np-title').textContent = title;
+    $('#np-artist').textContent = artist + (t.album ? ' · ' + t.album : '');
+    $('#np-context').textContent = P.context;
+    $('#mini-title').textContent = title;
+    $('#mini-artist').textContent = artist;
+    $('#minibar').hidden = false;
+
+    // Landscape HUD titles
+    const vTitle = $('#v-title'), vSub = $('#v-sub');
+    if (vTitle) vTitle.textContent = title;
+    if (vSub) vSub.textContent = artist;
+
+    $('#np-fav').classList.toggle('on', !!t.fav);
+    $('#mini-fav').classList.toggle('on', !!t.fav);
+
+    const cu = L().coverUrl(t);
+    const disc = $('#art-disc'), img = $('#art-img'), miniArt = $('#mini-art'), miniImg = $('#mini-img'), bgImg = $('#np-bg-img');
+
+    if (cu) {
+      img.src = cu; disc.classList.add('has-img');
+      miniImg.src = cu; miniArt.classList.add('has-img');
+      bgImg.src = cu; bgImg.classList.add('on');
+      if (S.autoTheme) {
+        const i = new Image();
+        i.onload = () => {
+          const pal = HP.paletteFrom(i);
+          if (pal) {
+            document.documentElement.style.setProperty('--a1', pal[0]);
+            document.documentElement.style.setProperty('--a2', pal[1]);
+          }
+        };
+        i.src = cu;
+      }
+    } else {
+      disc.classList.remove('has-img'); miniArt.classList.remove('has-img');
+      bgImg.classList.remove('on');
+      if (S.autoTheme) applyStoredTheme();
+    }
+  }
+
+  function applyStoredTheme() {
+    const map = {
+      neon: ['#00e5ff', '#b61bff'], sunset: ['#ff9a3d', '#ff2d78'], matrix: ['#2bff95', '#00c2a8'],
+      royal: ['#ffd166', '#8a5cff'], ice: ['#8ab4ff', '#c9f2ff']
+    };
+    const c = map[S.theme] || map.neon;
+    document.documentElement.style.setProperty('--a1', c[0]);
+    document.documentElement.style.setProperty('--a2', c[1]);
+  }
+
+  /* =========================================================
+     lyrics & subtitles
+     ========================================================= */
+  function loadLyrics(t) {
+    const box = $('#lyrics'), scroll = $('#lyrics-scroll');
+    scroll.innerHTML = '';
+    P.lyrics = null; P.lrcIndex = -1;
+
+    if (!t || !t.lrc) {
+      scroll.appendChild(el('div', { class: 'lyrics-empty-state' }, [
+        icon('lyrics', 'ic ph'),
+        el('h3', { text: 'No Lyrics Found' }),
+        el('p', { class: 'muted', text: 'Search online with one tap to add synced lyrics.' }),
+        el('button', {
+          class: 'btn primary small',
+          id: 'btn-lyrics-quick-search',
+          onclick: (e) => { e.stopPropagation(); HP.UI.searchLyricsOnline(P.current); }
+        }, [icon('search'), el('span', { text: 'Search Lyrics Online' })])
+      ]));
+      $('#t-lyrics').classList.remove('on');
+      return;
+    }
+
+    $('#t-lyrics').classList.add('on');
+    P.lyrics = HP.Meta.parseLRC(t.lrc);
+
+    P.lyrics.lines.forEach((l, i) => {
+      const line = el('div', { class: 'lrc-line', 'data-i': i, text: l.text || '♪' });
+      if (l.t !== null) {
+        line.addEventListener('click', e => {
+          e.stopPropagation();
+          P.seek(l.t + (P.lyrics.offset || 0));
+        });
+      }
+      scroll.appendChild(line);
+    });
+  }
+  P.loadLyrics = loadLyrics;
+
+  function syncLyrics(cur) {
+    if (!P.lyrics || !P.lyrics.lines.length) return;
+    const lines = P.lyrics.lines;
+    const off = P.lyrics.offset || 0;
+    let idx = -1;
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i].t !== null && (lines[i].t + off) <= cur + .15) idx = i;
+      else if (lines[i].t !== null && (lines[i].t + off) > cur + .15) break;
+    }
+    if (idx === P.lrcIndex) return;
+    P.lrcIndex = idx;
+
+    const all = $$('.lrc-line', $('#lyrics-scroll'));
+    all.forEach((n, i) => {
+      n.classList.toggle('active', i === idx);
+      n.classList.toggle('near', Math.abs(i - idx) === 1);
+    });
+    if (idx >= 0 && all[idx]) {
+      const parent = $('#lyrics-scroll');
+      const target = all[idx];
+      parent.scrollTo({
+        top: target.offsetTop - parent.clientHeight / 2 + target.clientHeight / 2,
+        behavior: 'smooth'
+      });
+    }
+  }
+
+  function addSubtitle(vttText) {
+    try {
+      const b = new Blob([vttText], { type: 'text/vtt' });
+      const u = URL.createObjectURL(b);
+      const track = el('track', {
+        kind: 'subtitles',
+        srclang: 'en',
+        label: 'Subtitles',
+        src: u,
+        default: 'default'
+      });
+      P.a.appendChild(track);
+      track.track.mode = 'showing';
+      $('#v-cc').classList.add('on');
+    } catch (e) { console.warn('[sub]', e); }
+  }
+  P.addSubtitle = addSubtitle;
+
+  /* =========================================================
+     queue, marks, A-B loop, speed
+     ========================================================= */
+  function renderQueue() {
+    const list = $('#q-list'); if (!list) return;
+    list.innerHTML = '';
+    const n = P.queue.length;
+    $('#q-count').textContent = n;
+    if (!n) {
+      list.appendChild(el('div', { class: 'q-empty', text: 'Queue is empty' }));
+      return;
+    }
+    P.queue.forEach((id, i) => {
+      const t = L().get(id);
+      if (!t) return;
+      const isNow = i === P.index;
       const cu = L().coverUrl(t);
-      const art = cu ? el('img', { class: 'q-art', src: cu, alt: '' }) : el('div', { class: 'q-art' }, [icon(t.kind === 'video' ? 'video' : 'music')]);
-      const rm = el('button', { class: 'icon-btn' }, [icon('x')]);
-      rm.addEventListener('click', e => { e.stopPropagation(); P.removeFromQueue(qi); });
-      const row = el('div', {
-        class: 'q-item' + (qi === P.index ? ' now' : ''), draggable: 'true', 'data-i': qi
-      }, [
-        el('span', { class: 'q-handle' }, [icon('drag')]), art,
-        el('div', { class: 'q-meta' }, [
-          el('b', { text: t.title || t.name }),
-          el('small', { text: (t.artist || '—') + ' · ' + (t.duration ? HP.fmtTime(t.duration) : '—') })
-        ]), rm
+      const art = el('div', { class: 'q-art' });
+      if (cu) art.appendChild(el('img', { src: cu, alt: '', style: 'width:100%;height:100%;object-fit:cover;border-radius:10px' }));
+      else art.appendChild(icon(t.kind === 'video' ? 'video' : 'music'));
+
+      const meta = el('div', { class: 'q-meta' }, [
+        el('b', { text: t.title || t.name }),
+        el('small', { text: (t.artist || '—') + (t.duration ? ' · ' + HP.fmtTime(t.duration) : '') })
       ]);
-      row.addEventListener('click', () => { P.index = qi; load(t, true); });
-      dragRow(row, box);
-      box.appendChild(row);
+      const rm = el('button', { class: 'icon-btn tiny' }, [icon('x')]);
+      rm.addEventListener('click', e => { e.stopPropagation(); P.removeFromQueue(i); });
+
+      const row = el('div', { class: 'q-item' + (isNow ? ' now' : ''), 'data-i': i, draggable: 'true' }, [
+        icon('drag', 'q-handle'), art, meta, rm
+      ]);
+      row.addEventListener('click', () => { P.index = i; load(t, true); renderQueue(); });
+      bindQueueDrag(row, i);
+      list.appendChild(row);
     });
   }
   P.renderQueue = renderQueue;
 
-  let dragSrc = null;
-  function dragRow(row, box) {
-    row.addEventListener('dragstart', e => { dragSrc = +row.dataset.i; row.classList.add('dragging'); e.dataTransfer.effectAllowed = 'move'; });
-    row.addEventListener('dragend', () => { row.classList.remove('dragging'); $$('.q-item', box).forEach(r => r.classList.remove('drag-over')); });
+  function bindQueueDrag(row, i) {
+    row.addEventListener('dragstart', e => { e.dataTransfer.setData('text/plain', i); row.classList.add('dragging'); });
+    row.addEventListener('dragend', () => row.classList.remove('dragging'));
     row.addEventListener('dragover', e => { e.preventDefault(); row.classList.add('drag-over'); });
     row.addEventListener('dragleave', () => row.classList.remove('drag-over'));
     row.addEventListener('drop', e => {
       e.preventDefault(); row.classList.remove('drag-over');
-      const to = +row.dataset.i;
-      if (dragSrc == null || dragSrc === to) return;
-      const cur = P.queue[P.index];
-      const [m] = P.queue.splice(dragSrc, 1);
-      P.queue.splice(to, 0, m);
-      P.index = P.queue.indexOf(cur);
+      const from = +e.dataTransfer.getData('text/plain');
+      if (isNaN(from) || from === i) return;
+      const item = P.queue.splice(from, 1)[0];
+      P.queue.splice(i, 0, item);
+      if (P.index === from) P.index = i;
+      else if (from < P.index && i >= P.index) P.index--;
+      else if (from > P.index && i <= P.index) P.index++;
       buildOrder(); renderQueue();
     });
   }
 
-  /* =========================================================
-     now playing UI
-     ========================================================= */
-  function paintNowPlaying(t) {
-    const cu = L().coverUrl(t);
-    $('#np-title').textContent = t.title || t.name;
-    $('#np-artist').textContent = [t.artist, t.album].filter(Boolean).join(' · ') || (t.kind === 'video' ? 'Video' : 'Unknown artist');
-    $('#np-context').textContent = P.context;
-    $('#mini-title').textContent = t.title || t.name;
-    $('#mini-artist').textContent = t.artist || (t.kind === 'video' ? 'Video' : 'Unknown artist');
-    $('#minibar').hidden = false;
-    $('#np-fav').classList.toggle('on', !!t.fav);
-    $('#mini-fav').classList.toggle('on', !!t.fav);
-
-    const disc = $('#art-disc'), img = $('#art-img'), mini = $('#mini-art'), mimg = $('#mini-img'), bg = $('#np-bg-img');
-    if (cu) {
-      img.src = cu; disc.classList.add('has-img');
-      mimg.src = cu; mini.classList.add('has-img');
-      bg.src = cu; bg.classList.add('on');
-      if (S.autoTheme) tintFrom(img);
-    } else {
-      img.removeAttribute('src'); disc.classList.remove('has-img');
-      mimg.removeAttribute('src'); mini.classList.remove('has-img');
-      bg.classList.remove('on');
-      if (S.autoTheme) clearTint();
+  P.addNext = function (id) {
+    if (P.queue.indexOf(id) > -1) P.queue.splice(P.queue.indexOf(id), 1);
+    P.queue.splice(P.index + 1, 0, id);
+    buildOrder(); renderQueue(); HP.toast('Playing next');
+  };
+  P.addLast = function (id) {
+    if (P.queue.indexOf(id) < 0) P.queue.push(id);
+    buildOrder(); renderQueue(); HP.toast('Added to queue');
+  };
+  P.removeFromQueue = function (i) {
+    P.queue.splice(i, 1);
+    if (i < P.index) P.index--;
+    else if (i === P.index) {
+      if (P.queue.length) { P.index = Math.min(P.index, P.queue.length - 1); load(L().get(P.queue[P.index]), true); }
+      else P.stop();
     }
-    mini.classList.toggle('has-vid', t.kind === 'video' && !cu);
-    updateTimes();
-    setMediaSession(t, cu);
-  }
+    buildOrder(); renderQueue();
+  };
+  P.clearQueue = function () {
+    P.queue = []; P.index = -1; P.stop(); renderQueue(); HP.toast('Queue cleared');
+  };
 
-  let tintTimer;
-  function tintFrom(img) {
-    clearTimeout(tintTimer);
-    tintTimer = setTimeout(() => {
-      const run = () => {
-        const pal = HP.paletteFrom(img);
-        if (!pal) return clearTint();
-        document.body.style.setProperty('--a1', pal[0]);
-        document.body.style.setProperty('--a2', pal[1]);
-        HP.emit('theme');
-      };
-      img.complete && img.naturalWidth ? run() : img.addEventListener('load', run, { once: true });
-    }, 60);
-  }
-  function clearTint() {
-    document.body.style.removeProperty('--a1');
-    document.body.style.removeProperty('--a2');
-    HP.emit('theme');
-  }
-  P.clearTint = clearTint;
-
-  function highlightCards() {
-    $$('.card.playing').forEach(c => c.classList.remove('playing'));
-    if (!P.current) return;
-    const c = $('.card[data-id="' + P.current.id + '"]');
-    if (c) c.classList.add('playing');
-  }
-  P.highlightCards = highlightCards;
-
-  /* ---------- progress loop ---------- */
-  let lastSave = 0, lastEnergy = 0, lastMini = 0, lastPaint = 0, R = null;
-  function refs() {
-    return R || (R = {
-      fill: $('#seek-fill'), knob: $('#seek-knob'), mini: $('#mini-prog-fill'), np: $('#np')
-    });
-  }
-  function tick() {
-    requestAnimationFrame(tick);
-    const m = P.active;
-    if (!m || !P.current) return;
-    const now = performance.now();
-    const cur = m.currentTime || 0, dur = m.duration || P.current.duration || 0;
-    const r = refs();
-
-    if (!P.seeking) {
-      const p = dur ? cur / dur : 0;
-      r.fill.style.width = (p * 100) + '%';
-      r.knob.style.left = (p * 100) + '%';
-      r.mini.style.width = (p * 100) + '%';
-      if (now - lastPaint > 90 && r.np.classList.contains('on')) { lastPaint = now; HP.Vis.Energy.draw(p); }
-    }
-    if (now - lastEnergy > 240 && !m.paused) {
-      lastEnergy = now;
-      HP.Vis.Energy.push(cur, dur);
-    }
-    if (now - lastMini > 110) { lastMini = now; miniVideoFrame(); }
-    syncLyrics(cur);
-    checkAB(cur);
-    checkCrossfade(cur, dur);
-    if (now - lastSave > 4000) { lastSave = now; savePos(); }
-    if (P.sleep && P.sleep.at) tickSleep();
-  }
-
-  function onTime() { updateTimes(); }
-  function updateTimes() {
-    const m = P.active, cur = m.currentTime || 0;
-    const dur = m.duration || (P.current && P.current.duration) || 0;
-    $('#t-cur').textContent = HP.fmtTime(cur);
-    $('#t-rem').textContent = dur ? '-' + HP.fmtTime(Math.max(0, dur - cur)) : HP.fmtTime(cur);
-    if ('mediaSession' in navigator && navigator.mediaSession.setPositionState && dur && isFinite(dur)) {
-      try { navigator.mediaSession.setPositionState({ duration: dur, position: clamp(cur, 0, dur), playbackRate: m.playbackRate || 1 }); } catch (e) { }
-    }
-  }
-  function drawBuffer() {
-    const m = P.active, dur = m.duration;
-    if (!dur || !m.buffered.length) return;
-    let end = 0;
-    for (let i = 0; i < m.buffered.length; i++) if (m.buffered.start(i) <= m.currentTime) end = m.buffered.end(i);
-    $('#seek-buf').style.width = clamp(end / dur * 100, 0, 100) + '%';
-  }
-  function savePos() {
-    const t = P.current; if (!t) return;
-    const c = P.active.currentTime || 0;
-    if (Math.abs((t.pos || 0) - c) < 2) return;
-    t.pos = c; L().saveTrack(t);
-    S.lastId = t.id; S.lastPos = c; HP.save();
-    saveEnergy();
-  }
-  const saveEnergy = HP.throttle(() => {
-    const t = P.current, d = HP.Vis.Energy.data();
-    if (t && d) HP.DB.kvSet('energy:' + t.id, d);
-  }, 9000);
-
-  function miniVideoFrame() {
-    const mini = $('#mini-art');
-    if (!P.current || P.current.kind !== 'video' || !mini || $('#np').classList.contains('on')) return;
-    if (!mini.classList.contains('has-vid')) return;
-    const c = $('#mini-vid'), v = P.a;
-    if (!v.videoWidth || v.paused) return;
-    const ctx = c.getContext('2d');
-    try { ctx.drawImage(v, 0, 0, c.width, c.height); } catch (e) { }
-  }
-
-  /* =========================================================
-     A-B loop, bookmarks, sleep timer
-     ========================================================= */
+  /* A-B loop */
   P.markAB = function () {
-    const t = P.active.currentTime || 0;
-    if (P.ab.a === null) { P.ab.a = t; HP.toast('Loop start set at ' + HP.fmtTime(t)); }
-    else if (P.ab.b === null) {
-      if (t <= P.ab.a + .5) { HP.toast('Loop end must be after the start', 'err'); return; }
-      P.ab.b = t; HP.toast('A-B loop on · ' + HP.fmtTime(P.ab.a) + ' → ' + HP.fmtTime(t));
-    } else { P.ab = { a: null, b: null }; HP.toast('A-B loop cleared'); }
+    const cur = P.active.currentTime || 0;
+    if (P.ab.a == null) {
+      P.ab.a = cur;
+      HP.toast('A point: ' + HP.fmtTime(cur));
+    } else if (P.ab.b == null) {
+      if (cur <= P.ab.a) { P.ab.a = cur; HP.toast('A reset: ' + HP.fmtTime(cur)); }
+      else {
+        P.ab.b = cur;
+        HP.toast('Looping A-B (' + HP.fmtTime(P.ab.a) + ' → ' + HP.fmtTime(cur) + ')');
+      }
+    } else {
+      P.ab = { a: null, b: null };
+      HP.toast('A-B loop cleared');
+    }
     updateAB();
   };
   function updateAB() {
-    const bar = $('#seek-ab'), lbl = $('#ab-label'), tool = $('#t-ab');
+    const abBox = $('#seek-ab');
     const dur = P.active.duration || (P.current && P.current.duration) || 0;
-    if (P.ab.a !== null && P.ab.b !== null && dur) {
-      bar.hidden = false;
-      bar.style.left = (P.ab.a / dur * 100) + '%';
-      bar.style.width = ((P.ab.b - P.ab.a) / dur * 100) + '%';
-      lbl.textContent = 'A-B'; tool.classList.add('on');
+    if (!abBox) return;
+    if (P.ab.a != null && dur > 0) {
+      const aPct = (P.ab.a / dur) * 100;
+      const bPct = P.ab.b != null ? (P.ab.b / dur) * 100 : aPct;
+      abBox.hidden = false;
+      abBox.style.left = aPct + '%';
+      abBox.style.width = Math.max(2, bPct - aPct) + '%';
+      $('#t-ab').classList.add('on');
+      $('#ab-label').textContent = P.ab.b != null ? 'A↔B' : 'A…';
     } else {
-      bar.hidden = true; tool.classList.toggle('on', P.ab.a !== null);
-      lbl.textContent = P.ab.a !== null ? 'A…' : 'A-B';
+      abBox.hidden = true;
+      $('#t-ab').classList.remove('on');
+      $('#ab-label').textContent = 'A-B';
     }
   }
-  function checkAB(cur) {
-    if (P.ab.a !== null && P.ab.b !== null && cur >= P.ab.b) P.seek(P.ab.a);
-  }
+
+  /* bookmarks */
   P.addBookmark = function () {
     const t = P.current; if (!t) return;
-    const time = P.active.currentTime || 0;
+    const cur = Math.round(P.active.currentTime || 0);
     t.bookmarks = t.bookmarks || [];
-    const near = t.bookmarks.findIndex(b => Math.abs(b.t - time) < 2);
-    if (near > -1) { t.bookmarks.splice(near, 1); HP.toast('Bookmark removed'); }
-    else { t.bookmarks.push({ t: time, label: HP.fmtTime(time) }); t.bookmarks.sort((a, b) => a.t - b.t); HP.toast('Bookmark at ' + HP.fmtTime(time), 'ok'); }
-    L().saveTrack(t); renderMarks();
+    if (t.bookmarks.indexOf(cur) < 0) {
+      t.bookmarks.push(cur);
+      t.bookmarks.sort((a, b) => a - b);
+      L().saveTrack(t);
+      renderMarks();
+      HP.toast('Bookmark added at ' + HP.fmtTime(cur), 'ok');
+    }
   };
   function renderMarks() {
     const box = $('#seek-marks'); if (!box) return;
     box.innerHTML = '';
-    const t = P.current, dur = (P.active && P.active.duration) || (t && t.duration) || 0;
-    if (!t || !t.bookmarks || !dur) return;
-    t.bookmarks.forEach(b => {
-      const i = el('i', { style: 'left:' + clamp(b.t / dur * 100, 0, 100) + '%', title: b.label });
-      box.appendChild(i);
+    const t = P.current; if (!t || !t.bookmarks || !t.duration) return;
+    t.bookmarks.forEach(sec => {
+      const pct = (sec / t.duration) * 100;
+      const mark = el('i', { style: 'left:' + pct + '%' });
+      mark.title = HP.fmtTime(sec);
+      mark.addEventListener('click', e => { e.stopPropagation(); P.seek(sec); });
+      box.appendChild(mark);
     });
   }
-  P.renderMarks = renderMarks;
 
-  P.setSleep = function (val) {
-    P.cancelSleep();
-    if (val === 0 || val === '0') { HP.toast('Sleep timer off'); updateSleepUI(); return; }
-    if (val === 'endtrack') { P.sleep = { endTrack: true }; HP.toast('Will stop at the end of this track'); }
-    else { P.sleep = { at: Date.now() + val * 60000, mins: val }; HP.toast('Sleep timer: ' + val + ' min'); }
-    $('#t-sleep').classList.add('on');
-    updateSleepUI();
+  /* speed */
+  P.setSpeed = function (v) {
+    v = clamp(+v, .25, 4);
+    S.speed = v; HP.save();
+    P.a.playbackRate = v; P.b.playbackRate = v;
+    updateSpeedLabel();
+    $$('#speed-chips .chip').forEach(c => c.classList.toggle('active', +c.dataset.sp === v));
+    $('#speed-range').value = v * 100;
   };
-  P.cancelSleep = function () { P.sleep = null; $('#t-sleep').classList.remove('on'); E().applyVolume(); updateSleepUI(); };
-  function tickSleep() {
-    const left = P.sleep.at - Date.now();
-    if (left <= 0) {
-      P.pause(); P.cancelSleep(); HP.toast('Sleep timer — good night 🌙');
-      return;
-    }
-    if (left < 15000 && E().ready) {                 // gentle fade in the last 15s
-      E().master.gain.value = (S.muted ? 0 : S.volume * (S.boost / 100)) * (left / 15000);
-    }
-    updateSleepUI(left);
-  }
-  function updateSleepUI(left) {
-    const box = $('#sleep-state'); if (!box) return;
-    if (!P.sleep) { box.hidden = true; return; }
-    box.hidden = false;
-    box.textContent = P.sleep.endTrack ? 'Stopping at the end of this track'
-      : 'Stopping in ' + HP.fmtTime(Math.max(0, (left != null ? left : P.sleep.at - Date.now()) / 1000));
-    $$('#sleep-chips .chip').forEach(c => c.classList.toggle('active',
-      P.sleep && (P.sleep.endTrack ? c.dataset.min === 'endtrack' : +c.dataset.min === P.sleep.mins)));
+  function updateSpeedLabel() {
+    const sp = S.speed || 1;
+    $('#speed-label').textContent = sp.toFixed(sp % 1 ? (sp * 10 % 1 ? 2 : 1) : 0) + '×';
   }
 
-  /* =========================================================
-     crossfade
-     ========================================================= */
-  function checkCrossfade(cur, dur) {
-    const xf = S.crossfade | 0;
-    if (!xf || !dur || P.crossing || P.active.paused) return;
-    if (S.repeat === 'one' || !S.autoplayNext) return;
-    if (dur - cur > xf || dur - cur <= 0) return;
-    const oi = P.order.indexOf(P.index), ni = oi + 1;
-    if (ni >= P.order.length && S.repeat !== 'all') return;
-    const nextId = P.queue[P.order[ni % P.order.length]];
-    const nt = L().get(nextId);
-    if (!nt || nt.kind === 'video' || P.current.kind === 'video') return;
-    P.crossing = true;
-    const from = P.active;
-    E().fadeElement(from, 0, xf * 1000);
-    load(nt, true).then(() => {
-      P.index = P.queue.indexOf(nextId);
-      setTimeout(() => { try { from.pause(); E().elementGain(from, 1); } catch (e) { } P.crossing = false; }, xf * 1000 + 120);
-    });
-  }
-
-  /* =========================================================
-     lyrics
-     ========================================================= */
-  function loadLyrics(t) {
-    P.lyrics = t.lrc ? HP.Meta.parseLRC(t.lrc) : null;
-    P.lrcIndex = -1;
-    const box = $('#lyrics-scroll');
-    box.innerHTML = '';
-    if (!P.lyrics || !P.lyrics.lines.length) {
-      box.appendChild(el('p', { class: 'lrc-empty', text: 'No lyrics loaded. Open the Lyrics tool to add an .lrc file or paste the words.' }));
+  /* PiP */
+  P.togglePip = async function () {
+    if (document.pictureInPictureElement) {
+      await document.exitPictureInPicture();
+    } else if (P.a.requestPictureInPicture) {
+      try { await P.a.requestPictureInPicture(); }
+      catch (e) { HP.toast('PiP unavailable for this format'); }
     } else {
-      P.lyrics.lines.forEach((l, i) => {
-        const n = el('p', { class: 'lrc-line', text: l.text || '♪' });
-        if (l.t !== null) n.addEventListener('click', e => { e.stopPropagation(); P.seek(l.t + (P.lyrics.offset || 0)); });
-        box.appendChild(n);
-      });
+      HP.toast('PiP is not supported on this browser');
     }
-    $('#t-lyrics').classList.toggle('on', !!t.lrc);
-  }
-  P.loadLyrics = loadLyrics;
-  function syncLyrics(cur) {
-    if (!P.lyrics || !P.lyrics.synced || $('#lyrics').hidden) return;
-    const off = P.lyrics.offset || 0, lines = P.lyrics.lines;
-    let i = P.lrcIndex;
-    while (i + 1 < lines.length && lines[i + 1].t + off <= cur) i++;
-    while (i >= 0 && lines[i].t + off > cur) i--;
-    if (i === P.lrcIndex) return;
-    P.lrcIndex = i;
-    const box = $('#lyrics-scroll'), kids = box.children;
-    for (let k = 0; k < kids.length; k++) {
-      kids[k].classList.toggle('active', k === i);
-      kids[k].classList.toggle('near', Math.abs(k - i) === 1);
-    }
-    const a = kids[i];
-    if (a) box.scrollTo({ top: a.offsetTop - box.clientHeight / 2 + a.clientHeight / 2, behavior: 'smooth' });
-  }
-
-  /* =========================================================
-     subtitles
-     ========================================================= */
-  function addSubtitle(vtt) {
-    try {
-      const blob = new Blob([vtt], { type: 'text/vtt' });
-      const tr = el('track', { kind: 'subtitles', label: 'Subtitles', srclang: 'en', default: 'default', src: URL.createObjectURL(blob) });
-      P.a.appendChild(tr);
-      setTimeout(() => { if (P.a.textTracks[0]) P.a.textTracks[0].mode = 'showing'; }, 60);
-      $('#v-cc').classList.add('on');
-    } catch (e) { }
-  }
-  P.addSubtitle = addSubtitle;
-  P.toggleCC = function () {
-    const tt = P.a.textTracks;
-    if (!tt || !tt.length) { HP.toast('No subtitles loaded — add a .srt / .vtt file'); return; }
-    const on = tt[0].mode === 'showing';
-    for (let i = 0; i < tt.length; i++) tt[i].mode = on ? 'disabled' : 'showing';
-    $('#v-cc').classList.toggle('on', !on);
-    HP.toast('Subtitles ' + (on ? 'off' : 'on'));
   };
 
   /* =========================================================
-     Media Session + wake lock
+     bindings
      ========================================================= */
-  function mediaSession() {
-    if (!('mediaSession' in navigator)) return;
-    const ms = navigator.mediaSession;
-    const set = (k, fn) => { try { ms.setActionHandler(k, fn); } catch (e) { } };
-    set('play', () => P.play());
-    set('pause', () => P.pause());
-    set('previoustrack', () => P.prev());
-    set('nexttrack', () => P.next());
-    set('seekbackward', d => P.seekBy(-(d && d.seekOffset || S.seekStep)));
-    set('seekforward', d => P.seekBy(d && d.seekOffset || S.seekStep));
-    set('seekto', d => { if (d && d.seekTime != null) P.seek(d.seekTime); });
-    set('stop', () => P.stop());
-  }
-  function setMediaSession(t, cover) {
-    if (!('mediaSession' in navigator)) return;
-    try {
-      const art = [];
-      if (cover) [96, 192, 512].forEach(s => art.push({ src: cover, sizes: s + 'x' + s, type: t.cover.type || 'image/jpeg' }));
-      else [192, 512].forEach(s => art.push({ src: 'icons/icon-' + (s === 192 ? '192' : '512') + '.png', sizes: s + 'x' + s, type: 'image/png' }));
-      navigator.mediaSession.metadata = new MediaMetadata({
-        title: t.title || t.name, artist: t.artist || 'HashPlayer',
-        album: t.album || 'HashPlayer', artwork: art
-      });
-    } catch (e) { }
-  }
-  async function keepAwake(on) {
-    if (!S.keepAwake || !('wakeLock' in navigator)) return;
-    try {
-      if (on && !P.wake) { P.wake = await navigator.wakeLock.request('screen'); P.wake.addEventListener('release', () => P.wake = null); }
-      else if (!on && P.wake) { await P.wake.release(); P.wake = null; }
-    } catch (e) { }
-  }
-  document.addEventListener('visibilitychange', () => {
-    if (!document.hidden && !P.active.paused) keepAwake(true);
-  });
-
-  /* =========================================================
-     seek bar + UI bindings
-     ========================================================= */
-  function rangeFill(r) {
-    const p = (r.value - r.min) / ((r.max - r.min) || 1) * 100;
-    r.style.setProperty('--p', p + '%');
-  }
-  P.rangeFill = rangeFill;
-
   function bindUI() {
-    const seek = $('#seek'), tip = $('#seek-tip');
-    const ratio = e => {
-      const r = seek.getBoundingClientRect();
-      return clamp(((e.clientX - r.left) / r.width), 0, 1);
-    };
-    const dur = () => P.active.duration || (P.current && P.current.duration) || 0;
-    seek.addEventListener('pointerdown', e => {
-      if (!P.current) return;
-      P.seeking = true; seek.setPointerCapture(e.pointerId); seek.classList.add('drag');
-      move(e);
-    });
-    seek.addEventListener('pointermove', e => {
-      if (!P.current) return;
-      const r = ratio(e), d = dur();
-      tip.hidden = false; tip.style.left = (r * 100) + '%'; tip.textContent = HP.fmtTime(r * d);
-      if (P.seeking) move(e);
-    });
-    seek.addEventListener('pointerleave', () => { if (!P.seeking) tip.hidden = true; });
-    seek.addEventListener('pointerup', e => {
-      if (!P.seeking) return;
-      P.seeking = false; seek.classList.remove('drag'); tip.hidden = true;
-      P.seek(ratio(e) * dur());
-    });
-    seek.addEventListener('pointercancel', () => { P.seeking = false; seek.classList.remove('drag'); tip.hidden = true; });
-    function move(e) {
-      const r = ratio(e), d = dur();
-      $('#seek-fill').style.width = (r * 100) + '%';
-      $('#seek-knob').style.left = (r * 100) + '%';
-      $('#t-cur').textContent = HP.fmtTime(r * d);
-      HP.Vis.Energy.draw(r);
-    }
-
     $('#btn-play').addEventListener('click', () => P.toggle());
-    $('#mini-play').addEventListener('click', e => { e.stopPropagation(); P.toggle(); });
+    $('#mini-play').addEventListener('click', () => P.toggle());
+    $('#v-play-center').addEventListener('click', () => P.toggle());
+
     $('#btn-next').addEventListener('click', () => P.next());
     $('#mini-next').addEventListener('click', e => { e.stopPropagation(); P.next(); });
     $('#btn-prev').addEventListener('click', () => P.prev());
-    $('#mini-prev').addEventListener('click', e => { e.stopPropagation(); P.prev(); });
-    $('#btn-ff').addEventListener('click', () => P.seekBy(S.seekStep));
-    $('#btn-rw').addEventListener('click', () => P.seekBy(-S.seekStep));
-    $('#btn-rep').addEventListener('click', () => P.cycleRepeat());
-    $('#btn-shuf').addEventListener('click', () => P.toggleShuffle());
-    $('#np-fav').addEventListener('click', () => { if (P.current) { L().toggleFav(P.current.id); $('#np-fav').classList.toggle('on', P.current.fav); $('#mini-fav').classList.toggle('on', P.current.fav); } });
-    $('#mini-fav').addEventListener('click', e => { e.stopPropagation(); if (P.current) { L().toggleFav(P.current.id); $('#np-fav').classList.toggle('on', P.current.fav); $('#mini-fav').classList.toggle('on', P.current.fav); } });
+    $('#btn-ff').addEventListener('click', () => P.seekBy(10));
+    $('#btn-rw').addEventListener('click', () => P.seekBy(-10));
 
+    $('#btn-shuf').addEventListener('click', () => {
+      S.shuffle = !S.shuffle; HP.save();
+      buildOrder(); syncToggles();
+      HP.toast(S.shuffle ? 'Shuffle on' : 'Shuffle off');
+    });
+    $('#btn-rep').addEventListener('click', () => {
+      const modes = ['off', 'all', 'one'];
+      S.repeat = modes[(modes.indexOf(S.repeat) + 1) % modes.length];
+      HP.save(); syncToggles();
+      HP.toast('Repeat: ' + S.repeat);
+    });
+
+    $('#np-fav').addEventListener('click', () => { if (P.current) L().toggleFav(P.current.id); });
+    $('#mini-fav').addEventListener('click', e => { e.stopPropagation(); if (P.current) L().toggleFav(P.current.id); });
+
+    // Download buttons
+    const dlBtn = $('#np-download');
+    if (dlBtn) dlBtn.addEventListener('click', () => {
+      if (P.current && HP.UI && HP.UI.downloadMedia) HP.UI.downloadMedia(P.current);
+    });
+    const vDlBtn = $('#v-download');
+    if (vDlBtn) vDlBtn.addEventListener('click', () => {
+      if (P.current && HP.UI && HP.UI.downloadMedia) HP.UI.downloadMedia(P.current);
+    });
+
+    /* seekbar scrubbing */
+    const seek = $('#seek');
+    let seeking = false;
+    const seekAt = e => {
+      const r = seek.getBoundingClientRect();
+      const pct = clamp((e.clientX - r.left) / r.width, 0, 1);
+      const dur = P.active.duration || (P.current && P.current.duration) || 0;
+      P.seek(dur * pct);
+    };
+    seek.addEventListener('pointerdown', e => {
+      seeking = true; seek.classList.add('drag');
+      try { seek.setPointerCapture(e.pointerId); } catch (_) { }
+      seekAt(e);
+    });
+    seek.addEventListener('pointermove', e => {
+      const r = seek.getBoundingClientRect();
+      const pct = clamp((e.clientX - r.left) / r.width, 0, 1);
+      const dur = P.active.duration || (P.current && P.current.duration) || 0;
+      const tip = $('#seek-tip');
+      tip.hidden = false;
+      tip.style.left = (pct * 100) + '%';
+      tip.textContent = HP.fmtTime(dur * pct);
+      if (seeking) seekAt(e);
+    });
+    const endSeek = () => { seeking = false; seek.classList.remove('drag'); $('#seek-tip').hidden = true; };
+    seek.addEventListener('pointerup', endSeek);
+    seek.addEventListener('pointercancel', endSeek);
+    seek.addEventListener('pointerleave', () => { if (!seeking) $('#seek-tip').hidden = true; });
+
+    /* volume slider on minibar */
     const vol = $('#mini-vol');
-    vol.value = Math.round(S.volume * 100); rangeFill(vol);
-    vol.addEventListener('input', () => { E().setVolume(vol.value / 100); rangeFill(vol); S.muted = false; updateMuteIcon(); });
-    $('#mini-mute').addEventListener('click', () => { S.muted = !S.muted; HP.save(); E().applyVolume(); updateMuteIcon(); });
-    function updateMuteIcon() {
-      $('#mini-mute use').setAttribute('href', S.muted || !S.volume ? '#i-mute' : '#i-vol');
+    if (vol) {
+      vol.value = S.volume * 100;
+      vol.addEventListener('input', () => E().setVolume(vol.value / 100));
+      $('#mini-mute').addEventListener('click', () => {
+        S.muted = !S.muted; HP.save(); E().applyVolume();
+      });
     }
-    updateMuteIcon();
-    HP.on('volume', v => { if (document.activeElement !== vol) { vol.value = Math.round(v * 100); rangeFill(vol); } updateMuteIcon(); });
 
-    /* video tools */
-    $('#v-pip').addEventListener('click', async () => {
-      try {
-        if (document.pictureInPictureElement) await document.exitPictureInPicture();
-        else if (P.a.requestPictureInPicture) await P.a.requestPictureInPicture();
-        else HP.toast('Picture-in-picture is not supported here', 'err');
-      } catch (e) { HP.toast('PiP unavailable for this video', 'err'); }
-    });
-    $('#v-full').addEventListener('click', () => P.toggleFullscreen());
-    $('#v-cc').addEventListener('click', () => P.toggleCC());
-    $('#v-shot').addEventListener('click', () => P.screenshot());
-    $('#v-mirror').addEventListener('click', () => {
+    /* Video HUD overlay buttons */
+    const pipBtn = $('#v-pip');
+    if (pipBtn) pipBtn.addEventListener('click', () => P.togglePip());
+
+    const fullBtn = $('#v-full');
+    if (fullBtn) fullBtn.addEventListener('click', () => P.toggleFullscreen());
+
+    const ccBtn = $('#v-cc');
+    if (ccBtn) ccBtn.addEventListener('click', () => P.toggleCC());
+
+    const shotBtn = $('#v-shot');
+    if (shotBtn) shotBtn.addEventListener('click', () => P.screenshot());
+
+    const mirrorBtn = $('#v-mirror');
+    if (mirrorBtn) mirrorBtn.addEventListener('click', () => {
       document.body.classList.toggle('mirror');
-      $('#v-mirror').classList.toggle('on', document.body.classList.contains('mirror'));
+      mirrorBtn.classList.toggle('on', document.body.classList.contains('mirror'));
     });
+
     const FITS = ['contain', 'cover', 'fill'];
     let fitI = 0;
-    $('#v-aspect').addEventListener('click', () => {
+    const aspectBtn = $('#v-aspect');
+    if (aspectBtn) aspectBtn.addEventListener('click', () => {
       fitI = (fitI + 1) % FITS.length;
       document.body.classList.remove('fit-cover', 'fit-fill');
       if (FITS[fitI] !== 'contain') document.body.classList.add('fit-' + FITS[fitI]);
-      HP.toast('Fit: ' + FITS[fitI]);
+      HP.toast('Aspect: ' + FITS[fitI]);
     });
+
     let rot = 0;
-    $('#v-rotate').addEventListener('click', () => {
+    const rotBtn = $('#v-rotate');
+    if (rotBtn) rotBtn.addEventListener('click', () => {
       rot = (rot + 90) % 360;
       document.body.classList.remove('rot-90', 'rot-180', 'rot-270');
       if (rot) document.body.classList.add('rot-' + rot);
       HP.toast('Rotated ' + rot + '°');
+    });
+
+    // Video Screen Lock toggle (prevents accidental touch in landscape)
+    const lockBtn = $('#v-lock');
+    if (lockBtn) lockBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      P.locked = !P.locked;
+      document.body.classList.toggle('video-locked', P.locked);
+      HP.toast(P.locked ? 'Screen Locked 🔒 (Tap unlock icon to unlock)' : 'Screen Unlocked 🔓');
+      if (P.locked) P.hideHud();
+    });
+
+    const unlockBtn = $('#v-unlock-btn');
+    if (unlockBtn) unlockBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      P.locked = false;
+      document.body.classList.remove('video-locked');
+      HP.toast('Screen Unlocked 🔓');
+      P.showHud();
+    });
+
+    // Video back button in landscape overlay
+    const vBack = $('#v-back');
+    if (vBack) vBack.addEventListener('click', () => {
+      if (document.fullscreenElement) P.toggleFullscreen();
+      if (HP.UI) HP.UI.openNP(false);
     });
 
     $('#t-ab').addEventListener('click', () => P.markAB());
@@ -804,6 +825,19 @@
 
     syncToggles(); updateSpeedLabel();
   }
+
+  P.toggleCC = function () {
+    const tracks = P.a.textTracks;
+    if (!tracks || !tracks.length) {
+      if (P.current) HP.UI.loadSidecar(P.current, 'sub');
+      else HP.toast('No subtitles available');
+      return;
+    }
+    const t = tracks[0];
+    t.mode = t.mode === 'showing' ? 'hidden' : 'showing';
+    $('#v-cc').classList.toggle('on', t.mode === 'showing');
+    HP.toast(t.mode === 'showing' ? 'Subtitles On' : 'Subtitles Off');
+  };
 
   P.toggleLyrics = function (force) {
     const box = $('#lyrics');
@@ -829,7 +863,8 @@
   document.addEventListener('fullscreenchange', () => {
     const fs = !!document.fullscreenElement;
     document.body.classList.toggle('cinema', fs);
-    $('#v-full').querySelector('use').setAttribute('href', fs ? '#i-collapse' : '#i-expand');
+    const fullUse = $('#v-full use');
+    if (fullUse) fullUse.setAttribute('href', fs ? '#i-collapse' : '#i-expand');
   });
 
   P.screenshot = function () {
@@ -844,13 +879,13 @@
         const a = el('a', { href: URL.createObjectURL(b), download: (HP.baseName(P.current.name) + '_' + Math.floor(v.currentTime) + 's.png') });
         document.body.appendChild(a); a.click();
         setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
-        HP.toast('Frame saved', 'ok');
+        HP.toast('Screenshot saved', 'ok');
       }, 'image/png');
-    } catch (e) { HP.toast('This video blocks frame capture', 'err'); }
+    } catch (e) { HP.toast('Video format blocks frame capture', 'err'); }
   };
 
   /* =========================================================
-     gestures on the stage
+     gestures on the stage (Landscape & Video player)
      ========================================================= */
   function flashGfx(ic, text) {
     const g = $('#gfx');
@@ -860,6 +895,7 @@
     clearTimeout(g._t); g._t = setTimeout(() => g.classList.remove('on'), 650);
   }
   P.flashGfx = flashGfx;
+
   function showBar(ic, val, pct) {
     const b = $('#gbar');
     $('#gbar-icon').querySelector('use').setAttribute('href', '#i-' + ic);
@@ -874,7 +910,9 @@
     let st = null, lastTap = 0, tapTimer = null, holdTimer = null, pts = new Map(), pinch0 = 0;
 
     stage.addEventListener('pointerdown', e => {
-      if (e.target.closest('.vtools') || e.target.closest('.lyrics-scroll')) return;
+      if (e.target.closest('.vtools') || e.target.closest('.lyrics-scroll') || e.target.closest('.v-overlay-ctrls')) return;
+      if (P.locked && !e.target.closest('#v-unlock-btn')) return;
+
       pts.set(e.pointerId, e);
       if (pts.size === 2) {
         const [p1, p2] = Array.from(pts.values());
@@ -887,7 +925,7 @@
         side: (e.clientX - r.left) / r.width, w: r.width, h: r.height,
         time0: P.active.currentTime || 0, vol0: S.volume, br0: P.brightness, moved: false
       };
-      try { stage.setPointerCapture(e.pointerId); } catch (x) { }
+      try { stage.setPointerCapture(e.pointerId); } catch (_) { }
       holdTimer = setTimeout(() => {
         if (st && !st.moved && P.current) {
           P.speedHold = true;
@@ -900,89 +938,210 @@
     });
 
     stage.addEventListener('pointermove', e => {
+      if (P.locked) return;
       if (pts.has(e.pointerId)) pts.set(e.pointerId, e);
       if (pts.size === 2 && pinch0) {
         const [p1, p2] = Array.from(pts.values());
         const d = Math.hypot(p1.clientX - p2.clientX, p1.clientY - p2.clientY);
         P.zoom = clamp(d / pinch0, .6, 3);
-        P.a.style.transform = 'scale(' + P.zoom.toFixed(3) + ')';
+        P.a.style.transform = `scale(${P.zoom})`;
         return;
       }
-      if (!st || !S.gestures || !P.current) return;
+      if (!st || !S.gestures) return;
       const dx = e.clientX - st.x, dy = e.clientY - st.y;
-      if (!st.axis) {
-        if (Math.abs(dx) > 14 || Math.abs(dy) > 14) {
-          st.axis = Math.abs(dx) > Math.abs(dy) ? 'x' : 'y';
-          st.moved = true; clearTimeout(holdTimer);
-        } else return;
+      if (!st.axis && (Math.abs(dx) > 10 || Math.abs(dy) > 10)) {
+        st.axis = Math.abs(dx) > Math.abs(dy) ? 'x' : 'y';
+        st.moved = true;
+        clearTimeout(holdTimer);
       }
+      if (!st.axis) return;
+
       if (st.axis === 'x') {
-        const dur = P.active.duration || P.current.duration || 0;
-        const delta = (dx / st.w) * Math.min(180, Math.max(45, dur * .35));
-        P.pendingSeek = clamp(st.time0 + delta, 0, dur || 0);
-        flashGfx(delta > 0 ? 'ff' : 'rw', (delta > 0 ? '+' : '') + Math.round(delta) + 's · ' + HP.fmtTime(P.pendingSeek));
+        const dur = P.active.duration || (P.current && P.current.duration) || 0;
+        const delta = (dx / st.w) * Math.min(120, dur || 120);
+        const tgt = clamp(st.time0 + delta, 0, dur);
+        P.seek(tgt);
+        flashGfx(delta >= 0 ? 'ff' : 'rw', (delta >= 0 ? '+' : '') + Math.round(delta) + 's (' + HP.fmtTime(tgt) + ')');
       } else {
-        const frac = -dy / (st.h * .7);
+        const delta = -dy / st.h;
         if (st.side > .5) {
-          const v = clamp(st.vol0 + frac, 0, 1);
-          E().setVolume(v); S.muted = false;
-          showBar(v ? 'vol' : 'mute', Math.round(v * 100) + '%', v * 100);
+          const v = clamp(st.vol0 + delta, 0, 1);
+          E().setVolume(v);
+          showBar(v > .5 ? 'vol' : v > 0 ? 'vol' : 'mute', Math.round(v * 100), v * 100);
         } else {
-          P.brightness = clamp(st.br0 + frac, .2, 1.8);
-          applyBrightness();
-          showBar('sun', Math.round(P.brightness * 100) + '%', (P.brightness / 1.8) * 100);
+          P.brightness = clamp(st.br0 + delta, .1, 1.5);
+          P.a.style.filter = `brightness(${P.brightness})`;
+          showBar('sun', Math.round(P.brightness * 100) + '%', (P.brightness / 1.5) * 100);
         }
       }
     });
 
-    const end = e => {
+    const endPointer = e => {
       pts.delete(e.pointerId);
-      if (pts.size < 2) pinch0 = 0;
       clearTimeout(holdTimer);
-      if (P.speedHold) { P.speedHold = false; P.active.playbackRate = S.speed; $('#speed-badge').hidden = true; st = null; return; }
+      if (P.speedHold) {
+        P.speedHold = false;
+        P.active.playbackRate = S.speed;
+        $('#speed-badge').hidden = true;
+      }
       if (!st) return;
-      if (st.axis === 'x' && P.pendingSeek != null) { P.seek(P.pendingSeek); P.pendingSeek = null; st = null; return; }
-      if (st.axis) { st = null; return; }
-      /* taps */
-      const now = Date.now();
-      if (now - lastTap < 300) {
-        clearTimeout(tapTimer); lastTap = 0;
-        const step = +S.seekStep || 10;
-        if (st.side < .38) { P.seekBy(-step); ripple('l'); }
-        else if (st.side > .62) { P.seekBy(step); ripple('r'); }
-        else P.toggle();
-      } else {
-        lastTap = now;
-        const side = st.side;
-        tapTimer = setTimeout(() => {
-          if (P.current && P.current.kind === 'video') toggleVideoUI();
-          else P.toggle();
-        }, 280);
+      if (!st.moved) {
+        const now = Date.now();
+        if (now - lastTap < 280) {
+          clearTimeout(tapTimer);
+          const step = +S.seekStep || 10;
+          if (st.side < .35) {
+            P.seekBy(-step);
+            $('#ripple-l').classList.add('flash');
+            setTimeout(() => $('#ripple-l').classList.remove('flash'), 450);
+            flashGfx('rw', '-' + step + 's');
+          } else if (st.side > .65) {
+            P.seekBy(step);
+            $('#ripple-r').classList.add('flash');
+            setTimeout(() => $('#ripple-r').classList.remove('flash'), 450);
+            flashGfx('ff', '+' + step + 's');
+          } else {
+            P.toggleFullscreen();
+          }
+          lastTap = 0;
+        } else {
+          lastTap = now;
+          tapTimer = setTimeout(() => {
+            P.toggleHud();
+          }, 290);
+        }
       }
       st = null;
     };
-    stage.addEventListener('pointerup', end);
-    stage.addEventListener('pointercancel', end);
-    stage.addEventListener('dblclick', e => e.preventDefault());
+    stage.addEventListener('pointerup', endPointer);
+    stage.addEventListener('pointercancel', endPointer);
+  }
 
-    function ripple(side) {
-      const n = $('#ripple-' + side);
-      n.classList.remove('flash'); void n.offsetWidth; n.classList.add('flash');
+  function syncToggles() {
+    $('#btn-shuf').classList.toggle('on', !!S.shuffle);
+    $('#btn-rep').classList.toggle('on', S.repeat !== 'off');
+    const u = $('#btn-rep use');
+    if (u) u.setAttribute('href', S.repeat === 'one' ? '#i-repeat1' : '#i-repeat');
+  }
+
+  /* media session metadata */
+  function mediaSession() {
+    if (!('mediaSession' in navigator)) return;
+    const ms = navigator.mediaSession;
+    ms.setActionHandler('play', () => P.play());
+    ms.setActionHandler('pause', () => P.pause());
+    ms.setActionHandler('nexttrack', () => P.next());
+    ms.setActionHandler('previoustrack', () => P.prev());
+    ms.setActionHandler('seekto', d => { if (d.seekTime != null) P.seek(d.seekTime); });
+    ms.setActionHandler('seekforward', d => P.seekBy(d.seekOffset || 10));
+    ms.setActionHandler('seekbackward', d => P.seekBy(-(d.seekOffset || 10)));
+  }
+
+  /* wake lock */
+  async function keepAwake(on) {
+    if (!S.keepAwake || !('wakeLock' in navigator)) return;
+    if (on && !P.wake) {
+      try { P.wake = await navigator.wakeLock.request('screen'); } catch (_) { }
+    } else if (!on && P.wake) {
+      try { await P.wake.release(); } catch (_) { }
+      P.wake = null;
     }
   }
-  function applyBrightness() {
-    P.a.style.filter = 'brightness(' + P.brightness + ')';
-    $('#art-disc').style.filter = 'brightness(' + P.brightness + ')';
+
+  function savePos() {
+    if (!P.current || !P.active) return;
+    const cur = P.active.currentTime || 0;
+    P.current.pos = Math.round(cur);
+    S.lastId = P.current.id; S.lastPos = P.current.pos;
+    HP.save();
+    L().saveTrack(P.current);
   }
-  let uiTimer;
-  function toggleVideoUI() {
-    const v = $('#vtools');
-    const on = v.classList.toggle('show');
-    document.body.classList.toggle('ui-show', on);
-    clearTimeout(uiTimer);
-    if (on) uiTimer = setTimeout(() => { v.classList.remove('show'); document.body.classList.remove('ui-show'); }, 3600);
+
+  /* loop tick */
+  function tick() {
+    requestAnimationFrame(tick);
+    if (!P.active || P.active.paused) return;
+    if (S.crossfade && P.queue.length > 1 && !P.crossing && P.active.duration) {
+      const rem = P.active.duration - P.active.currentTime;
+      if (rem > 0 && rem <= S.crossfade) crossToNext();
+    }
   }
-  P.toggleVideoUI = toggleVideoUI;
+
+  async function crossToNext() {
+    P.crossing = true;
+    const nextI = (P.index + 1) % P.queue.length;
+    const realId = S.shuffle ? P.queue[P.order[nextI]] : P.queue[nextI];
+    const nextTrack = L().get(realId);
+    if (!nextTrack || nextTrack.kind === 'video') { P.crossing = false; return; }
+
+    const nextTarget = P.active === P.a ? P.b : P.a;
+    const src = await L().resolveSrc(nextTrack);
+    if (!src) { P.crossing = false; return; }
+
+    nextTarget.src = src;
+    nextTarget.currentTime = 0;
+    E().elementGain(nextTarget, 0);
+    try {
+      await nextTarget.play();
+      E().crossfade(P.active, nextTarget, S.crossfade);
+      setTimeout(() => {
+        P.index = nextI;
+        P.current = nextTrack;
+        P.active = nextTarget;
+        P.crossing = false;
+        paintNowPlaying(nextTrack);
+        highlightCards(); renderQueue();
+      }, S.crossfade * 1000);
+    } catch (_) { P.crossing = false; }
+  }
+
+  function highlightCards() {
+    $$('.card.playing').forEach(c => c.classList.remove('playing'));
+    if (P.current) {
+      const c = $('.card[data-id="' + P.current.id + '"]');
+      if (c) c.classList.add('playing');
+    }
+  }
+  P.highlightCards = highlightCards;
+
+  /* sleep timer */
+  P.setSleep = function (min) {
+    clearTimeout(P.sleepTimer);
+    const badge = $('#sleep-state');
+    if (!min) {
+      P.sleep = null;
+      badge.hidden = true;
+      HP.toast('Sleep timer turned off');
+      return;
+    }
+    if (min === 'endtrack') {
+      P.sleep = 'endtrack';
+      badge.hidden = false;
+      badge.textContent = 'Will stop at the end of this track';
+      HP.toast('Sleep timer set: end of track');
+      return;
+    }
+    P.sleep = min;
+    const end = Date.now() + min * 60000;
+    badge.hidden = false;
+    badge.textContent = 'Stopping in ' + min + ' minutes';
+    HP.toast('Sleep timer set: ' + min + ' min', 'ok');
+
+    P.sleepTimer = setTimeout(() => {
+      E().fadeVolume(0, 8000).then(() => {
+        P.pause();
+        E().applyVolume();
+        P.sleep = null;
+        badge.hidden = true;
+      });
+    }, Math.max(100, min * 60000 - 8000));
+  };
+
+  P.rangeFill = function (r) {
+    const min = +r.min || 0, max = +r.max || 100, val = +r.value || 0;
+    const pct = ((val - min) / (max - min)) * 100;
+    r.style.background = `linear-gradient(90deg,var(--a1) ${pct}%,rgba(140,150,180,.2) ${pct}%)`;
+  };
 
   HP.Player = P;
 })(window);
