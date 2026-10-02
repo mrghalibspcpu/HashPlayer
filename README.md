@@ -9,6 +9,8 @@ Install it as an app on your phone or desktop, or build a real Android APK — s
 
 `10-band EQ` · `visualizer` · `lyrics` · `subtitles` · `gestures` · `playlists` · `no account, no server, no tracking`
 
+### [⬇️ Android APK download karein](https://github.com/mrghalibspcpu/HashPlayer/releases/latest)
+
 </div>
 
 ---
@@ -17,6 +19,7 @@ Install it as an app on your phone or desktop, or build a real Android APK — s
 
 | Aap kya chahte hain | Kya karein |
 |---|---|
+| **Android phone pe install** | [Latest release](https://github.com/mrghalibspcpu/HashPlayer/releases/latest) se `-release.apk` download karein → tap karein → **Install** |
 | **Phone/PC pe app ki tarah install** | `web/` folder ko kisi bhi hosting (GitHub Pages) pe daalein → browser me kholein → **Install app** button dabayein |
 | **Android APK (.apk file)** | GitHub → **Actions** → **Build HashPlayer APK** → **Run workflow** → run khatam hone par **Artifacts** se APK download karein |
 | **Sirf test karna hai** | `cd web && python3 -m http.server 8080` → `http://localhost:8080` |
