@@ -1012,6 +1012,7 @@
     stage.addEventListener('pointermove', e => {
       if (pts.has(e.pointerId)) pts.set(e.pointerId, e);
       if (pts.size === 2 && pinch0) {
+        if (document.body.classList.contains('yt-mode')) return;   // the embed owns its own frame
         const [p1, p2] = Array.from(pts.values());
         const d = Math.hypot(p1.clientX - p2.clientX, p1.clientY - p2.clientY);
         P.zoom = clamp(d / pinch0, .6, 3);
@@ -1081,8 +1082,10 @@
     }
   }
   function applyBrightness() {
-    P.a.style.filter = 'brightness(' + P.brightness + ')';
-    $('#art-disc').style.filter = 'brightness(' + P.brightness + ')';
+    const f = P.brightness === 1 ? '' : 'brightness(' + P.brightness + ')';
+    P.a.style.filter = f;
+    $('#art-disc').style.filter = f;
+    const ym = $('#yt-mount'); if (ym) ym.style.filter = f;   // dim the embed too
   }
   let uiTimer;
   function toggleVideoUI() {

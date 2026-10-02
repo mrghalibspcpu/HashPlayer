@@ -121,7 +121,6 @@ class MainActivity : AppCompatActivity() {
             setBackgroundColor(Color.parseColor("#07080C"))
             overScrollMode = WebView.OVER_SCROLL_NEVER
             isVerticalScrollBarEnabled = false
-            setLayerType(View.LAYER_TYPE_HARDWARE, null)
         }
         root = FrameLayout(this).apply {
             setBackgroundColor(Color.BLACK)

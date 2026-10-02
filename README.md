@@ -11,7 +11,23 @@ Install it as an app on your phone or desktop, or build a real Android APK — s
 
 ### [⬇️ Android APK download karein](https://github.com/mrghalibspcpu/HashPlayer/releases/latest)
 
+`YouTube links` · `auto device scan` · `picture-in-picture` · `open with / share to` · `online lyrics` · `landscape video`
+
 </div>
+
+---
+
+## 🆕 Naya kya hai — 2.1
+
+| Masla / feature | Ab kya hota hai |
+|---|---|
+| **YouTube link** | URL sheet me YouTube link paste karein, ya YouTube app me **Share → HashPlayer** — video HashPlayer ke apne controls, gestures, sleep timer aur queue ke saath chalti hai. (YouTube apni audio khud deta hai, is liye us par EQ/visualizer kaam nahi karte — app aapko saaf bata deti hai.) |
+| **Device scan khud nahi hota tha** | App khulte hi ek baar permission maang kar poori device ki audio+video khud scan kar leti hai. Settings me band bhi kar sakte hain. |
+| **Atak atak ke chalna** | **Smooth mode** — phone par by default on. Bhaari blur/glow layers hat jaati hain, visualiser 30fps par cap, seek-bar updates throttle, aur Android side par file seeking ab direct byte offset se hoti hai (pehle poori file padhni padti thi). |
+| **Landscape me view kharab** | Phone landscape me video poori screen leti hai aur controls uske upar float karte hain; tap karne par chhup/dikh jaate hain. Rotate karte hi apne aap full-screen. |
+| **PiP nahi chalta tha** | Ab asli Android picture-in-picture. Home dabayein to video khud floating window me chali jaati hai. |
+| **File manager me "Open with"** | Har audio/video file par HashPlayer option aata hai — multi-file share bhi chalta hai. |
+| **Lyrics** | Lyrics sheet me **Find online** — ek tap me synced `.lrc` aa jaate hain (LRCLIB, bina account ke). |
 
 ---
 
