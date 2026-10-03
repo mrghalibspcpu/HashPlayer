@@ -1,0 +1,39 @@
+{
+  "name": "HashPlayer — Audio & Video",
+  "short_name": "HashPlayer",
+  "id": "hashplayer",
+  "description": "A private, offline-first audio and video player with a 10-band equaliser, visualiser, lyrics, subtitles and gesture controls. Your files never leave your device.",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "display_override": ["standalone", "fullscreen", "minimal-ui"],
+  "orientation": "any",
+  "background_color": "#07080c",
+  "theme_color": "#07080c",
+  "categories": ["entertainment", "music", "video", "utilities"],
+  "lang": "en",
+  "dir": "ltr",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "icons/apple-touch-icon.png", "sizes": "180x180", "type": "image/png" }
+  ],
+  "shortcuts": [
+    { "name": "Open library", "short_name": "Library", "url": "./?view=library", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Favourites", "short_name": "Favourites", "url": "./?view=favorites", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Sound Lab", "short_name": "Equaliser", "url": "./?view=eq", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] }
+  ],
+  "file_handlers": [
+    {
+      "action": "./",
+      "accept": {
+        "audio/*": [".mp3", ".m4a", ".aac", ".flac", ".wav", ".ogg", ".opus"],
+        "video/*": [".mp4", ".m4v", ".webm", ".mkv", ".mov"]
+      },
+      "launch_type": "single-client"
+    }
+  ],
+  "launch_handler": { "client_mode": "focus-existing" },
+  "prefer_related_applications": false
+}

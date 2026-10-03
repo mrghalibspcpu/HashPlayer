@@ -1,0 +1,13 @@
+<resources>
+    <string name="app_name">HashPlayer</string>
+    <string name="channel_name">Playback</string>
+    <string name="channel_desc">Shows what HashPlayer is playing</string>
+    <string name="nothing_playing">Nothing playing</string>
+    <string name="press_back">Press back again to exit</string>
+    <string name="need_permission">Allow access to your music and videos so HashPlayer can find them</string>
+    <string name="scanning">Scanning your device…</string>
+    <string name="open_with">Play with HashPlayer</string>
+    <string name="play_in_hashplayer">Play in HashPlayer</string>
+    <string name="battery_ok">Background play is already allowed ✔</string>
+    <string name="battery_fail">Could not open the battery settings</string>
+</resources>

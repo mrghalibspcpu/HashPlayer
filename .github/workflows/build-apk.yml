@@ -1,0 +1,114 @@
+name: Build HashPlayer APK
+
+on:
+  push:
+    branches: [main, 'arena/**']
+    tags: ['v*']
+    paths-ignore: ['**.md', 'legacy/**', '.github/workflows/pages.yml']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Assemble APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-34 build-tools;34.0.0'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+          cache-read-only: false
+
+      - name: Build debug APK
+        run: gradle --no-daemon --stacktrace assembleDebug
+
+      - name: Build release APK (signed with the debug key so it installs)
+        run: gradle --no-daemon assembleRelease
+        continue-on-error: true
+
+      - name: Verify the web player is packed inside the APK
+        run: |
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          unzip -l "$APK" | grep -q "assets/www/index.html" \
+            || { echo "::error::web assets are missing from the APK"; exit 1; }
+          echo "Packed web files:"
+          unzip -l "$APK" | grep "assets/www/" | awk '{print $4, $1" bytes"}'
+
+      - name: Rename artifacts
+        run: |
+          mkdir -p dist
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then V="$GITHUB_REF_NAME"; else V="build${{ github.run_number }}"; fi
+          cp app/build/outputs/apk/debug/app-debug.apk "dist/HashPlayer-$V-debug.apk"
+          if [ -f app/build/outputs/apk/release/app-release.apk ]; then
+            cp app/build/outputs/apk/release/app-release.apk "dist/HashPlayer-$V-release.apk"
+          fi
+          ls -lh dist
+
+      - name: Summary
+        run: |
+          {
+            echo "### HashPlayer APK ready :rocket:"
+            echo ""
+            echo "| file | size |"
+            echo "|---|---|"
+            for f in dist/*.apk; do
+              echo "| \`$(basename "$f")\` | $(du -h "$f" | cut -f1) |"
+            done
+            echo ""
+            echo "Download it from the **Artifacts** section of this run, copy it to your phone and tap to install."
+            echo "(Android will ask you to allow installs from unknown sources — that is normal for APKs outside the Play Store.)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: HashPlayer-apk
+          path: dist/*.apk
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Publish a downloadable release (tags only)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.apk
+          name: HashPlayer ${{ github.ref_name }}
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          generate_release_notes: true
+          body: |
+            ## HashPlayer ${{ github.ref_name }} — install on your phone
+
+            1. Download **HashPlayer-${{ github.ref_name }}-release.apk** below (or the debug build).
+            2. Open it on your Android phone and tap **Install**.
+            3. Android will ask to allow installs from this source — that is normal for apps outside the Play Store.
+
+            Prefer no install? The same player runs in any browser from the `web/` folder
+            and can be added to your home screen as a PWA.
+
+            **What's inside:** 10-band equaliser · 5 visualisers · lyrics (.lrc) · subtitles (.srt/.vtt/.ass) ·
+            video gestures · picture-in-picture · playlists & smart shuffle · sleep timer · A-B loop ·
+            crossfade · album-art theming · English + اردو · works fully offline, nothing is uploaded.
