@@ -53,7 +53,13 @@ class MediaServer(private val ctx: Context) {
 
     private val running = AtomicBoolean(false)
     private var server: ServerSocket? = null
-    private val pool = Executors.newFixedThreadPool(8) { r -> Thread(r, "hash-http").apply { isDaemon = true } }
+
+    /* A connection must never wait for a free worker — a queued media request is a
+       stalled song. Thumbnail *decoding* is the expensive part, so that (and only
+       that) is throttled with a permit. */
+    private val pool = Executors.newCachedThreadPool { r -> Thread(r, "hash-http").apply { isDaemon = true } }
+    private val decoders = java.util.concurrent.Semaphore(2)
+    private val noArt = java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap<String, Boolean>())
     private val thumbDir: File by lazy { File(ctx.cacheDir, "thumbs").apply { mkdirs() } }
 
     /* ====================================================== lifecycle */
@@ -118,6 +124,8 @@ class MediaServer(private val ctx: Context) {
             val (method, target, headers) = request
 
             when {
+                method == "OPTIONS" -> head(out, 204, "No Content", mapOf("Content-Length" to "0", "Allow" to "GET, HEAD, OPTIONS"))
+                method != "GET" && method != "HEAD" -> text(out, 405, "Method Not Allowed", "no")
                 target.startsWith("/media") -> media(method, target, headers, out)
                 target.startsWith("/thumb") -> thumb(method, target, out)
                 target.startsWith("/ping") -> text(out, 200, "OK", "pong")
@@ -294,12 +302,22 @@ class MediaServer(private val ctx: Context) {
         val kind = q["k"] ?: "audio"
         val key = (raw + "|" + kind).hashCode().toString().replace('-', 'n')
         val cached = File(thumbDir, "$key.jpg")
+        val blank = File(thumbDir, "$key.none")
+        if (noArt.contains(key) || blank.exists()) { text(out, 404, "Not Found", "no art"); return }
 
         val bytes: ByteArray? = if (cached.exists() && cached.length() > 0) {
             try { cached.readBytes() } catch (e: Exception) { null }
         } else {
-            val made = makeThumb(Uri.parse(raw), kind)
+            var made: ByteArray? = null
+            val got = try { decoders.tryAcquire(20, java.util.concurrent.TimeUnit.SECONDS) } catch (e: Exception) { false }
+            if (got) {
+                try { made = makeThumb(Uri.parse(raw), kind) } finally { decoders.release() }
+            }
             if (made != null) { try { cached.writeBytes(made) } catch (e: Exception) { } }
+            else if (got) {
+                // Remember that this file simply has no artwork, so the grid stops asking.
+                noArt.add(key); try { blank.createNewFile() } catch (e: Exception) { }
+            }
             made
         }
 

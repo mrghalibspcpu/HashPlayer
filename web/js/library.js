@@ -375,6 +375,7 @@
     nativeArt.set(t.nativeUri, u);
     return u || null;
   };
+  L.artFailed = function (t) { if (t && t.nativeUri) nativeArt.set(t.nativeUri, ''); };
   L.coverUrl = function (t) {
     if (!t) return null;
     if (!t.cover) return t.thumb || L.nativeArt(t) || null;   // YouTube / device thumbnails
@@ -478,7 +479,7 @@
     if (cu) {
       const im = el('img', { src: cu, alt: '', loading: 'lazy', decoding: 'async' });
       /* no album art / unreadable frame → quietly fall back to the glyph */
-      im.addEventListener('error', () => { im.remove(); if (!art.querySelector('.ph')) art.insertBefore(icon(isVid ? 'video' : 'music', 'ph'), art.firstChild); });
+      im.addEventListener('error', () => { L.artFailed(t); im.remove(); if (!art.querySelector('.ph')) art.insertBefore(icon(isVid ? 'video' : 'music', 'ph'), art.firstChild); });
       art.appendChild(im);
     } else art.appendChild(icon(isVid ? 'video' : 'music', 'ph'));
     const badges = el('div', { class: 'card-badges' });

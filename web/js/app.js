@@ -944,8 +944,10 @@
       if (dur) dur.textContent = t.duration ? HP.fmtTime(t.duration) : '—';
       const cu = L.coverUrl(t), art = c.querySelector('.card-art');
       if (cu && art && !art.querySelector('img')) {
+        const im = el('img', { src: cu, alt: '', loading: 'lazy', decoding: 'async' });
+        im.addEventListener('error', () => { L.artFailed && L.artFailed(t); im.remove(); });
         art.querySelector('.ph') && art.querySelector('.ph').remove();
-        art.insertBefore(el('img', { src: cu, alt: '', loading: 'lazy' }), art.firstChild);
+        art.insertBefore(im, art.firstChild);
       }
     });
     HP.on('track-changed', () => P.highlightCards());

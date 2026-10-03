@@ -2,7 +2,7 @@
 
 <img src="web/icons/icon-192.png" width="110" alt="HashPlayer" />
 
-# HashPlayer 2.0
+# HashPlayer 2.2
 
 **A private, offline-first audio & video player.**
 Install it as an app on your phone or desktop, or build a real Android APK — same code, one repository.
@@ -17,7 +17,21 @@ Install it as an app on your phone or desktop, or build a real Android APK — s
 
 ---
 
-## 🆕 Naya kya hai — 2.1
+## 🆕 Naya kya hai — 2.2
+
+| Masla / feature | Ab kya hota hai |
+|---|---|
+| **Thodi der baad gaana/video band ho jata tha aur “file re-open karein” aata tha** | Ab device ki files ek **asli loopback HTTP server** (127.0.0.1) se stream hoti hain — poore byte-range support ke saath, bilkul jaise native player karta hai. Sath hi ek **self-healing watchdog** hai: agar stream kisi wajah se toot jaye (OS memory trim, doze, provider ka descriptor band ho jana) to app **usi second par khud dobara stream khol kar** chalati rehti hai — koi popup nahi, koi RELINK badge nahi. Service worker ab media ko cache hi nahi karta (yeh bhi ek wajah thi), aur playback ke doran **partial wake-lock + Wi-Fi lock + audio focus** liya jata hai, is liye screen off hone par bhi music nahi rukta. |
+| **Thumbnails / album cover nahi dikhte the** | Har device file ka **album art ya video ka poster frame** ab native side par banta hai (MediaStore thumbnail → embedded art → video frame) aur cache ho jata hai. Browser/PWA me video ka frame khud canvas se nikala jata hai. Jis file me art hai hi nahi, uske liye app dobara kabhi try nahi karti (fast). |
+| **YouTube ab app ke andar** | Naya **YouTube tab**: search, trending, chips (Lofi, Qawwali, Coke Studio…), thumbnails ke sath results — tap karte hi video HashPlayer ke apne player, gestures, PiP aur queue me chalti hai. Koi Google account ya API key nahi; data open-source Piped/Invidious instances se aata hai (Settings → YouTube me apni instance bhi daal sakte hain). |
+| **YouTube video device me save karna** | Kisi bhi result par **⬇ button** (ya now-playing menu → *Download this video…*) → quality list → Android ka apna download manager file ko **Movies/HashPlayer** ya **Music/HashPlayer** me save kar deta hai. Video + audio-only dono options. |
+| **Share → HashPlayer** | Pehle ki tarah YouTube app me Share → HashPlayer; ab share ki hui video ko seedha menu se download bhi kar sakte hain. |
+
+> Audio/video ke liye koi beech ka server nahi — sab kuch aapke phone par. YouTube download public Piped/Invidious instances par depend karta hai; koi instance down ho to **Retry** ya Settings me doosri source chunein.
+
+---
+
+## 🆕 2.1 me kya aaya tha
 
 | Masla / feature | Ab kya hota hai |
 |---|---|

@@ -21,17 +21,27 @@
   /* ---------------- instances ---------------- */
   const PIPED = [
     'https://pipedapi.kavin.rocks',
+    'https://pipedapi.leptons.xyz',
+    'https://pipedapi.nosebs.ru',
+    'https://pipedapi-libre.kavin.rocks',
+    'https://piped-api.privacy.com.de',
     'https://pipedapi.adminforge.de',
-    'https://api.piped.private.coffee',
+    'https://api.piped.yt',
     'https://pipedapi.drgns.space',
+    'https://pipedapi.owo.si',
     'https://pipedapi.ducks.party',
-    'https://pipedapi.reallyaweso.me'
+    'https://piped-api.codespace.cz',
+    'https://pipedapi.reallyaweso.me',
+    'https://api.piped.private.coffee',
+    'https://pipedapi.darkness.services',
+    'https://pipedapi.orangenet.cc'
   ];
+  /* Invidious only works here when the instance enables both its API and CORS. */
   const INVIDIOUS = [
+    'https://invidious.f5.si',
     'https://inv.nadeko.net',
     'https://invidious.nerdvpn.de',
-    'https://yewtu.be',
-    'https://invidious.jing.rocks'
+    'https://yewtu.be'
   ];
   const LS_API = 'hashplayer.yt.api';
 
@@ -344,9 +354,17 @@
       renderResults([]);
       statusLine(
         navigator.onLine
-          ? 'YouTube search is not reachable right now. Pick another instance in Settings → YouTube, or try again.'
+          ? 'No YouTube source answered. Tap Retry, pick another source in Settings → YouTube, or open the YouTube app and use Share → HashPlayer.'
           : 'You are offline — YouTube needs a connection.'
       );
+      if (navigator.onLine) {
+        const b = el('button', { class: 'btn small', text: 'Open YouTube app' });
+        b.addEventListener('click', () => {
+          if (HP.Native && HP.Native.available) HP.Native.call('openExternal', 'https://m.youtube.com');
+          else w.open('https://m.youtube.com', '_blank', 'noopener');
+        });
+        $('#yt-status').appendChild(b);
+      }
     } finally { busy = false; }
   };
 

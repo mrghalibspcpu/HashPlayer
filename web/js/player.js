@@ -327,7 +327,17 @@
     console.warn('[media error]', err && err.code, t.name);
     /* Device files and links are re-opened automatically — a dropped stream is not
        the user's problem, and it is certainly not a reason to forget the file. */
-    if (t.nativeUri || t.source === 'url' || t.file || t.handle) { heal('error'); return; }
+    if (t.nativeUri || t.source === 'url' || t.file || t.handle) {
+      heal('error').then(ok => {
+        /* only a browser-handed file that really vanished still needs the user */
+        if (!ok && !t.nativeUri && t.source !== 'url' && P.current === t) {
+          t.file = null;
+          HP.Lib.countRelink(); HP.Lib.render();
+          HP.toast('File unavailable — re-open it from your device', 'err');
+        }
+      });
+      return;
+    }
     HP.Lib.countRelink(); HP.Lib.render();
     HP.toast('File unavailable — re-open it from your device', 'err');
   }
