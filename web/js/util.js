@@ -42,6 +42,13 @@
     let i = 0; while (b >= 1024 && i < u.length - 1) { b /= 1024; i++; }
     return (i ? b.toFixed(b < 10 ? 1 : 0) : b) + ' ' + u[i];
   }
+  function fmtCount(n) {
+    n = +n || 0;
+    if (n >= 1e9) return (n / 1e9).toFixed(1).replace(/\.0$/, '') + 'B';
+    if (n >= 1e6) return (n / 1e6).toFixed(1).replace(/\.0$/, '') + 'M';
+    if (n >= 1e3) return (n / 1e3).toFixed(1).replace(/\.0$/, '') + 'K';
+    return String(n);
+  }
   const fmtDate = t => t ? new Date(t).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '—';
   const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
   const uid = () => 'h' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
@@ -63,7 +70,8 @@
     filter: 'all', eqOn: false, eqGains: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0], eqPreset: 'flat',
     preamp: 0, bass: 0, treble: 0, reverb: 0, width: 100, balance: 0, boost: 100, crossfade: 0,
     mono: false, normalize: false, fade: true, pitch: true, lastId: null, lastPos: 0, lyricsOn: false,
-    perf: null, autoPip: true, autoScan: true, autoLandscape: true
+    perf: null, autoPip: true, autoScan: true, autoLandscape: true,
+    ytApi: '', ytRegion: 'US'
   };
   /* ---------- how much eye-candy can this device actually afford? ---------- */
   const ua = navigator.userAgent || '';
@@ -140,7 +148,13 @@
       autoPip: 'ایپ سے نکلنے پر چھوٹی ونڈو میں چلتا رہے',
       autoScan: 'ڈیوائس کی آڈیو/ویڈیو خودکار تلاش کریں',
       findLyrics: 'آن لائن بول تلاش کریں', scan: 'ڈیوائس اسکین کریں',
-      addUrlSub2: 'یوٹیوب لنک یا آڈیو/ویڈیو فائل کا براہِ راست لنک۔'
+      addUrlSub2: 'یوٹیوب لنک یا آڈیو/ویڈیو فائل کا براہِ راست لنک۔',
+      youtube: 'یوٹیوب', youtubeSub: 'ہیش پلیئر کے اندر ہی تلاش کریں، دیکھیں اور ڈاؤن لوڈ کریں۔',
+      searchYt: 'یوٹیوب پر تلاش کریں…', search2: 'تلاش', trending: 'مقبول', pasteLink: 'لنک پیسٹ کریں',
+      retry: 'دوبارہ کوشش', ytEmptyTitle: 'کچھ چلانے کے لیے تلاش کریں',
+      ytEmptyText: 'اوپر تلاش لکھیں، یا یوٹیوب ایپ سے شیئر → ہیش پلیئر کریں۔',
+      ytRegion: 'مقبول ویڈیوز کا ملک', ytRegionSub: 'کس ملک کی ٹرینڈنگ دکھائی جائے۔',
+      ytApi: 'تلاش کا ذریعہ', ytApiSub: 'خالی چھوڑیں تو خودکار منتخب ہوگا۔'
     }
   };
   HP.t = k => (STR[S.lang] && STR[S.lang][k]) || STR.en[k] || k;
@@ -236,7 +250,7 @@
   };
 
   HP.$ = $; HP.$$ = $$; HP.el = el; HP.icon = icon;
-  HP.fmtTime = fmtTime; HP.fmtBytes = fmtBytes; HP.fmtDate = fmtDate;
+  HP.fmtTime = fmtTime; HP.fmtBytes = fmtBytes; HP.fmtDate = fmtDate; HP.fmtCount = fmtCount;
   HP.clamp = clamp; HP.uid = uid; HP.esc = esc; HP.debounce = debounce; HP.throttle = throttle;
   HP.toast = toast; HP.applyI18n = applyI18n; HP.paletteFrom = paletteFrom; HP.STR = STR;
   HP.isAndroidApp = !!(w.HashNative);

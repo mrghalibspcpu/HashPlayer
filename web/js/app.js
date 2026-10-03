@@ -6,13 +6,13 @@
   'use strict';
   const HP = w.HP, S = HP.S, $ = HP.$, $$ = HP.$$, el = HP.el, icon = HP.icon, clamp = HP.clamp;
   const L = HP.Lib, P = HP.Player, E = HP.Engine, UI = {};
-  const APP_VERSION = '2.0.0';
+  const APP_VERSION = '2.2.0';
 
   /* =========================================================
      views & navigation
      ========================================================= */
   UI.nav = function (view) {
-    const map = { library: 'library', playlists: 'playlists', favorites: 'library', eq: 'eq', settings: 'settings' };
+    const map = { library: 'library', playlists: 'playlists', favorites: 'library', youtube: 'youtube', eq: 'eq', settings: 'settings' };
     const target = map[view] || 'library';
     L.view = view;
     document.body.dataset.view = view;
@@ -25,6 +25,7 @@
       L.render();
     }
     if (target === 'playlists') { closePlaylistDetail(); L.renderPlaylists(); }
+    if (target === 'youtube' && HP.Tube) HP.Tube.opened();
     if (target === 'eq') drawCurve();
     if (target === 'settings') refreshStorage();
   };
@@ -82,6 +83,12 @@
     item('plus', 'Add to playlist…', () => UI.playlistPicker([t.id]));
     item('lyrics', 'Lyrics…', () => UI.lyricsTool(t));
     if (t.kind === 'video') item('cc', 'Load subtitles…', () => UI.loadSidecar(t, 'sub'));
+    if (t.source === 'yt' || t.source === 'url') {
+      item('install', t.source === 'yt' ? 'Download this video…' : 'Download this file',
+        () => HP.Tube && (t.source === 'yt'
+          ? HP.Tube.downloadSheet({ id: t.ytId, title: t.title || t.name })
+          : HP.Tube.grab(t.url, (t.title || t.name), t.mime || '')));
+    }
     item('info', 'Track info', () => UI.trackInfo(t));
     m.appendChild(el('div', { class: 'sep' }));
     item('trash', 'Remove from library', async () => {
@@ -911,6 +918,21 @@
       HP.toast(S.lang === 'ur' ? 'زبان: اردو' : 'Language: English', 'ok');
     });
 
+    /* YouTube tab */
+    if (HP.Tube) HP.Tube.init();
+    const ytRegion = $('#set-ytregion'), ytApi = $('#set-ytapi');
+    if (ytRegion) {
+      ytRegion.value = S.ytRegion || 'US';
+      ytRegion.addEventListener('change', () => { HP.set('ytRegion', ytRegion.value); if (HP.Tube) HP.Tube.run(''); });
+    }
+    if (ytApi) {
+      ytApi.value = S.ytApi || '';
+      ytApi.addEventListener('change', () => {
+        HP.set('ytApi', ytApi.value.trim());
+        if (HP.Tube) { HP.Tube.forget(); HP.toast('Search source updated', 'ok'); }
+      });
+    }
+
     /* library events */
     HP.on('library', () => { if (document.body.dataset.view === 'playlists') L.renderPlaylists(); });
     HP.on('track-updated', t => {
@@ -931,7 +953,7 @@
     /* load the library */
     await L.load();
     const qp = new URLSearchParams(location.search).get('view');
-    UI.nav(['library', 'playlists', 'favorites', 'eq', 'settings'].indexOf(qp) > -1 ? qp : 'library');
+    UI.nav(['library', 'playlists', 'favorites', 'youtube', 'eq', 'settings'].indexOf(qp) > -1 ? qp : 'library');
     L.queueMeta(Array.from(L.tracks.values()).filter(t => !t.tagged));
 
     /* installed-app file handler: "Open with HashPlayer" */

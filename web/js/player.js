@@ -10,7 +10,7 @@
   const P = {
     a: null, b: null, active: null, current: null,
     queue: [], order: [], index: -1, context: 'Library',
-    ab: { a: null, b: null }, sleep: null, wake: null, lyrics: null, lrcIndex: -1,
+    ab: { a: null, b: null }, sleep: null, wake: null, lyrics: null, lrcIndex: -1, wantPlaying: false,
     pendingSrc: null, crossing: false, speedHold: false, brightness: 1, zoom: 1
   };
 
@@ -46,10 +46,107 @@
     m.addEventListener('loadedmetadata', () => { if (m === P.active) onMeta(); });
     m.addEventListener('error', () => { if (m === P.active) onError(); });
     m.addEventListener('waiting', () => { if (m === P.active) document.body.classList.add('buffering'); });
+    m.addEventListener('stalled', () => { if (m === P.active) Heal.stalledAt = Date.now(); });
+    m.addEventListener('abort', () => { if (m === P.active && P.wantPlaying) heal('abort'); });
     m.addEventListener('playing', () => document.body.classList.remove('buffering'));
     m.addEventListener('ratechange', () => { if (m === P.active) updateSpeedLabel(); });
     m.addEventListener('volumechange', () => { });
   }
+
+  /* =========================================================
+     self-healing playback  —  why this exists
+     ---------------------------------------------------------
+     On Android the audio/video bytes travel from a content:// file
+     through the shell's loopback HTTP server into the WebView. Any
+     hiccup on that path (the OS trimming memory, the device dozing,
+     a provider dropping a descriptor) used to surface as a dead media
+     element and a scary "re-open the file" message. A native player
+     would simply re-open the stream and carry on at the same second —
+     so that is exactly what HashPlayer does now.
+     ========================================================= */
+  const Heal = { tries: 0, last: 0, busy: false, stalledAt: 0, pos: 0, moved: 0, resumed: 0 };
+  P.Heal = Heal;
+
+  async function heal(why) {
+    const t = P.current;
+    if (!t || Heal.busy || P.crossing) return false;
+    const m = P.active;
+    if (!m || isYT(m) || t.source === 'yt') return false;
+    const err = m.error;
+    if (err && err.code === 4 && !Heal.tries) {            // genuinely unsupported format
+      HP.toast('This file’s format is not supported', 'err');
+      return false;
+    }
+    const dur = m.duration || t.duration || 0;
+    const pos = m.currentTime || t.pos || 0;
+    if (dur && pos >= dur - 1.2) return false;             // it really did reach the end
+    if (!t.nativeUri && t.source !== 'url' && !t.file && !t.handle) return false;
+
+    const now = Date.now();
+    if (now - Heal.last > 30000) Heal.tries = 0;
+    if (Heal.tries >= 5) {
+      Heal.tries = 0; Heal.last = now;
+      HP.toast('Playback keeps dropping — skipping to the next track', 'err');
+      setTimeout(() => P.next(true), 400);
+      return false;
+    }
+    Heal.tries++; Heal.last = now; Heal.busy = true;
+    const wasPlaying = P.wantPlaying;
+    console.warn('[heal]', why, 'at', pos.toFixed(1) + 's', 'attempt', Heal.tries);
+
+    let src = null;
+    try { src = await L().resolveSrc(t, true, true); } catch (e) { }
+    if (!src) { Heal.busy = false; return false; }
+
+    const done = () => {
+      try { if (pos > 0.6) m.currentTime = Math.max(0, pos - 0.3); } catch (e) { }
+      if (wasPlaying) { const pr = m.play(); if (pr && pr.catch) pr.catch(() => { }); }
+      Heal.busy = false; Heal.moved = Date.now(); Heal.stalledAt = 0;
+    };
+    try {
+      m.src = src;
+      m.load();
+      if (m.readyState >= 1) done();
+      else m.addEventListener('loadedmetadata', done, { once: true });
+    } catch (e) { Heal.busy = false; }
+    setTimeout(() => { Heal.busy = false; }, 9000);        // never get stuck "healing"
+    return true;
+  }
+  P.heal = heal;
+
+  /* A heartbeat that runs even when the screen is off (rAF does not). */
+  setInterval(function watchdog() {
+    const t = P.current, m = P.active;
+    if (!t || !m || isYT(m)) return;
+    const now = Date.now();
+
+    /* 1. we think we are playing but the element went quiet by itself */
+    if (P.wantPlaying && m.paused && !Heal.busy && !P.crossing) {
+      if (now - Heal.resumed > 2500) {
+        Heal.resumed = now;
+        const pr = m.play();
+        if (pr && pr.catch) pr.catch(() => { });
+      }
+      return;
+    }
+    if (!P.wantPlaying || m.paused) { Heal.pos = m.currentTime || 0; Heal.moved = now; return; }
+
+    /* 2. the clock is frozen although nothing is paused → the stream died */
+    const cur = m.currentTime || 0;
+    if (Math.abs(cur - Heal.pos) > 0.08) { Heal.pos = cur; Heal.moved = now; return; }
+    const stuckFor = now - (Heal.moved || now);
+    const buffering = document.body.classList.contains('buffering') || m.readyState < 3;
+    if (stuckFor > (buffering ? 9000 : 6000)) { Heal.moved = now; heal(buffering ? 'stall' : 'frozen'); }
+  }, 1500);
+
+  /* Coming back from PiP / lock screen: pick playback straight back up. */
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) return;
+    const m = P.active;
+    if (P.wantPlaying && m && !isYT(m) && m.paused && !Heal.busy) {
+      const pr = m.play(); if (pr && pr.catch) pr.catch(() => { });
+    }
+  });
 
   /* =========================================================
      loading & playback
@@ -156,8 +253,13 @@
     P.active = target;
     target.playbackRate = S.speed;
     if ('preservesPitch' in target) target.preservesPitch = S.pitch;
-    if (t.source === 'url') target.crossOrigin = 'anonymous'; else target.removeAttribute('crossorigin');
+    /* native files now arrive from the loopback server (a different origin), so the
+       element needs CORS for the Web Audio graph — the server allows it explicitly. */
+    if (t.source === 'url' || t.nativeUri) target.crossOrigin = 'anonymous';
+    else target.removeAttribute('crossorigin');
     if (target.src !== src) { target.src = src; target.load(); }
+    Heal.tries = 0; Heal.busy = false; Heal.pos = -1; Heal.moved = Date.now(); Heal.stalledAt = 0;
+    P.wantPlaying = !!autoplay;
 
     document.body.classList.toggle('has-video', isVideo);
     gain(target, S.fade && autoplay ? 0 : 1);
@@ -223,12 +325,11 @@
     const t = P.current; if (!t) return;
     const err = P.active.error;
     console.warn('[media error]', err && err.code, t.name);
-    if (t.source === 'url') HP.toast('Could not play that link (format or CORS blocked)', 'err');
-    else {
-      t.file = null;
-      HP.Lib.countRelink(); HP.Lib.render();
-      HP.toast('File unavailable — re-open it from your device', 'err');
-    }
+    /* Device files and links are re-opened automatically — a dropped stream is not
+       the user's problem, and it is certainly not a reason to forget the file. */
+    if (t.nativeUri || t.source === 'url' || t.file || t.handle) { heal('error'); return; }
+    HP.Lib.countRelink(); HP.Lib.render();
+    HP.toast('File unavailable — re-open it from your device', 'err');
   }
 
   P.toggle = function () {
@@ -241,6 +342,7 @@
   };
   P.play = async function () {
     if (!P.current) return;
+    P.wantPlaying = true;
     await ensureAudio();
     try {
       await P.active.play();
@@ -249,12 +351,14 @@
   };
   P.pause = function () {
     if (!P.current) return;
+    P.wantPlaying = false;
     if (S.fade && E().ready && !isYT(P.active)) {
       fade(P.active, 0, 220).then(() => { P.active.pause(); gain(P.active, 1); });
       onPause();
     } else P.active.pause();
   };
   P.stop = function () {
+    P.wantPlaying = false;
     P.active.pause(); try { P.active.currentTime = 0; } catch (e) { }
   };
 
@@ -277,6 +381,11 @@
     HP.emit('playing', false);
   }
   function onEnded() {
+    const m = P.active, cur = (m && m.currentTime) || 0;
+    const full = (m && m.duration) || (P.current && P.current.duration) || 0;
+    if (P.current && full > 5 && cur < full - 2.5 && !isYT(m)) {
+      if (heal('early-end')) return;               // the file "ended" 4 minutes early → reopen it
+    }
     const t = P.current;
     if (t) { t.pos = 0; t.plays = (t.plays || 0) + 1; t.lastPlayed = Date.now(); L().saveTrack(t); }
     saveEnergy();

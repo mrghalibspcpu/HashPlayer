@@ -70,6 +70,7 @@ class MainActivity : AppCompatActivity() {
         private const val PREFS = "hashplayer"
         private const val KEY_ASKED = "asked_media_permission"
         private val LINK = Regex("""https?://\S+""")
+        private val BAD_NAME = Regex("""[\\/:*?"<>|\r\n\t]""")
     }
 
     private lateinit var root: FrameLayout
@@ -86,6 +87,8 @@ class MainActivity : AppCompatActivity() {
     private var didAutoScan = false
     private var customView: View? = null
     private var customCallback: WebChromeClient.CustomViewCallback? = null
+    private val server by lazy { MediaServer(this) }
+    private var serverPort = 0
 
     private val fileChooser =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { res ->
@@ -108,6 +111,8 @@ class MainActivity : AppCompatActivity() {
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        serverPort = try { server.start() } catch (e: Exception) { 0 }
 
         loader = WebViewAssetLoader.Builder()
             .setDomain("appassets.androidplatform.net")
@@ -140,10 +145,16 @@ class MainActivity : AppCompatActivity() {
             setSupportMultipleWindows(false)
             javaScriptCanOpenWindowsAutomatically = false
             cacheMode = WebSettings.LOAD_DEFAULT
-            mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
+            // The loopback media server is http://127.0.0.1 — a secure origin per spec, but
+            // WebView still needs to be told it may be mixed with the https asset origin.
+            mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
             textZoom = 100
-            userAgentString = "$userAgentString HashPlayer/2.1"
+            userAgentString = "$userAgentString HashPlayer/2.2"
         }
+        // Keep the page rasterised while it is off-screen (PiP, notification shade, rotation):
+        // without this the WebView can throw away its surface mid-video and stall playback.
+        try { WebView.setWebContentsDebuggingEnabled(false) } catch (e: Exception) { }
+        try { web.settings.setOffscreenPreRaster(true) } catch (e: Exception) { }
 
         web.webViewClient = object : WebViewClient() {
             override fun shouldInterceptRequest(
@@ -288,7 +299,8 @@ class MainActivity : AppCompatActivity() {
 
     override fun onPause() {
         super.onPause()
-        if (!isPlaying) { web.onPause(); web.pauseTimers() }   // keep audio alive in the background
+        // Pausing the WebView kills decoding, so only ever do it when nothing is playing.
+        if (!isPlaying) { web.onPause(); web.pauseTimers() }
     }
 
     override fun onResume() {
@@ -315,6 +327,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        try { server.stop() } catch (e: Exception) { }
         PlaybackService.transport = null
         PlaybackService.stop(this)
         web.destroy()
@@ -398,7 +411,71 @@ class MainActivity : AppCompatActivity() {
         fun toastMsg(msg: String) = runOnUiThread { toast(msg) }
 
         @android.webkit.JavascriptInterface
-        fun version(): String = "2.1.0"
+        fun version(): String = "2.2.0"
+
+        /* ---------------- loopback media server ---------------- */
+
+        /** Playable http://127.0.0.1 URL for a content:// uri (falls back to the asset origin). */
+        @android.webkit.JavascriptInterface
+        fun mediaUrl(uri: String): String = try {
+            val u = normalizeUri(uri)
+            if (serverPort > 0) server.mediaUrl(u) else "$ORIGIN$MEDIA_PREFIX" + Uri.encode(u)
+        } catch (e: Exception) { "" }
+
+        /** Album art / poster frame for a content:// uri, or "" when there is none. */
+        @android.webkit.JavascriptInterface
+        fun thumbUrl(uri: String, kind: String): String = try {
+            if (serverPort > 0) server.thumbUrl(normalizeUri(uri), if (kind == "video") "video" else "audio") else ""
+        } catch (e: Exception) { "" }
+
+        @android.webkit.JavascriptInterface
+        fun serverPort(): Int = serverPort
+
+        /* ---------------- downloads (YouTube & direct links) ---------------- */
+
+        @android.webkit.JavascriptInterface
+        fun download(url: String, fileName: String, mime: String): Boolean =
+            this@MainActivity.download(url, fileName, mime)
+
+        @android.webkit.JavascriptInterface
+        fun canDownload(): Boolean = true
+    }
+
+    /** Old library rows stored the asset-origin wrapper — unwrap them back to content://. */
+    private fun normalizeUri(raw: String): String {
+        var u = raw
+        val marker = "$ORIGIN$MEDIA_PREFIX"
+        if (u.startsWith(marker)) u = Uri.decode(u.substring(marker.length))
+        else if (u.startsWith(MEDIA_PREFIX)) u = Uri.decode(u.substring(MEDIA_PREFIX.length))
+        val q = u.indexOf("?n=")                       // cache-busting token added by the web app
+        if (q > 0 && u.startsWith("content://")) u = u.substring(0, q)
+        return u
+    }
+
+    /** Hand a direct media URL to Android's own download manager. */
+    private fun download(url: String, fileNameRaw: String, mime: String): Boolean {
+        return try {
+            val cleaned = fileNameRaw.replace(BAD_NAME, "_").trim().take(120)
+            val safe = if (cleaned.isBlank()) "HashPlayer-" + System.currentTimeMillis() else cleaned
+            val video = mime.startsWith("video") || safe.endsWith(".mp4") || safe.endsWith(".webm")
+            val dir = if (video) android.os.Environment.DIRECTORY_MOVIES else android.os.Environment.DIRECTORY_MUSIC
+            val req = android.app.DownloadManager.Request(Uri.parse(url))
+                .setTitle(safe)
+                .setDescription(getString(R.string.app_name))
+                .setAllowedOverRoaming(true)
+                .setNotificationVisibility(android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                .setDestinationInExternalPublicDir(dir, "HashPlayer/" + safe)
+            if (mime.isNotBlank()) req.setMimeType(mime)
+            req.addRequestHeader("User-Agent", web.settings.userAgentString)
+            val dm = getSystemService(Context.DOWNLOAD_SERVICE) as android.app.DownloadManager
+            dm.enqueue(req)
+            runOnUiThread { toast(getString(R.string.download_started)) }
+            true
+        } catch (e: Exception) {
+            Log.w(TAG, "download", e)
+            runOnUiThread { toast(getString(R.string.download_failed)) }
+            false
+        }
     }
 
     private fun toast(s: String) = Toast.makeText(this, s, Toast.LENGTH_SHORT).show()
@@ -518,7 +595,10 @@ class MainActivity : AppCompatActivity() {
                 val id = c.getLong(idI)
                 val uri = ContentUris.withAppendedId(base, id)
                 val o = JSONObject()
-                o.put("uri", "$ORIGIN$MEDIA_PREFIX" + Uri.encode(uri.toString()))
+                // Store the bare content:// uri: the loopback port changes every launch,
+                // so the web app asks for a fresh playable URL right before it plays.
+                o.put("uri", uri.toString())
+                o.put("thumb", if (serverPort > 0) server.thumbUrl(uri.toString(), if (audio) "audio" else "video") else "")
                 o.put("name", if (nameI >= 0) c.getString(nameI) ?: "Track" else "Track")
                 o.put("title", if (titleI >= 0) c.getString(titleI) ?: "" else "")
                 o.put("artist", if (artI >= 0) (c.getString(artI) ?: "").replace("<unknown>", "") else "")
@@ -700,7 +780,8 @@ class MainActivity : AppCompatActivity() {
             val mime = contentResolver.getType(data) ?: guessMime(name)
             arr.put(
                 JSONObject()
-                    .put("uri", "$ORIGIN$MEDIA_PREFIX" + Uri.encode(data.toString()))
+                    .put("uri", data.toString())
+                    .put("thumb", if (serverPort > 0) server.thumbUrl(data.toString(), if (mime.startsWith("video")) "video" else "audio") else "")
                     .put("name", name).put("title", "").put("artist", "").put("album", "")
                     .put("size", size).put("mime", mime).put("duration", 0)
                     .put("kind", if (mime.startsWith("video")) "video" else "audio")

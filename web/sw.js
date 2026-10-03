@@ -1,12 +1,13 @@
 /* ============================================================
    HashPlayer · service worker — offline shell
    ============================================================ */
-const VERSION = 'hashplayer-v2.1.0';
+const VERSION = 'hashplayer-v2.2.0';
 const SHELL = [
   './', './index.html', './manifest.webmanifest',
   './css/base.css', './css/app.css', './css/player.css',
   './js/util.js', './js/db.js', './js/meta.js', './js/engine.js',
-  './js/visual.js', './js/yt.js', './js/library.js', './js/player.js', './js/app.js',
+  './js/visual.js', './js/yt.js', './js/library.js', './js/player.js',
+  './js/ytbrowse.js', './js/app.js',
   './icons/icon-192.png', './icons/icon-512.png', './icons/maskable-512.png',
   './icons/apple-touch-icon.png', './icons/favicon-32.png'
 ];
@@ -35,6 +36,10 @@ self.addEventListener('fetch', e => {
   const url = new URL(req.url);
   if (url.origin !== location.origin) return;            // never touch remote media
   if (req.headers.has('range')) return;                  // let media range requests through
+  /* Media must never go near the cache: a stored partial response would be replayed
+     for a different byte range and the track would die halfway through. */
+  if (req.destination === 'audio' || req.destination === 'video') return;
+  if (url.pathname.indexOf('/media/') > -1 || url.pathname.indexOf('/thumb') > -1) return;
 
   if (req.mode === 'navigate') {
     e.respondWith((async () => {

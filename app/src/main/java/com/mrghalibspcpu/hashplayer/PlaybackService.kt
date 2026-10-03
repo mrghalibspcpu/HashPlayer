@@ -60,6 +60,81 @@ class PlaybackService : Service() {
     private var title = ""
     private var artist = ""
     private var playing = false
+    private var wake: android.os.PowerManager.WakeLock? = null
+    private var wifi: android.net.wifi.WifiManager.WifiLock? = null
+    private var focusLost = false
+    private var audio: android.media.AudioManager? = null
+    @Suppress("DEPRECATION")
+    private var focusRequest: Any? = null
+
+    /* --------------------------------------------------------------
+       Wake locks. Android aggressively idles the CPU (and the Wi-Fi
+       radio for streams) a couple of minutes after the screen goes
+       off; when the player lives inside a WebView that shows up as
+       playback simply stopping mid-track. Holding a partial lock while
+       we are the active media app is exactly what a native player does.
+       -------------------------------------------------------------- */
+    private fun holdLocks(on: Boolean) {
+        try {
+            if (on) {
+                if (wake == null) {
+                    val pm = getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+                    wake = pm.newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "hashplayer:playback")
+                        .apply { setReferenceCounted(false) }
+                }
+                if (wake?.isHeld != true) wake?.acquire(4 * 60 * 60 * 1000L)
+                if (wifi == null) {
+                    val wm = applicationContext.getSystemService(Context.WIFI_SERVICE) as android.net.wifi.WifiManager
+                    wifi = wm.createWifiLock(android.net.wifi.WifiManager.WIFI_MODE_FULL_HIGH_PERF, "hashplayer:net")
+                        .apply { setReferenceCounted(false) }
+                }
+                if (wifi?.isHeld != true) wifi?.acquire()
+            } else {
+                if (wake?.isHeld == true) wake?.release()
+                if (wifi?.isHeld == true) wifi?.release()
+            }
+        } catch (e: Exception) { /* locks are a nicety, never a crash */ }
+    }
+
+    /* Play nicely with calls, alarms and other players. */
+    private val focusListener = android.media.AudioManager.OnAudioFocusChangeListener { change ->
+        when (change) {
+            android.media.AudioManager.AUDIOFOCUS_LOSS -> { focusLost = false; transport?.invoke("pause") }
+            android.media.AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
+                if (playing) { focusLost = true; transport?.invoke("pause") }
+            }
+            android.media.AudioManager.AUDIOFOCUS_GAIN -> {
+                if (focusLost) { focusLost = false; transport?.invoke("play") }
+            }
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun focus(on: Boolean) {
+        try {
+            val am = audio ?: (getSystemService(Context.AUDIO_SERVICE) as android.media.AudioManager).also { audio = it }
+            if (Build.VERSION.SDK_INT >= 26) {
+                if (on) {
+                    val attrs = android.media.AudioAttributes.Builder()
+                        .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
+                        .setContentType(android.media.AudioAttributes.CONTENT_TYPE_MUSIC)
+                        .build()
+                    val r = android.media.AudioFocusRequest.Builder(android.media.AudioManager.AUDIOFOCUS_GAIN)
+                        .setAudioAttributes(attrs)
+                        .setOnAudioFocusChangeListener(focusListener)
+                        .setWillPauseWhenDucked(false)
+                        .build()
+                    focusRequest = r
+                    am.requestAudioFocus(r)
+                } else (focusRequest as? android.media.AudioFocusRequest)?.let { am.abandonAudioFocusRequest(it) }
+            } else {
+                if (on) am.requestAudioFocus(
+                    focusListener, android.media.AudioManager.STREAM_MUSIC,
+                    android.media.AudioManager.AUDIOFOCUS_GAIN
+                ) else am.abandonAudioFocus(focusListener)
+            }
+        } catch (e: Exception) { }
+    }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -113,6 +188,9 @@ class PlaybackService : Service() {
                     ).build()
             )
         }
+
+        holdLocks(playing)
+        focus(playing)
 
         val notif = build()
         try {
@@ -181,6 +259,8 @@ class PlaybackService : Service() {
 
     override fun onDestroy() {
         running = false
+        holdLocks(false)
+        focus(false)
         session?.isActive = false
         session?.release()
         session = null

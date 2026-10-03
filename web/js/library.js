@@ -264,6 +264,10 @@
           const src = await L.resolveSrc(t, true);
           if (src) t.duration = await HP.Meta.probe(src, t.kind === 'video');
         }
+        /* videos rarely carry embedded art — grab a frame so the grid isn't a wall of glyphs */
+        if (t.kind === 'video' && !t.cover && !t.nativeUri) {
+          try { const shot = await grabFrame(t); if (shot) t.cover = shot; } catch (e) { }
+        }
         t.tagged = true;
         changed++;
         saveTrack(t);
@@ -273,6 +277,38 @@
     }
     working = false;
     if (changed) HP.emit('library');
+  }
+
+  /** Decode one frame of a video into a small JPEG blob, used as its cover. */
+  function grabFrame(t) {
+    return new Promise(async resolve => {
+      let url = null;
+      try { url = await L.resolveSrc(t, true); } catch (e) { }
+      if (!url) return resolve(null);
+      const v = document.createElement('video');
+      v.muted = true; v.playsInline = true; v.preload = 'metadata'; v.crossOrigin = 'anonymous';
+      let done = false;
+      const finish = b => { if (done) return; done = true; try { v.removeAttribute('src'); v.load(); } catch (e) { } resolve(b); };
+      const timer = setTimeout(() => finish(null), 9000);
+      v.addEventListener('loadeddata', () => {
+        try { v.currentTime = Math.min(3, (v.duration || 4) * 0.15); } catch (e) { }
+      });
+      v.addEventListener('seeked', () => {
+        try {
+          const w0 = v.videoWidth, h0 = v.videoHeight;
+          if (!w0) { clearTimeout(timer); return finish(null); }
+          const scale = Math.min(1, 480 / Math.max(w0, h0));
+          const c = document.createElement('canvas');
+          c.width = Math.max(1, Math.round(w0 * scale));
+          c.height = Math.max(1, Math.round(h0 * scale));
+          c.getContext('2d').drawImage(v, 0, 0, c.width, c.height);
+          c.toBlob(b => { clearTimeout(timer); finish(b || null); }, 'image/jpeg', 0.78);
+        } catch (e) { clearTimeout(timer); finish(null); }
+      });
+      v.addEventListener('error', () => { clearTimeout(timer); finish(null); });
+      v.src = url;
+      try { v.load(); } catch (e) { }
+    });
   }
 
   async function fileOf(t) {
@@ -290,12 +326,25 @@
   /* ---------------- source resolution ---------------- */
   const srcCache = new Map();           // id → objectURL
   const MAX_SRC = 6;
-  L.resolveSrc = async function (t, silent) {
+
+  /* Android: the shell streams content:// files over a loopback HTTP server whose port
+     changes every launch, so the playable URL is always asked for fresh — never stored.
+     (Older library rows kept the asset-origin wrapper; the shell unwraps those for us.) */
+  L.nativeSrc = function (t, fresh) {
+    if (!t || !t.nativeUri) return null;
+    const n = HP.Native && HP.Native.call('mediaUrl', t.nativeUri);
+    let u = n || t.nativeUri;
+    if (fresh) u += (u.indexOf('?') > -1 ? '&' : '?') + 'n=' + Date.now().toString(36);
+    return u;
+  };
+
+  L.resolveSrc = async function (t, silent, fresh) {
     if (!t) return null;
     if (t.source === 'yt') return 'yt:' + t.ytId;
     if (t.source === 'url') return t.url;
-    if (t.nativeUri) return t.nativeUri;
-    if (srcCache.has(t.id)) return srcCache.get(t.id);
+    if (t.nativeUri) return L.nativeSrc(t, fresh);
+    if (srcCache.has(t.id) && !fresh) return srcCache.get(t.id);
+    if (fresh && srcCache.has(t.id)) { URL.revokeObjectURL(srcCache.get(t.id)); srcCache.delete(t.id); }
     let f = t.file;
     if (!f && t.handle) {
       try {
@@ -318,9 +367,17 @@
 
   /* cover art object URLs (LRU) */
   const coverCache = new Map();
+  const nativeArt = new Map();          // nativeUri → thumbnail URL ('' = this file has none)
+  L.nativeArt = function (t) {
+    if (!t || !t.nativeUri || !(HP.Native && HP.Native.available)) return null;
+    if (nativeArt.has(t.nativeUri)) return nativeArt.get(t.nativeUri) || null;
+    const u = HP.Native.call('thumbUrl', t.nativeUri, t.kind || 'audio') || '';
+    nativeArt.set(t.nativeUri, u);
+    return u || null;
+  };
   L.coverUrl = function (t) {
     if (!t) return null;
-    if (!t.cover) return t.thumb || null;      // YouTube videos use their own thumbnail
+    if (!t.cover) return t.thumb || L.nativeArt(t) || null;   // YouTube / device thumbnails
     if (coverCache.has(t.id)) return coverCache.get(t.id);
     let u;
     try { u = URL.createObjectURL(t.cover); } catch (e) { return null; }
@@ -418,8 +475,12 @@
     const isVid = t.kind === 'video';
     const art = el('div', { class: 'card-art' });
     const cu = L.coverUrl(t);
-    if (cu) art.appendChild(el('img', { src: cu, alt: '', loading: 'lazy' }));
-    else art.appendChild(icon(isVid ? 'video' : 'music', 'ph'));
+    if (cu) {
+      const im = el('img', { src: cu, alt: '', loading: 'lazy', decoding: 'async' });
+      /* no album art / unreadable frame → quietly fall back to the glyph */
+      im.addEventListener('error', () => { im.remove(); if (!art.querySelector('.ph')) art.insertBefore(icon(isVid ? 'video' : 'music', 'ph'), art.firstChild); });
+      art.appendChild(im);
+    } else art.appendChild(icon(isVid ? 'video' : 'music', 'ph'));
     const badges = el('div', { class: 'card-badges' });
     if (isVid) badges.appendChild(el('span', { class: 'badge v', text: 'VIDEO' }));
     if (t.source === 'url') badges.appendChild(el('span', { class: 'badge', text: 'LINK' }));

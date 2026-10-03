@@ -8,4 +8,6 @@
     <string name="scanning">Scanning your device…</string>
     <string name="open_with">Play with HashPlayer</string>
     <string name="play_in_hashplayer">Play in HashPlayer</string>
+    <string name="download_started">Download started — check your notifications</string>
+    <string name="download_failed">Download could not be started</string>
 </resources>
