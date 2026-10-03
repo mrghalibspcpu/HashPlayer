@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>HashPlayer — Audio &amp; Video</title>
+<meta name="description" content="HashPlayer — a fast, offline, installable audio &amp; video player with 10-band EQ, visualizer, lyrics, subtitles and gesture controls.">
+<meta name="theme-color" content="#07080c">
+<meta name="color-scheme" content="dark light">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="HashPlayer">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="stylesheet" href="css/base.css">
+<link rel="stylesheet" href="css/app.css">
+<link rel="stylesheet" href="css/player.css">
+</head>
+<body class="theme-neon mode-pro" data-view="library">
+
+<!-- ════ ambient background ════ -->
+<div class="aurora" aria-hidden="true">
+  <span class="blob b1"></span><span class="blob b2"></span><span class="blob b3"></span>
+</div>
+<div class="grain" aria-hidden="true"></div>
+<div class="scanline" aria-hidden="true"></div>
+
+<!-- ════ icon sprite ════ -->
+<svg class="sprite" aria-hidden="true" focusable="false"><defs>
+<symbol id="i-play" viewBox="0 0 24 24"><path d="M6 3.5 20 12 6 20.5z"/></symbol>
+<symbol id="i-pause" viewBox="0 0 24 24"><path d="M7 4h3v16H7zM14 4h3v16h-3z"/></symbol>
+<symbol id="i-next" viewBox="0 0 24 24"><path d="M5 4.5 15 12 5 19.5z"/><path d="M18 5v14"/></symbol>
+<symbol id="i-prev" viewBox="0 0 24 24"><path d="M19 4.5 9 12l10 7.5z"/><path d="M6 5v14"/></symbol>
+<symbol id="i-ff" viewBox="0 0 24 24"><path d="M4 5.5 12 12l-8 6.5z"/><path d="M13 5.5 21 12l-8 6.5z"/></symbol>
+<symbol id="i-rw" viewBox="0 0 24 24"><path d="M20 5.5 12 12l8 6.5z"/><path d="M11 5.5 3 12l8 6.5z"/></symbol>
+<symbol id="i-shuffle" viewBox="0 0 24 24"><path d="M16 3h5v5M4 20 21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/></symbol>
+<symbol id="i-repeat" viewBox="0 0 24 24"><path d="M17 2l4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14M7 22l-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></symbol>
+<symbol id="i-repeat1" viewBox="0 0 24 24"><path d="M17 2l4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14M7 22l-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/><path d="M11 10h1v5"/></symbol>
+<symbol id="i-heart" viewBox="0 0 24 24"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l8.8 8.8 8.8-8.8a5.5 5.5 0 0 0 0-7.8z"/></symbol>
+<symbol id="i-queue" viewBox="0 0 24 24"><path d="M3 6h13M3 12h9M3 18h9M17 12v7a2 2 0 1 1-2-2h2z"/><path d="M17 12l4-2v7"/></symbol>
+<symbol id="i-eq" viewBox="0 0 24 24"><path d="M5 21v-7M5 10V3M12 21v-9M12 8V3M19 21v-5M19 12V3M2 14h6M9 8h6M16 16h6"/></symbol>
+<symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1A1.6 1.6 0 0 0 9 19.4a1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1A1.6 1.6 0 0 0 4.6 9a1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"/></symbol>
+<symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></symbol>
+<symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+<symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2.5h8a2 2 0 0 1 2 2V18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
+<symbol id="i-link" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.5.5l3-3A5 5 0 0 0 13.5 3.5L12 5"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3A5 5 0 0 0 10.5 20.5L12 19"/></symbol>
+<symbol id="i-file" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></symbol>
+<symbol id="i-vol" viewBox="0 0 24 24"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M16 9a4 4 0 0 1 0 6M19 6a8 8 0 0 1 0 12"/></symbol>
+<symbol id="i-mute" viewBox="0 0 24 24"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="m17 9 5 6M22 9l-5 6"/></symbol>
+<symbol id="i-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+<symbol id="i-up" viewBox="0 0 24 24"><path d="m6 15 6-6 6 6"/></symbol>
+<symbol id="i-left" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol>
+<symbol id="i-right" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+<symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+<symbol id="i-dots" viewBox="0 0 24 24"><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></symbol>
+<symbol id="i-expand" viewBox="0 0 24 24"><path d="M8 3H3v5M16 3h5v5M21 16v5h-5M3 16v5h5"/></symbol>
+<symbol id="i-collapse" viewBox="0 0 24 24"><path d="M3 8h5V3M21 8h-5V3M16 21v-5h5M8 21v-5H3"/></symbol>
+<symbol id="i-pip" viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="2"/><rect x="12" y="11" width="8" height="7" rx="1.5"/></symbol>
+<symbol id="i-cam" viewBox="0 0 24 24"><path d="M3 8a2 2 0 0 1 2-2h2l1.5-2h7L17 6h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="12.5" r="3.5"/></symbol>
+<symbol id="i-cc" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="3"/><path d="M10 10.5a2.5 2.5 0 1 0 0 3M18 10.5a2.5 2.5 0 1 0 0 3"/></symbol>
+<symbol id="i-moon" viewBox="0 0 24 24"><path d="M21 13A9 9 0 1 1 11 3a7 7 0 0 0 10 10z"/></symbol>
+<symbol id="i-timer" viewBox="0 0 24 24"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2M9 2h6"/></symbol>
+<symbol id="i-lyrics" viewBox="0 0 24 24"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></symbol>
+<symbol id="i-mark" viewBox="0 0 24 24"><path d="M19 21 12 16l-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></symbol>
+<symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6M10 11v6M14 11v6"/></symbol>
+<symbol id="i-save" viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M4 21h16"/></symbol>
+<symbol id="i-dl" viewBox="0 0 24 24"><path d="M12 3v13M7 11l5 5 5-5M4 20h16"/></symbol>
+<symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></symbol>
+<symbol id="i-list" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01"/></symbol>
+<symbol id="i-rotate" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></symbol>
+<symbol id="i-wave" viewBox="0 0 24 24"><path d="M2 12h3l2.5-7 4 18 3.5-11 2 5h5"/></symbol>
+<symbol id="i-music" viewBox="0 0 24 24"><path d="M9 18V5l10-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="16" cy="16" r="3"/></symbol>
+<symbol id="i-video" viewBox="0 0 24 24"><rect x="2" y="5" width="14" height="14" rx="3"/><path d="m16 10 6-3.5v11L16 14z"/></symbol>
+<symbol id="i-disc" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.5"/></symbol>
+<symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></symbol>
+<symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18 15 15 0 0 1 0-18z"/></symbol>
+<symbol id="i-install" viewBox="0 0 24 24"><rect x="5" y="2" width="14" height="20" rx="3"/><path d="M12 7v7M9 11l3 3 3-3"/></symbol>
+<symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+<symbol id="i-sparkle" viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z"/></symbol>
+<symbol id="i-drag" viewBox="0 0 24 24"><circle cx="9" cy="6" r="1.4"/><circle cx="15" cy="6" r="1.4"/><circle cx="9" cy="12" r="1.4"/><circle cx="15" cy="12" r="1.4"/><circle cx="9" cy="18" r="1.4"/><circle cx="15" cy="18" r="1.4"/></symbol>
+<symbol id="i-check" viewBox="0 0 24 24"><path d="m4 12 5 5L20 6"/></symbol>
+<symbol id="i-sort" viewBox="0 0 24 24"><path d="M4 7h10M4 12h7M4 17h4M17 4v16M17 20l-3-3M17 20l3-3"/></symbol>
+<symbol id="i-aspect" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M7 9v6M17 9v6"/></symbol>
+<symbol id="i-mirror" viewBox="0 0 24 24"><path d="M12 3v18M5 7l4 5-4 5zM19 7l-4 5 4 5z"/></symbol>
+<symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M2 12h2M20 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4"/></symbol>
+<symbol id="i-kbd" viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2.5"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M8 14h8"/></symbol>
+<symbol id="i-lock" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></symbol>
+<symbol id="i-unlock" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></symbol>
+<symbol id="i-yt" viewBox="0 0 24 24"><path d="M22.54 6.42a2.78 2.78 0 0 0-1.94-2C18.88 4 12 4 12 4s-6.88 0-8.6.46a2.78 2.78 0 0 0-1.94 2A29 29 0 0 0 1 11.75a29 29 0 0 0 .46 5.33A2.78 2.78 0 0 0 3.4 19c1.72.46 8.6.46 8.6.46s6.88 0 8.6-.46a2.78 2.78 0 0 0 1.94-2 29 29 0 0 0 .46-5.25 29 29 0 0 0-.46-5.33z"/><polygon points="9.75 15.02 15.5 11.75 9.75 8.48 9.75 15.02"/></symbol>
+</defs></svg>
+
+<!-- ════ boot splash ════ -->
+<div id="boot">
+  <div class="boot-logo"><img src="icons/icon-192.png" alt=""><div class="boot-ring"></div></div>
+  <div class="boot-name">HASH<span>PLAYER</span></div>
+  <div class="boot-bar"><i></i></div>
+</div>
+
+<!-- ════ top bar ════ -->
+<header id="topbar">
+  <button class="icon-btn only-mobile" id="btn-menu" aria-label="Menu"><svg class="ic"><use href="#i-list"/></svg></button>
+  <a class="brand" href="#" id="brand">
+    <span class="brand-hash">#</span>
+    <span class="brand-txt">HASH<b>PLAYER</b></span>
+  </a>
+  <div class="search">
+    <svg class="ic"><use href="#i-search"/></svg>
+    <input id="search" type="search" placeholder="Search tracks, artists, albums…" data-i18n-ph="search" autocomplete="off" spellcheck="false">
+    <button class="icon-btn tiny" id="search-clear" hidden aria-label="Clear"><svg class="ic"><use href="#i-x"/></svg></button>
+  </div>
+  <div class="top-actions">
+    <button class="btn small primary only-desk" id="btn-add-top"><svg class="ic"><use href="#i-plus"/></svg><span data-i18n="addFiles">Add media</span></button>
+    <button class="icon-btn" id="btn-install" hidden title="Install app"><svg class="ic"><use href="#i-install"/></svg></button>
+    <button class="icon-btn" id="btn-lang" title="Language (English / اردو)"><svg class="ic"><use href="#i-globe"/></svg></button>
+    <button class="icon-btn" id="btn-help" title="Shortcuts &amp; help"><svg class="ic"><use href="#i-info"/></svg></button>
+  </div>
+</header>
+
+<!-- ════ navigation rail / bottom bar ════ -->
+<nav id="rail">
+  <button class="nav-item active" data-nav="library"><svg class="ic"><use href="#i-music"/></svg><span data-i18n="library">Library</span></button>
+  <button class="nav-item" data-nav="youtube"><svg class="ic"><use href="#i-yt"/></svg><span>YouTube</span></button>
+  <button class="nav-item" data-nav="playlists"><svg class="ic"><use href="#i-queue"/></svg><span data-i18n="playlists">Playlists</span></button>
+  <button class="nav-item" data-nav="favorites"><svg class="ic"><use href="#i-heart"/></svg><span data-i18n="favorites">Favorites</span></button>
+  <button class="nav-item" data-nav="eq"><svg class="ic"><use href="#i-eq"/></svg><span data-i18n="sound">Sound</span></button>
+  <button class="nav-item" data-nav="settings"><svg class="ic"><use href="#i-gear"/></svg><span data-i18n="settings">Settings</span></button>
+  <div class="rail-foot only-desk">
+    <div class="stat-pill"><b id="stat-count">0</b> <span data-i18n="tracks">tracks</span></div>
+  </div>
+</nav>
+
+<!-- ════ views container ════ -->
+<main id="views">
+
+  <!-- ── view: library ── -->
+  <section class="view active" id="view-library">
+    <div class="view-head">
+      <div>
+        <h1 id="lib-title" data-i18n="library">Library</h1>
+        <p class="sub" id="lib-sub">Loading your tracks…</p>
+      </div>
+      <div class="head-actions">
+        <button class="btn small" id="btn-add-files"><svg class="ic"><use href="#i-plus"/></svg><span data-i18n="addFiles">Files</span></button>
+        <button class="btn small" id="btn-add-folder"><svg class="ic"><use href="#i-folder"/></svg><span data-i18n="addFolder">Folder</span></button>
+        <button class="btn small" id="btn-add-url"><svg class="ic"><use href="#i-link"/></svg><span data-i18n="addUrl">URL / YouTube</span></button>
+        <button class="btn small primary" id="btn-scan" hidden><svg class="ic"><use href="#i-sparkle"/></svg><span data-i18n="scan">Scan device</span></button>
+      </div>
+    </div>
+
+    <!-- relink notice when browser drops permissions -->
+    <div class="notice" id="relink-bar" hidden>
+      <svg class="ic"><use href="#i-info"/></svg>
+      <div><b data-i18n="relink">Re-link files:</b> <span id="relink-count">0</span> <span data-i18n="relinkMsg">tracks need to be opened again.</span></div>
+      <button class="btn small primary" id="btn-relink" data-i18n="addFiles">Re-select files</button>
+      <button class="icon-btn tiny" id="btn-relink-hide"><svg class="ic"><use href="#i-x"/></svg></button>
+    </div>
+
+    <div class="toolbar">
+      <div class="chips" id="type-chips">
+        <button class="chip active" data-filter="all" data-i18n="all">All</button>
+        <button class="chip" data-filter="audio"><svg class="ic"><use href="#i-music"/></svg><span data-i18n="audio">Audio</span></button>
+        <button class="chip" data-filter="video"><svg class="ic"><use href="#i-video"/></svg><span data-i18n="video">Video</span></button>
+        <button class="chip" data-filter="fav"><svg class="ic"><use href="#i-heart"/></svg><span data-i18n="favorites">Favorites</span></button>
+        <button class="chip" data-filter="recent" data-i18n="recent">Recent</button>
+        <button class="chip" data-filter="most" data-i18n="mostPlayed">Most played</button>
+      </div>
+      <div class="tool-right">
+        <button class="btn small" id="btn-play-all"><svg class="ic"><use href="#i-play"/></svg><span data-i18n="playAll">Play all</span></button>
+        <button class="btn small" id="btn-shuffle-all"><svg class="ic"><use href="#i-shuffle"/></svg><span data-i18n="shuffle">Shuffle</span></button>
+        <div class="select">
+          <svg class="ic"><use href="#i-sort"/></svg>
+          <select id="sort-by" aria-label="Sort tracks">
+            <option value="added">Recently added</option>
+            <option value="title">Title (A-Z)</option>
+            <option value="artist">Artist (A-Z)</option>
+            <option value="album">Album</option>
+            <option value="duration">Duration</option>
+            <option value="plays">Most played</option>
+            <option value="size">File size</option>
+          </select>
+        </div>
+        <button class="icon-btn" id="btn-view-mode" title="Toggle grid / list"><svg class="ic"><use href="#i-grid"/></svg></button>
+      </div>
+    </div>
+
+    <!-- media grid / list -->
+    <div id="grid" class="grid"></div>
+
+    <!-- empty state -->
+    <div id="empty" class="empty">
+      <div class="empty-art"><img src="icons/icon-192.png" alt=""><div class="empty-glow"></div></div>
+      <h2 data-i18n="emptyTitle">Drop your media files here</h2>
+      <p class="muted" data-i18n="emptyText">Add songs or videos from your device. Everything stays 100% on your device — nothing is ever uploaded.</p>
+      <div class="empty-actions">
+        <button class="btn big primary" id="btn-empty-files"><svg class="ic"><use href="#i-plus"/></svg><span data-i18n="addFiles">Select files</span></button>
+        <button class="btn big" id="btn-empty-folder"><svg class="ic"><use href="#i-folder"/></svg><span data-i18n="addFolder">Choose folder</span></button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── view: YouTube In-App Browse & Search ── -->
+  <section class="view" id="view-youtube">
+    <div class="view-head">
+      <div>
+        <h1>YouTube</h1>
+        <p class="sub">Search &amp; stream videos instantly or download to device.</p>
+      </div>
+      <div class="head-actions">
+        <button class="btn small" id="yt-open-link"><svg class="ic"><use href="#i-link"/></svg><span>Paste URL</span></button>
+      </div>
+    </div>
+
+    <div class="yt-search-bar">
+      <div class="search yt-search-input-wrap">
+        <svg class="ic"><use href="#i-search"/></svg>
+        <input id="yt-search-input" type="search" placeholder="Search YouTube videos, songs, artists…" autocomplete="off" spellcheck="false">
+        <button class="icon-btn tiny" id="yt-search-clear" hidden aria-label="Clear"><svg class="ic"><use href="#i-x"/></svg></button>
+      </div>
+      <button class="btn primary small" id="yt-search-go"><svg class="ic"><use href="#i-search"/></svg><span>Search</span></button>
+    </div>
+
+    <div class="chips wrap" id="yt-trending-chips">
+      <button class="chip active" data-q="Trending Music 2024">Trending Music</button>
+      <button class="chip" data-q="Lofi Hip Hop chill beats">Lofi Chill</button>
+      <button class="chip" data-q="Acoustic songs unplugged">Acoustic</button>
+      <button class="chip" data-q="Top Global Pop Hits">Top Hits</button>
+      <button class="chip" data-q="Relaxing Piano instrumental">Relaxing</button>
+      <button class="chip" data-q="Synthwave retro electronic">Synthwave</button>
+    </div>
+
+    <div id="yt-loading" class="yt-loading" hidden><div class="spin"></div><span>Searching YouTube…</span></div>
+    <div id="yt-results" class="yt-grid"></div>
+  </section>
+
+  <!-- ── view: playlists ── -->
+  <section class="view" id="view-playlists">
+    <div class="view-head">
+      <div>
+        <h1 data-i18n="playlists">Playlists</h1>
+        <p class="sub" data-i18n="playlistsSub">Custom collections, saved on this device.</p>
+      </div>
+      <div class="head-actions">
+        <button class="btn small primary" id="btn-new-playlist"><svg class="ic"><use href="#i-plus"/></svg><span data-i18n="newPlaylist">New playlist</span></button>
+        <button class="btn small" id="btn-save-queue"><svg class="ic"><use href="#i-save"/></svg><span data-i18n="saveQueue">Save current queue</span></button>
+      </div>
+    </div>
+
+    <div id="playlist-grid" class="playlist-grid"></div>
+
+    <div id="playlist-detail" class="playlist-detail" hidden>
+      <div class="pl-detail-head">
+        <button class="icon-btn" id="pl-back"><svg class="ic"><use href="#i-left"/></svg></button>
+        <div>
+          <h2 id="pl-name">Playlist</h2>
+          <p class="sub" id="pl-meta">0 tracks</p>
+        </div>
+        <div class="spacer"></div>
+        <button class="btn small primary" id="pl-play"><svg class="ic"><use href="#i-play"/></svg><span data-i18n="play">Play</span></button>
+        <button class="btn small" id="pl-shuffle"><svg class="ic"><use href="#i-shuffle"/></svg><span data-i18n="shuffle">Shuffle</span></button>
+        <button class="btn small danger ghost" id="pl-delete"><svg class="ic"><use href="#i-trash"/></svg></button>
+      </div>
+      <div id="pl-tracks" class="grid list"></div>
+    </div>
+  </section>
+
+  <!-- ── view: EQ / Sound Lab ── -->
+  <section class="view" id="view-eq">
+    <div class="view-head">
+      <div>
+        <h1 data-i18n="soundLab">Sound Lab</h1>
+        <p class="sub" data-i18n="soundLabSub">10-band equalizer, DSP effects and processing graph.</p>
+      </div>
+      <div class="head-actions">
+        <label class="switch"><input type="checkbox" id="eq-enable"><i></i><span data-i18n="eqOn">EQ on</span></label>
+        <button class="btn small" id="eq-reset" data-i18n="reset">Reset</button>
+      </div>
+    </div>
+
+    <!-- EQ rack -->
+    <div class="panel eq-panel">
+      <div class="eq-head">
+        <h3 data-i18n="presets">Presets</h3>
+        <span class="muted" id="eq-readout">Flat</span>
+      </div>
+      <div class="chips wrap" id="eq-presets"></div>
+      <div class="eq-curve-wrap"><canvas id="eq-curve"></canvas></div>
+      <div class="eq-rack" id="eq-rack"></div>
+    </div>
+
+    <!-- FX panel -->
+    <div class="panel fx-panel">
+      <h3 data-i18n="effects">Effects</h3>
+      <div class="fx-grid">
+        <div class="fx-item"><label data-i18n="preamp">Preamp</label><input type="range" id="fx-preamp" min="-12" max="12" step=".5" value="0"><output>0 dB</output></div>
+        <div class="fx-item"><label data-i18n="bassBoost">Bass boost</label><input type="range" id="fx-bass" min="0" max="14" step=".5" value="0"><output>0 dB</output></div>
+        <div class="fx-item"><label data-i18n="trebleBoost">Treble</label><input type="range" id="fx-treble" min="-8" max="12" step=".5" value="0"><output>0 dB</output></div>
+        <div class="fx-item"><label data-i18n="reverb">Reverb / space</label><input type="range" id="fx-reverb" min="0" max="100" step="1" value="0"><output>0%</output></div>
+        <div class="fx-item"><label data-i18n="widener">Stereo width</label><input type="range" id="fx-width" min="0" max="200" step="5" value="100"><output>100%</output></div>
+        <div class="fx-item"><label data-i18n="balance">Balance</label><input type="range" id="fx-balance" min="-100" max="100" step="5" value="0"><output>C</output></div>
+        <div class="fx-item"><label data-i18n="volBoost">Volume boost</label><input type="range" id="fx-boost" min="100" max="250" step="5" value="100"><output>100%</output></div>
+        <div class="fx-item"><label data-i18n="crossfade">Crossfade</label><input type="range" id="fx-crossfade" min="0" max="10" step=".5" value="0"><output>Off</output></div>
+      </div>
+      <div class="fx-switches">
+        <label class="switch"><input type="checkbox" id="fx-mono"><i></i><span data-i18n="mono">Mono audio</span></label>
+        <label class="switch"><input type="checkbox" id="fx-normalize"><i></i><span data-i18n="normalize">Night mode (dynamic compressor)</span></label>
+        <label class="switch"><input type="checkbox" id="fx-fade" checked><i></i><span data-i18n="fadePause">Fade on play / pause</span></label>
+        <label class="switch"><input type="checkbox" id="fx-pitch" checked><i></i><span data-i18n="pitch">Preserve pitch when changing speed</span></label>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── view: settings ── -->
+  <section class="view" id="view-settings">
+    <div class="view-head">
+      <div>
+        <h1 data-i18n="settings">Settings</h1>
+        <p class="sub">Preferences, theme, gestures and data storage.</p>
+      </div>
+    </div>
+
+    <div class="settings-grid">
+      <div class="panel">
+        <h3 data-i18n="appearance">Appearance</h3>
+        <div class="setting-row">
+          <div><b data-i18n="theme">Accent theme</b><small class="muted" data-i18n="themeSub">Player highlights &amp; visual mood.</small></div>
+          <div class="chips" id="theme-chips">
+            <button class="chip swatch" style="--sw:#00e5ff;--sw2:#b61bff" data-theme="neon">Neon</button>
+            <button class="chip swatch" style="--sw:#ff9a3d;--sw2:#ff2d78" data-theme="sunset">Sunset</button>
+            <button class="chip swatch" style="--sw:#2bff95;--sw2:#00c2a8" data-theme="matrix">Matrix</button>
+            <button class="chip swatch" style="--sw:#ffd166;--sw2:#8a5cff" data-theme="royal">Royal</button>
+            <button class="chip swatch" style="--sw:#8ab4ff;--sw2:#c9f2ff" data-theme="ice">Ice</button>
+          </div>
+        </div>
+        <div class="setting-row">
+          <div><b data-i18n="surface">Surface style</b><small class="muted" data-i18n="surfaceSub">AMOLED saves battery on OLED screens.</small></div>
+          <div class="chips" id="surface-chips">
+            <button class="chip active" data-surface="dark">Dark</button>
+            <button class="chip" data-surface="amoled">AMOLED black</button>
+            <button class="chip" data-surface="light">Light</button>
+          </div>
+        </div>
+        <label class="switch row"><input type="checkbox" id="set-autotheme" checked><i></i><span data-i18n="autoTheme">Adaptive album-art theming</span></label>
+        <label class="switch row"><input type="checkbox" id="set-motion" checked><i></i><span data-i18n="animations">Animations &amp; background aurora</span></label>
+        <label class="switch row"><input type="checkbox" id="set-simple"><i></i><span data-i18n="simpleMode">Simple player mode</span></label>
+      </div>
+
+      <div class="panel">
+        <h3 data-i18n="playback">Playback</h3>
+        <div class="setting-row">
+          <div><b data-i18n="visualizer">Visualizer style</b><small class="muted">Live Web Audio visuals.</small></div>
+          <div class="chips" id="vis-chips">
+            <button class="chip" data-vis="bars">Bars</button>
+            <button class="chip" data-vis="mirror">Mirror</button>
+            <button class="chip" data-vis="wave">Wave</button>
+            <button class="chip" data-vis="radial">Radial</button>
+            <button class="chip" data-vis="nebula">Nebula</button>
+            <button class="chip" data-vis="off">Off</button>
+          </div>
+        </div>
+        <label class="switch row"><input type="checkbox" id="set-gestures" checked><i></i><span data-i18n="gestures">Stage gestures (brightness, volume, seek)</span></label>
+        <label class="switch row"><input type="checkbox" id="set-resume" checked><i></i><span data-i18n="resume">Resume last played track</span></label>
+        <label class="switch row"><input type="checkbox" id="set-autoplay" checked><i></i><span data-i18n="autoplayNext">Autoplay next track in queue</span></label>
+        <label class="switch row"><input type="checkbox" id="set-keepawake" checked><i></i><span data-i18n="keepAwake">Keep screen awake while playing</span></label>
+        <div class="setting-row">
+          <div><b data-i18n="seekStep">Double-tap seek step</b><small class="muted" data-i18n="seekStepSub">Seconds skipped on double tap.</small></div>
+          <div class="select">
+            <select id="set-seekstep">
+              <option value="5">5 seconds</option>
+              <option value="10">10 seconds</option>
+              <option value="15">15 seconds</option>
+              <option value="30">30 seconds</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h3 data-i18n="data">Library &amp; Data</h3>
+        <p class="muted" id="storage-info" data-i18n="storageUsed">IndexedDB local storage</p>
+        <div class="btn-row">
+          <button class="btn small" id="btn-export"><svg class="ic"><use href="#i-save"/></svg><span data-i18n="export">Export library JSON</span></button>
+          <button class="btn small" id="btn-import"><svg class="ic"><use href="#i-folder"/></svg><span data-i18n="import">Import JSON</span></button>
+          <button class="btn small danger ghost" id="btn-clear"><svg class="ic"><use href="#i-trash"/></svg><span data-i18n="clear">Clear library</span></button>
+        </div>
+        <label class="switch row"><input type="checkbox" id="set-persist"><i></i><span data-i18n="persistStorage">Request persistent storage permission</span></label>
+      </div>
+
+      <div class="panel">
+        <h3 data-i18n="about">About HashPlayer</h3>
+        <p class="muted" data-i18n="aboutText">A private, high-performance audio &amp; video player with zero ads, zero trackers, and offline capability. Your files stay strictly on your device.</p>
+        <div class="about-meta">
+          <span>Version: <b id="app-version">v2.1.0</b></span>
+          <span>Environment: <b id="about-env">app</b></span>
+        </div>
+        <div class="btn-row">
+          <button class="btn small" id="btn-help2"><svg class="ic"><use href="#i-kbd"/></svg><span data-i18n="shortcuts">Keyboard shortcuts</span></button>
+          <button class="btn small" id="btn-install2" hidden><svg class="ic"><use href="#i-install"/></svg><span data-i18n="install">Install app</span></button>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<!-- ════ mini player bar ════ -->
+<aside id="minibar" hidden>
+  <div class="mini-prog"><i id="mini-fill"></i></div>
+  <div class="mini-art" id="mini-art">
+    <img id="mini-img" alt="">
+    <svg class="ic ph"><use href="#i-music"/></svg>
+  </div>
+  <div class="mini-meta" id="mini-meta">
+    <strong id="mini-title">Nothing playing</strong>
+    <small id="mini-artist">Select a track</small>
+  </div>
+  <div class="mini-ctrls">
+    <button class="icon-btn fav" id="mini-fav" aria-label="Favourite"><svg class="ic"><use href="#i-heart"/></svg></button>
+    <button class="icon-btn play" id="mini-play" aria-label="Play / Pause"><svg class="ic"><use href="#i-play"/></svg></button>
+    <button class="icon-btn" id="mini-next" aria-label="Next"><svg class="ic"><use href="#i-next"/></svg></button>
+    <div class="vol only-desk">
+      <button class="icon-btn tiny" id="mini-mute"><svg class="ic"><use href="#i-vol"/></svg></button>
+      <input type="range" id="mini-vol" min="0" max="100" value="100" aria-label="Volume">
+    </div>
+    <button class="icon-btn only-mobile" id="mini-queue" aria-label="Queue"><svg class="ic"><use href="#i-queue"/></svg></button>
+    <button class="icon-btn" id="mini-expand" aria-label="Expand player"><svg class="ic"><use href="#i-up"/></svg></button>
+  </div>
+</aside>
+
+<!-- ════ now playing modal (expanded view) ════ -->
+<section id="np" aria-hidden="true">
+  <div class="np-bg"><img id="np-bg-img" alt=""></div>
+
+  <!-- portrait top bar -->
+  <header class="np-top">
+    <button class="icon-btn" id="np-close"><svg class="ic"><use href="#i-down"/></svg></button>
+    <div class="np-top-mid">
+      <small data-i18n="nowPlaying">NOW PLAYING</small>
+      <span id="np-context">Library</span>
+    </div>
+    <div class="np-top-actions">
+      <button class="icon-btn" id="np-download" title="Download / Save to Device"><svg class="ic"><use href="#i-dl"/></svg></button>
+      <button class="icon-btn" id="np-more"><svg class="ic"><use href="#i-dots"/></svg></button>
+    </div>
+  </header>
+
+  <div class="np-body">
+    <!-- stage: video + art + visualizer + landscape overlay HUD -->
+    <div class="stage" id="stage">
+      <video id="media" playsinline webkit-playsinline preload="metadata" crossorigin="anonymous"></video>
+      <div class="art-wrap" id="art-wrap">
+        <div class="art-disc" id="art-disc">
+          <img id="art-img" alt="">
+          <svg class="ic ph"><use href="#i-disc"/></svg>
+        </div>
+      </div>
+      <canvas id="vis"></canvas>
+      <div class="lyrics" id="lyrics" hidden><div class="lyrics-scroll" id="lyrics-scroll"></div></div>
+
+      <!-- gesture feedback HUD -->
+      <div class="gfx" id="gfx"><svg class="ic"><use href="#i-ff"/></svg><span id="gfx-text">+10s</span></div>
+      <div class="gbar" id="gbar"><svg class="ic" id="gbar-icon"><use href="#i-vol"/></svg><div class="gbar-track"><i id="gbar-fill"></i></div><span id="gbar-val">50</span></div>
+      <div class="ripple" id="ripple-l"></div><div class="ripple" id="ripple-r"></div>
+      <div class="badge-speed" id="speed-badge" hidden>2x</div>
+
+      <!-- floating video overlay HUD (Landscape & Fullscreen) -->
+      <div class="v-overlay" id="v-overlay">
+        <!-- top HUD bar -->
+        <div class="v-top-bar">
+          <button class="icon-btn" id="v-back" title="Back"><svg class="ic"><use href="#i-left"/></svg></button>
+          <div class="v-info">
+            <b id="v-title">Title</b>
+            <small id="v-sub">Artist</small>
+          </div>
+          <div class="v-top-actions">
+            <button class="icon-btn" id="v-download" title="Download / Save to Device"><svg class="ic"><use href="#i-dl"/></svg></button>
+            <button class="icon-btn" id="v-aspect" title="Aspect ratio"><svg class="ic"><use href="#i-aspect"/></svg></button>
+            <button class="icon-btn" id="v-rotate" title="Rotate"><svg class="ic"><use href="#i-rotate"/></svg></button>
+            <button class="icon-btn" id="v-mirror" title="Mirror"><svg class="ic"><use href="#i-mirror"/></svg></button>
+            <button class="icon-btn" id="v-shot" title="Screenshot"><svg class="ic"><use href="#i-cam"/></svg></button>
+            <button class="icon-btn" id="v-cc" title="Subtitles"><svg class="ic"><use href="#i-cc"/></svg></button>
+            <button class="icon-btn" id="v-pip" title="Picture in picture"><svg class="ic"><use href="#i-pip"/></svg></button>
+            <button class="icon-btn" id="v-full" title="Fullscreen"><svg class="ic"><use href="#i-expand"/></svg></button>
+          </div>
+        </div>
+
+        <!-- center play/pause HUD button -->
+        <div class="v-center-ctrls">
+          <button class="v-center-btn" id="v-play-center" aria-label="Play / Pause"><svg class="ic"><use href="#i-play"/></svg></button>
+        </div>
+
+        <!-- unlock screen floating button when locked -->
+        <div class="v-lock-badge" id="v-lock-badge">
+          <button class="btn tiny" id="v-unlock-btn"><svg class="ic"><use href="#i-unlock"/></svg><span data-i18n="unlockScreen">Unlock Screen</span></button>
+        </div>
+      </div>
+    </div>
+
+    <!-- meta + controls panel -->
+    <div class="np-ctrl">
+      <div class="np-meta">
+        <div class="np-titles">
+          <h2 id="np-title">Nothing playing</h2>
+          <p id="np-artist">Add a song or video to begin</p>
+        </div>
+        <button class="icon-btn fav" id="np-fav"><svg class="ic"><use href="#i-heart"/></svg></button>
+      </div>
+
+      <div class="seek" id="seek">
+        <canvas id="energy" class="energy"></canvas>
+        <div class="seek-track"><i id="seek-fill"></i><b id="seek-knob"></b></div>
+        <div class="seek-buf" id="seek-buf"></div>
+        <div class="seek-marks" id="seek-marks"></div>
+        <div class="seek-ab" id="seek-ab" hidden></div>
+        <div class="seek-tip" id="seek-tip" hidden>0:00</div>
+      </div>
+      <div class="times"><span id="t-cur">0:00</span><span id="t-rem">-0:00</span></div>
+
+      <div class="transport">
+        <button class="icon-btn" id="btn-shuf" title="Shuffle"><svg class="ic"><use href="#i-shuffle"/></svg></button>
+        <button class="icon-btn" id="btn-prev" title="Previous"><svg class="ic"><use href="#i-prev"/></svg></button>
+        <button class="icon-btn big" id="btn-rw" title="Rewind 10s"><svg class="ic"><use href="#i-rw"/></svg></button>
+        <button class="play-btn" id="btn-play" title="Play / Pause"><svg class="ic"><use href="#i-play"/></svg></button>
+        <button class="icon-btn big" id="btn-ff" title="Fast-forward 10s"><svg class="ic"><use href="#i-ff"/></svg></button>
+        <button class="icon-btn" id="btn-next" title="Next"><svg class="ic"><use href="#i-next"/></svg></button>
+        <button class="icon-btn" id="btn-rep" title="Repeat"><svg class="ic"><use href="#i-repeat"/></svg></button>
+      </div>
+
+      <div class="np-tools">
+        <button class="tool" id="t-speed" data-pro><b id="speed-label">1.0×</b><span data-i18n="speed">Speed</span></button>
+        <button class="tool" id="t-ab" data-pro><b id="ab-label">A-B</b><span data-i18n="loop">Loop</span></button>
+        <button class="tool" id="t-eq" data-pro><svg class="ic"><use href="#i-eq"/></svg><span data-i18n="equalizer">Equalizer</span></button>
+        <button class="tool" id="t-lyrics"><svg class="ic"><use href="#i-lyrics"/></svg><span data-i18n="lyrics">Lyrics</span></button>
+        <button class="tool" id="t-sleep"><svg class="ic"><use href="#i-timer"/></svg><span data-i18n="sleep">Sleep</span></button>
+        <button class="tool" id="t-mark" data-pro><svg class="ic"><use href="#i-mark"/></svg><span data-i18n="bookmark">Bookmark</span></button>
+        <button class="tool" id="t-vis" data-pro><svg class="ic"><use href="#i-wave"/></svg><span data-i18n="visualizer">Visualizer</span></button>
+        <button class="tool" id="v-lock" data-pro><svg class="ic"><use href="#i-lock"/></svg><span data-i18n="lockScreen">Lock</span></button>
+        <button class="tool" id="t-queue"><svg class="ic"><use href="#i-queue"/></svg><span data-i18n="queue">Queue</span></button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ════ queue drawer ════ -->
+<aside id="queue-panel" aria-hidden="true">
+  <header>
+    <h3><svg class="ic"><use href="#i-queue"/></svg> <span data-i18n="queue">Queue</span> <small id="q-count">0</small></h3>
+    <div class="spacer"></div>
+    <button class="icon-btn" id="q-save" title="Save as playlist"><svg class="ic"><use href="#i-save"/></svg></button>
+    <button class="icon-btn" id="q-clear" title="Clear"><svg class="ic"><use href="#i-trash"/></svg></button>
+    <button class="icon-btn" id="q-close"><svg class="ic"><use href="#i-x"/></svg></button>
+  </header>
+  <div id="q-list"></div>
+</aside>
+
+<!-- ════ overlays & sheets ════ -->
+<div id="scrim"></div>
+
+<div class="sheet" id="sheet-speed" hidden>
+  <h3 data-i18n="speed">Playback speed</h3>
+  <div class="chips wrap" id="speed-chips"></div>
+  <input type="range" id="speed-range" min="25" max="300" step="5" value="100">
+  <div class="sheet-foot"><button class="btn ghost" data-close data-i18n="close">Close</button></div>
+</div>
+
+<div class="sheet" id="sheet-sleep" hidden>
+  <h3 data-i18n="sleepTimer">Sleep timer</h3>
+  <p class="muted" data-i18n="sleepSub">Playback fades out and stops automatically.</p>
+  <div class="chips wrap" id="sleep-chips">
+    <button class="chip" data-min="5">5 min</button>
+    <button class="chip" data-min="10">10 min</button>
+    <button class="chip" data-min="15">15 min</button>
+    <button class="chip" data-min="30">30 min</button>
+    <button class="chip" data-min="45">45 min</button>
+    <button class="chip" data-min="60">60 min</button>
+    <button class="chip" data-min="endtrack" data-i18n="endOfTrack">End of track</button>
+    <button class="chip danger" data-min="0" data-i18n="off">Off</button>
+  </div>
+  <div class="sleep-state" id="sleep-state" hidden></div>
+  <div class="sheet-foot"><button class="btn ghost" data-close data-i18n="close">Close</button></div>
+</div>
+
+<div class="sheet" id="sheet-url" hidden>
+  <h3 data-i18n="addUrlTitle">Open media or YouTube link</h3>
+  <p class="muted" data-i18n="addUrlSub">Direct link to audio/video or a YouTube video URL.</p>
+  <input type="url" id="url-input" placeholder="https://youtube.com/watch?v=... or https://example.com/audio.mp3" spellcheck="false">
+  <div class="sheet-foot">
+    <button class="btn ghost" data-close data-i18n="cancel">Cancel</button>
+    <button class="btn primary" id="url-add" data-i18n="add">Add &amp; play</button>
+  </div>
+</div>
+
+<div class="sheet" id="sheet-playlist" hidden>
+  <h3 id="pl-dlg-title" data-i18n="newPlaylist">New playlist</h3>
+  <input type="text" id="pl-input" placeholder="My late-night mix" maxlength="60">
+  <div id="pl-pick" class="pl-pick"></div>
+  <div class="sheet-foot">
+    <button class="btn ghost" data-close data-i18n="cancel">Cancel</button>
+    <button class="btn primary" id="pl-save" data-i18n="save">Save</button>
+  </div>
+</div>
+
+<div class="sheet wide" id="sheet-help" hidden>
+  <h3 data-i18n="shortcuts">Keyboard shortcuts</h3>
+  <div class="keys" id="keys-list"></div>
+  <div class="sheet-foot"><button class="btn ghost" data-close data-i18n="close">Close</button></div>
+</div>
+
+<div class="sheet" id="sheet-info" hidden>
+  <h3 data-i18n="trackInfo">Track info</h3>
+  <div id="info-body" class="info-body"></div>
+  <div class="sheet-foot"><button class="btn ghost" data-close data-i18n="close">Close</button></div>
+</div>
+
+<div class="sheet" id="sheet-lyrics" hidden>
+  <h3 data-i18n="lyricsTools">Lyrics</h3>
+  <p class="muted" data-i18n="lyricsSub">Search online with 1 tap, load an .lrc/.txt file, or edit lyrics.</p>
+  <div class="head-actions">
+    <button class="btn primary small" id="lrc-search-online"><svg class="ic"><use href="#i-search"/></svg><span data-i18n="searchOnline">Search Online (1-Tap)</span></button>
+    <button class="btn small" id="lrc-load"><svg class="ic"><use href="#i-file"/></svg><span data-i18n="loadFile">Load file</span></button>
+    <div class="offset"><span data-i18n="offset">Offset</span>
+      <button class="btn tiny" id="lrc-minus">−0.5s</button><b id="lrc-offset">0.0s</b><button class="btn tiny" id="lrc-plus">+0.5s</button>
+    </div>
+  </div>
+  <textarea id="lrc-text" rows="7" placeholder="[00:12.50] First line of the song…"></textarea>
+  <div class="sheet-foot">
+    <button class="btn ghost danger" id="lrc-clear" data-i18n="remove">Remove</button>
+    <button class="btn primary" id="lrc-save" data-i18n="save">Save</button>
+  </div>
+</div>
+
+<div class="sheet" id="sheet-lyrics-search" hidden>
+  <h3 data-i18n="lyricsOnline">Online Lyrics Search</h3>
+  <p class="muted">Search LRCLIB for synchronized .lrc and plain lyrics.</p>
+  <div class="lrc-search-box">
+    <input type="text" id="lrc-search-q" placeholder="Song title or artist…" spellcheck="false">
+    <button class="btn primary" id="lrc-search-btn"><svg class="ic"><use href="#i-search"/></svg> <span data-i18n="search">Search</span></button>
+  </div>
+  <div class="lrc-results-list" id="lrc-search-results"></div>
+  <div class="sheet-foot">
+    <button class="btn ghost" data-close data-i18n="close">Close</button>
+  </div>
+</div>
+
+<div id="ctx" class="ctx" hidden></div>
+<div id="toasts"></div>
+<div id="dropzone"><div class="dz-inner"><svg class="ic"><use href="#i-save"/></svg><b data-i18n="dropHere">Drop to add to your library</b></div></div>
+
+<input type="file" id="file-input" multiple accept="audio/*,video/*,.mp3,.m4a,.flac,.wav,.ogg,.opus,.aac,.mp4,.mkv,.webm,.mov,.m4v,.avi,.lrc,.srt,.vtt" hidden>
+<input type="file" id="folder-input" webkitdirectory directory multiple hidden>
+<input type="file" id="side-input" accept=".lrc,.txt,.srt,.vtt" hidden>
+<input type="file" id="import-input" accept="application/json,.json" hidden>
+
+<script src="js/util.js"></script>
+<script src="js/db.js"></script>
+<script src="js/meta.js"></script>
+<script src="js/engine.js"></script>
+<script src="js/visual.js"></script>
+<script src="js/library.js"></script>
+<script src="js/player.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
