@@ -8,4 +8,6 @@
     <string name="scanning">Scanning your device…</string>
     <string name="open_with">Play with HashPlayer</string>
     <string name="play_in_hashplayer">Play in HashPlayer</string>
+    <string name="battery_ok">Background play is already allowed ✔</string>
+    <string name="battery_fail">Could not open the battery settings</string>
 </resources>

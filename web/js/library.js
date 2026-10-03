@@ -213,20 +213,26 @@
   L.addNative = async function (items, opts) {
     opts = opts || {};
     const known = new Map(); L.tracks.forEach(t => { if (t.nativeUri) known.set(t.nativeUri, t); });
-    const add = [];
+    const add = [], artFix = [];
     (items || []).forEach(it => {
-      if (known.has(it.uri)) return;
+      const ex = known.get(it.uri);
+      if (ex) {
+        /* library saved before covers existed → graft the album art on */
+        if (!ex.thumb && it.art) { ex.thumb = it.art; artFix.push(ex); }
+        return;
+      }
       const g = HP.splitArtistTitle(it.name || 'Track');
       add.push({
         id: HP.uid(), key: it.uri, name: it.name || 'Track', title: it.title || g.title,
         artist: it.artist || g.artist || '', album: it.album || '', genre: '', year: '', trackNo: '',
         duration: (it.duration || 0) / 1000, size: it.size || 0, mime: it.mime || '',
         kind: it.kind || 'audio', source: 'native', file: null, handle: null, nativeUri: it.uri,
-        url: null, cover: null, folder: it.folder || '', added: Date.now(), plays: 0, lastPlayed: 0,
-        fav: false, pos: 0, lrc: null, sub: null, bookmarks: [], tagged: true
+        url: null, cover: null, thumb: it.art || null, folder: it.folder || '', added: Date.now(),
+        plays: 0, lastPlayed: 0, fav: false, pos: 0, lrc: null, sub: null, bookmarks: [], tagged: true
       });
     });
     add.forEach(t => L.tracks.set(t.id, t));
+    if (artFix.length) saveSoon();
     if (add.length) await DB.bulkPut('tracks', add);
     HP.emit('library');
     if (!opts.quiet) HP.toast(add.length ? add.length + ' tracks found on device' : 'No new tracks found', add.length ? 'ok' : '');
@@ -418,8 +424,15 @@
     const isVid = t.kind === 'video';
     const art = el('div', { class: 'card-art' });
     const cu = L.coverUrl(t);
-    if (cu) art.appendChild(el('img', { src: cu, alt: '', loading: 'lazy' }));
-    else art.appendChild(icon(isVid ? 'video' : 'music', 'ph'));
+    if (cu) {
+      const im = el('img', { src: cu, alt: '', loading: 'lazy' });
+      /* cover failed (offline thumbnail, moved file…) → fall back to the icon */
+      im.addEventListener('error', () => {
+        im.remove();
+        if (!art.querySelector('.ph')) art.insertBefore(icon(isVid ? 'video' : 'music', 'ph'), art.firstChild);
+      });
+      art.appendChild(im);
+    } else art.appendChild(icon(isVid ? 'video' : 'music', 'ph'));
     const badges = el('div', { class: 'card-badges' });
     if (isVid) badges.appendChild(el('span', { class: 'badge v', text: 'VIDEO' }));
     if (t.source === 'url') badges.appendChild(el('span', { class: 'badge', text: 'LINK' }));

@@ -1,7 +1,7 @@
 /* ============================================================
    HashPlayer · service worker — offline shell
    ============================================================ */
-const VERSION = 'hashplayer-v2.1.0';
+const VERSION = 'hashplayer-v2.2.0';
 const SHELL = [
   './', './index.html', './manifest.webmanifest',
   './css/base.css', './css/app.css', './css/player.css',
@@ -35,6 +35,9 @@ self.addEventListener('fetch', e => {
   const url = new URL(req.url);
   if (url.origin !== location.origin) return;            // never touch remote media
   if (req.headers.has('range')) return;                  // let media range requests through
+  /* device files (/media/) and their covers (/art/) are streamed by the native
+     shell — the worker must never buffer or clone those bodies */
+  if (url.pathname.startsWith('/media/') || url.pathname.startsWith('/art/')) return;
 
   if (req.mode === 'navigate') {
     e.respondWith((async () => {

@@ -301,8 +301,16 @@ body[dir=rtl] .ctx button{text-align:right}
   #views{left:0;padding:14px 14px calc(62px + var(--mini-h) + 30px)}
   .view-head h1{font-size:22px}
   .toolbar{top:0;gap:8px}
-  .tool-right{width:100%;margin:0}
-  .tool-right .select{flex:1}
+  /* portrait phones: the filter chips (…Most played) swipe sideways instead of
+     being pushed off the edge of the screen, and the action row (…Shuffle)
+     shrinks to icons before it ever overflows */
+  #type-chips{flex:1 1 auto;min-width:0;flex-wrap:nowrap;overflow-x:auto;
+    overscroll-behavior-x:contain;scrollbar-width:none;-ms-overflow-style:none;
+    -webkit-overflow-scrolling:touch;padding-bottom:2px}
+  #type-chips::-webkit-scrollbar{display:none}
+  #type-chips .chip{flex:none}
+  .tool-right{width:100%;margin:0;flex-wrap:wrap;min-width:0}
+  .tool-right .select{flex:1;min-width:0}
   .grid{grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:12px}
   #toasts{bottom:calc(62px + var(--mini-h) + 16px + env(safe-area-inset-bottom))}
   .head-actions .btn span{display:none}
@@ -313,6 +321,10 @@ body[dir=rtl] .ctx button{text-align:right}
   .empty-art img{width:88px;height:88px}
   .panel{padding:14px;border-radius:20px}
   .eq-rack{height:160px}
+  /* very narrow screens: Play all / Shuffle become icon buttons so the
+     sort dropdown never gets squeezed off the row */
+  #btn-play-all span,#btn-shuffle-all span{display:none}
+  #btn-play-all,#btn-shuffle-all{padding:9px 12px}
 }
 
 /* simple mode hides pro controls */

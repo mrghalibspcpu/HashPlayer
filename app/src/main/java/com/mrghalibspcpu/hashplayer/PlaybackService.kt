@@ -8,8 +8,11 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.os.Build
 import android.os.IBinder
+import android.os.PowerManager
 import android.support.v4.media.MediaMetadataCompat
 import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
@@ -19,8 +22,10 @@ import androidx.core.app.ServiceCompat
 /**
  * Keeps HashPlayer audible when the app is in the background and puts a proper
  * media notification (with lock-screen controls) on screen. The actual audio is
- * produced by the WebView, so this service only owns the MediaSession, the
- * notification and the "don't kill me" foreground state.
+ * produced by the WebView, so this service owns the MediaSession, the
+ * notification, the "don't kill me" foreground state — and a partial wake lock,
+ * because without one Android puts the CPU to sleep a few minutes after the
+ * screen goes dark and the music just stops mid-song.
  */
 class PlaybackService : Service() {
 
@@ -37,17 +42,28 @@ class PlaybackService : Service() {
         /** Set by MainActivity: forwards notification / lock-screen taps into the web app. */
         var transport: ((String) -> Unit)? = null
 
+        /** Cover that arrived before the service was running — attached on the next update(). */
+        @Volatile private var pendingArt: String? = null
+
         fun update(ctx: Context, playing: Boolean, title: String, artist: String) {
             if (!playing && !running) return
             val i = Intent(ctx, PlaybackService::class.java)
                 .putExtra("playing", playing)
                 .putExtra("title", title)
                 .putExtra("artist", artist)
+            pendingArt?.let { p -> i.putExtra("art", p) }
             try {
                 if (playing) {
                     if (Build.VERSION.SDK_INT >= 26) ctx.startForegroundService(i) else ctx.startService(i)
                 } else ctx.startService(i)
             } catch (e: Exception) { /* background start limits — ignore */ }
+        }
+
+        /** Cover art for the notification (base64 JPEG, already downscaled by the web side). */
+        fun setArt(ctx: Context, b64: String) {
+            pendingArt = b64
+            if (!running) return            // it will ride along with the next update()
+            try { ctx.startService(Intent(ctx, PlaybackService::class.java).putExtra("art", b64)) } catch (e: Exception) { }
         }
 
         fun stop(ctx: Context) {
@@ -60,6 +76,9 @@ class PlaybackService : Service() {
     private var title = ""
     private var artist = ""
     private var playing = false
+    private var art: Bitmap? = null
+    private var artB64: String? = null
+    private var wakeLock: PowerManager.WakeLock? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -89,13 +108,24 @@ class PlaybackService : Service() {
         playing = intent?.getBooleanExtra("playing", playing) ?: playing
         title = intent?.getStringExtra("title")?.ifBlank { getString(R.string.nothing_playing) }
             ?: getString(R.string.nothing_playing)
-        artist = intent?.getStringExtra("artist") ?: ""
+        artist = intent?.getStringExtra("artist") ?: artist
+
+        /* a cover arrived (possibly on its own, after the track already started) */
+        intent?.getStringExtra("art")?.let { b64 ->
+            if (b64 != artB64) { artB64 = b64; art = decodeArt(b64) }
+        }
 
         session?.apply {
             setMetadata(
                 MediaMetadataCompat.Builder()
                     .putString(MediaMetadataCompat.METADATA_KEY_TITLE, title)
                     .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, artist)
+                    .apply {
+                        art?.let {
+                            putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, it)
+                            putBitmap(MediaMetadataCompat.METADATA_KEY_ART, it)
+                        }
+                    }
                     .build()
             )
             setPlaybackState(
@@ -114,6 +144,10 @@ class PlaybackService : Service() {
             )
         }
 
+        /* the CPU must stay awake while the WebView is producing audio — this is
+           what stops "it plays for a while and then goes silent" with the screen off */
+        holdAwake(playing)
+
         val notif = build()
         try {
             ServiceCompat.startForeground(
@@ -127,6 +161,33 @@ class PlaybackService : Service() {
         }
         return START_STICKY
     }
+
+    private fun holdAwake(on: Boolean) {
+        try {
+            if (on) {
+                if (wakeLock == null) {
+                    val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+                    wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "HashPlayer:playback")
+                }
+                wakeLock?.let { if (!it.isHeld) it.acquire() }
+            } else {
+                wakeLock?.let { if (it.isHeld) it.release() }
+            }
+        } catch (e: Exception) { }
+    }
+
+    private fun decodeArt(b64: String): Bitmap? = try {
+        val bytes = android.util.Base64.decode(b64, android.util.Base64.DEFAULT)
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) null
+        else {
+            val opts = BitmapFactory.Options().apply {
+                inSampleSize = maxOf(1, maxOf(bounds.outWidth, bounds.outHeight) / 512)
+            }
+            BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
+        }
+    } catch (e: Exception) { null }
 
     private fun action(name: String) = PendingIntent.getService(
         this, name.hashCode(),
@@ -148,6 +209,7 @@ class PlaybackService : Service() {
             .setContentTitle(title)
             .setContentText(artist)
             .setContentIntent(open)
+            .setLargeIcon(art)
             .setDeleteIntent(action(ACTION_STOP))
             .addAction(android.R.drawable.ic_media_previous, "Previous", action(ACTION_PREV))
             .addAction(
@@ -180,6 +242,8 @@ class PlaybackService : Service() {
     }
 
     override fun onDestroy() {
+        holdAwake(false)
+        wakeLock = null
         running = false
         session?.isActive = false
         session?.release()
@@ -188,6 +252,7 @@ class PlaybackService : Service() {
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {
+        holdAwake(false)
         stopSelf()
         super.onTaskRemoved(rootIntent)
     }

@@ -448,6 +448,39 @@
     mini.classList.toggle('has-vid', t.kind === 'video' && !cu);
     updateTimes();
     setMediaSession(t, cu);
+    sendNativeArt(t, cu);
+  }
+
+  /**
+   * Cover art for the Android media notification: the artwork is scaled down to a
+   * small canvas here and handed to the native shell as base64 — once per track.
+   */
+  let artSentFor = null, artTimer = null;
+  function sendNativeArt(t, cu) {
+    const n = window.HashNative;
+    if (!n || !n.setArt || !cu || artSentFor === t.id) return;
+    clearTimeout(artTimer);
+    artTimer = setTimeout(() => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        try {
+          const MAX = 320;
+          const k = Math.min(1, MAX / Math.max(img.naturalWidth || 1, img.naturalHeight || 1));
+          const c = document.createElement('canvas');
+          c.width = Math.max(1, Math.round((img.naturalWidth || MAX) * k));
+          c.height = Math.max(1, Math.round((img.naturalHeight || MAX) * k));
+          c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+          const b64 = c.toDataURL('image/jpeg', .82).split(',')[1];
+          if (b64 && b64.length > 64 && b64.length < 900000) {
+            artSentFor = t.id;
+            n.setArt(b64);
+          }
+        } catch (e) { /* cross-origin art (rare) — notification stays text-only */ }
+      };
+      img.onerror = () => { };
+      img.src = cu;
+    }, 300);
   }
 
   let tintTimer;

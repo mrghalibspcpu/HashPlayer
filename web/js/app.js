@@ -6,7 +6,7 @@
   'use strict';
   const HP = w.HP, S = HP.S, $ = HP.$, $$ = HP.$$, el = HP.el, icon = HP.icon, clamp = HP.clamp;
   const L = HP.Lib, P = HP.Player, E = HP.Engine, UI = {};
-  const APP_VERSION = '2.0.0';
+  const APP_VERSION = '2.2.0';
 
   /* =========================================================
      views & navigation
@@ -969,6 +969,13 @@
       HP.Native.call('keepAwake', !!S.keepAwake);
       const scanBtn = $('#btn-scan');
       if (scanBtn) { scanBtn.hidden = false; scanBtn.querySelector('span').textContent = 'Rescan device'; }
+      /* background playback: offer the battery-saver exemption once */
+      const bgRow = $('#bgplay-row');
+      if (bgRow) {
+        bgRow.hidden = false;
+        const bb = $('#btn-battery');
+        bb && bb.addEventListener('click', () => Native.call('requestBatteryExemption'));
+      }
       /* the shell scans by itself on launch; this covers a reload with the page already granted */
       if (S.autoScan && !L.tracks.size) setTimeout(() => HP.Native.call('scanMedia'), 900);
       HP.on('setting', ({ k, v }) => {

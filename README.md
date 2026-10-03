@@ -17,7 +17,19 @@ Install it as an app on your phone or desktop, or build a real Android APK — s
 
 ---
 
-## 🆕 Naya kya hai — 2.1
+## 🆕 Naya kya hai — 2.2
+
+| Masla / feature | Ab kya hota hai |
+|---|---|
+| **Thori der baad playback ruk jati thi** | Player ab bilkul native app ki tarah chalta rehta hai: foreground service ab playback ke doran **wake lock** rakhta hai (screen off hone par CPU so kar audio band kar deta tha), WebView background me bhi "visible" rehta hai, aur Settings me ek tap **Battery settings** button aggressive battery savers (MIUI/EMUI…) se bachne ke liye whitelist banata hai. |
+| **Background play — video + YouTube** | Screen band karein ya app chhod dein: local video **aur YouTube embed** dono ka audio chalta rehta hai, notification controls ke saath. Video par home dabayein to pehle jaisa system PiP window bhi milta hai. |
+| **Audio ke album covers** | Device scan ab har gaane ka **album art aur har video ki thumbnail** MediaStore se uthata hai — list, queue, now-playing aur notification sab par cover dikhta hai. Purani library bhi agle scan par khud covers le leti hai. |
+| **Portrait me buttons bahar jaate the** | Filter chips (…Most played) ab screen ke andar **side-swipe** hote hain, aur Play all / Shuffle choti screen par icon ban jaate hain — portrait me kuch bhi cut nahi hota. |
+| **Notification me album art** | Media notification ab track ka cover dikhata hai (lock screen par bhi). |
+
+---
+
+## Naya kya tha — 2.1
 
 | Masla / feature | Ab kya hota hai |
 |---|---|
@@ -88,8 +100,9 @@ It adds what a browser cannot do on Android:
 
 - **MediaStore scan** — finds every song and video on the phone
 - Streams those `content://` files to the player **with HTTP Range support** (so seeking works)
+- **Album art & video thumbnails** served straight from MediaStore (`/art/…`)
 - A real system **file picker** for `<input type="file">`
-- **Background playback** + media notification with lock-screen controls (foreground service + `MediaSession`)
+- **Background playback** that actually keeps playing: foreground service + `MediaSession` + **wake lock**, and the WebView stays "visible" so even the YouTube embed doesn't pause
 - Hardware **back button** handling and "Open with HashPlayer" from any file manager
 
 ### Build it in the cloud (no tools needed)

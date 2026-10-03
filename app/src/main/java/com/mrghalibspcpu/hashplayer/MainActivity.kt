@@ -8,15 +8,21 @@ import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
 import android.content.res.Configuration
+import android.graphics.Bitmap
 import android.graphics.Color
+import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.ParcelFileDescriptor
+import android.os.PowerManager
 import android.provider.MediaStore
 import android.provider.OpenableColumns
+import android.provider.Settings
 import android.util.Log
+import android.util.LruCache
 import android.util.Rational
+import android.util.Size
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
@@ -42,9 +48,29 @@ import androidx.webkit.WebViewAssetLoader
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedInputStream
+import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
+import java.io.File
 import java.io.FilterInputStream
 import java.io.InputStream
 import kotlin.concurrent.thread
+
+/**
+ * A WebView that keeps reporting itself "visible" while media is playing, even after
+ * the Activity has been stopped (screen off, home button, another app on top).
+ *
+ * When a normal WebView's window goes away the renderer marks the page hidden and
+ * HTML5 video — and especially the YouTube iframe player, which pauses itself on
+ * visibilitychange — stops dead. Reporting VISIBLE while playback is running is what
+ * turns "a web page that happens to make noise" into a real background player.
+ */
+class KeepAliveWebView(context: Context) : WebView(context) {
+    @Volatile var keepAlive = false
+
+    override fun onWindowVisibilityChanged(visibility: Int) {
+        super.onWindowVisibilityChanged(if (keepAlive) View.VISIBLE else visibility)
+    }
+}
 
 /**
  * HashPlayer — native shell.
@@ -56,9 +82,11 @@ import kotlin.concurrent.thread
  * The native side adds what a browser cannot do on Android:
  *   • MediaStore scan of every song / video on the device (automatic on launch)
  *   • seekable Range streaming of those content:// files into the <video> tag
+ *   • album art / video thumbnails straight from MediaStore (/art/… URLs)
  *   • "Open with" / "Share to" from file managers, galleries and YouTube
  *   • real picture-in-picture, immersive fullscreen and orientation locking
  *   • a media-session notification + foreground service for background playback
+ *     (with a wake lock, so screen-off never freezes the music)
  */
 class MainActivity : AppCompatActivity() {
 
@@ -67,6 +95,7 @@ class MainActivity : AppCompatActivity() {
         const val ORIGIN = "https://appassets.androidplatform.net"
         const val START_URL = "$ORIGIN/assets/www/index.html"
         private const val MEDIA_PREFIX = "/media/"
+        private const val ART_PREFIX = "/art/"
         private const val PREFS = "hashplayer"
         private const val KEY_ASKED = "asked_media_permission"
         private val LINK = Regex("""https?://\S+""")
@@ -114,7 +143,7 @@ class MainActivity : AppCompatActivity() {
             .addPathHandler("/assets/", WebViewAssetLoader.AssetsPathHandler(this))
             .build()
 
-        web = WebView(this).apply {
+        web = KeepAliveWebView(this).apply {
             layoutParams = ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
             )
@@ -142,7 +171,7 @@ class MainActivity : AppCompatActivity() {
             cacheMode = WebSettings.LOAD_DEFAULT
             mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
             textZoom = 100
-            userAgentString = "$userAgentString HashPlayer/2.1"
+            userAgentString = "$userAgentString HashPlayer/2.2"
         }
 
         web.webViewClient = object : WebViewClient() {
@@ -150,9 +179,11 @@ class MainActivity : AppCompatActivity() {
                 view: WebView, request: WebResourceRequest
             ): WebResourceResponse? {
                 val url = request.url
-                if (url.host == "appassets.androidplatform.net" &&
-                    url.path?.startsWith(MEDIA_PREFIX) == true
-                ) return mediaResponse(request)
+                if (url.host == "appassets.androidplatform.net") {
+                    val path = url.path ?: ""
+                    if (path.startsWith(MEDIA_PREFIX)) return mediaResponse(request)
+                    if (path.startsWith(ART_PREFIX)) return artResponse(request)
+                }
                 return loader.shouldInterceptRequest(url)
             }
 
@@ -249,6 +280,9 @@ class MainActivity : AppCompatActivity() {
         web.addJavascriptInterface(Bridge(), "HashNative")
         PlaybackService.transport = { action ->
             runOnUiThread {
+                // "Play" tapped on the notification while we had parked the WebView
+                // (not playing) in the background — wake it up before the JS runs.
+                if (action != "pause") webResumeIfPaused()
                 web.evaluateJavascript("window.HashBridge && window.HashBridge.onTransport('$action');", null)
             }
         }
@@ -288,12 +322,19 @@ class MainActivity : AppCompatActivity() {
 
     override fun onPause() {
         super.onPause()
-        if (!isPlaying) { web.onPause(); web.pauseTimers() }   // keep audio alive in the background
+        // While something is playing the WebView must stay fully alive — that is what
+        // keeps the audio (and the YouTube player) running with the screen off / app
+        // in background, exactly like a native player. Only park it when idle.
+        if (!isPlaying) { web.onPause(); web.pauseTimers() }
     }
 
     override fun onResume() {
         super.onResume()
-        web.resumeTimers(); web.onResume()
+        webResumeIfPaused()
+    }
+
+    private fun webResumeIfPaused() {
+        try { web.onResume(); web.resumeTimers() } catch (e: Exception) { }
     }
 
     /** Home / recents while a video is playing → slide into picture-in-picture. */
@@ -330,11 +371,46 @@ class MainActivity : AppCompatActivity() {
         @android.webkit.JavascriptInterface
         fun setPlaybackState(playing: Boolean, title: String?, artist: String?) = runOnUiThread {
             isPlaying = playing
+            // The renderer stays "visible" while media is playing → no background pause,
+            // not even for the YouTube iframe which watches page visibility itself.
+            (web as? KeepAliveWebView)?.keepAlive = playing
+            if (playing) webResumeIfPaused()
             if (playing && Build.VERSION.SDK_INT >= 33 &&
                 ContextCompat.checkSelfPermission(this@MainActivity, "android.permission.POST_NOTIFICATIONS")
                 != PackageManager.PERMISSION_GRANTED
             ) notifPermission.launch("android.permission.POST_NOTIFICATIONS")
             PlaybackService.update(this@MainActivity, playing, title ?: "", artist ?: "")
+        }
+
+        /**
+         * Cover art for the media notification, as a base64 JPEG (drawn to a small
+         * canvas by the web player first, so this stays a few tens of KB).
+         */
+        @android.webkit.JavascriptInterface
+        fun setArt(b64: String) = runOnUiThread { PlaybackService.setArt(this@MainActivity, b64) }
+
+        /**
+         * Aggressive battery savers (MIUI, EMUI, some Samsung modes…) freeze even
+         * foreground services. The one reliable defence is asking the user once to
+         * put HashPlayer on the battery optimisation whitelist.
+         */
+        @android.webkit.JavascriptInterface
+        fun requestBatteryExemption() = runOnUiThread {
+            try {
+                val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+                if (Build.VERSION.SDK_INT >= 23 && !pm.isIgnoringBatteryOptimizations(packageName)) {
+                    startActivity(
+                        Intent(
+                            Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                            Uri.parse("package:$packageName")
+                        )
+                    )
+                } else toast(getString(R.string.battery_ok))
+            } catch (e: Exception) {
+                try {
+                    startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+                } catch (e2: Exception) { toast(getString(R.string.battery_fail)) }
+            }
         }
 
         /** The web player tells us whether the current track is a video, and its shape. */
@@ -398,7 +474,7 @@ class MainActivity : AppCompatActivity() {
         fun toastMsg(msg: String) = runOnUiThread { toast(msg) }
 
         @android.webkit.JavascriptInterface
-        fun version(): String = "2.1.0"
+        fun version(): String = "2.2.0"
     }
 
     private fun toast(s: String) = Toast.makeText(this, s, Toast.LENGTH_SHORT).show()
@@ -495,7 +571,10 @@ class MainActivity : AppCompatActivity() {
             MediaStore.MediaColumns.MIME_TYPE,
             MediaStore.MediaColumns.DURATION
         )
-        if (audio) { cols.add(MediaStore.Audio.Media.ARTIST); cols.add(MediaStore.Audio.Media.ALBUM) }
+        if (audio) {
+            cols.add(MediaStore.Audio.Media.ARTIST); cols.add(MediaStore.Audio.Media.ALBUM)
+            cols.add(MediaStore.Audio.Media.ALBUM_ID)
+        }
         if (Build.VERSION.SDK_INT >= 29) cols.add(MediaStore.MediaColumns.RELATIVE_PATH)
 
         contentResolver.query(
@@ -510,6 +589,7 @@ class MainActivity : AppCompatActivity() {
             val durI = c.getColumnIndex(MediaStore.MediaColumns.DURATION)
             val artI = if (audio) c.getColumnIndex(MediaStore.Audio.Media.ARTIST) else -1
             val albI = if (audio) c.getColumnIndex(MediaStore.Audio.Media.ALBUM) else -1
+            val albIdI = if (audio) c.getColumnIndex(MediaStore.Audio.Media.ALBUM_ID) else -1
             val pathI = c.getColumnIndex(MediaStore.MediaColumns.RELATIVE_PATH)
 
             while (c.moveToNext()) {
@@ -517,8 +597,10 @@ class MainActivity : AppCompatActivity() {
                 if (dur in 1..4999) continue                       // skip notification blips
                 val id = c.getLong(idI)
                 val uri = ContentUris.withAppendedId(base, id)
+                val albumId = if (albIdI >= 0) c.getLong(albIdI) else 0L
                 val o = JSONObject()
                 o.put("uri", "$ORIGIN$MEDIA_PREFIX" + Uri.encode(uri.toString()))
+                o.put("art", artUrl(uri, if (audio) "a" else "v", if (audio) albumId else id))
                 o.put("name", if (nameI >= 0) c.getString(nameI) ?: "Track" else "Track")
                 o.put("title", if (titleI >= 0) c.getString(titleI) ?: "" else "")
                 o.put("artist", if (artI >= 0) (c.getString(artI) ?: "").replace("<unknown>", "") else "")
@@ -531,6 +613,16 @@ class MainActivity : AppCompatActivity() {
                 out.put(o)
             }
         }
+    }
+
+    /**
+     * Cover art for a MediaStore row, served by this same activity from /art/.
+     *   /art/a/{albumId}/{mediaUri}  → album art (audio), embedded picture as fallback
+     *   /art/v/{rowId}/{mediaUri}    → video thumbnail, first frame as fallback
+     */
+    private fun artUrl(mediaUri: Uri, kind: String, id: Long): String {
+        if (id <= 0) return ""
+        return "$ORIGIN$ART_PREFIX$kind/$id/" + Uri.encode(mediaUri.toString())
     }
 
     /* ====================================================== content:// streaming with Range */
@@ -612,6 +704,118 @@ class MainActivity : AppCompatActivity() {
         "3gp" -> "video/3gpp"; "mov" -> "video/quicktime"
         else -> "application/octet-stream"
     }
+
+    /* ======================================================
+       album art & video thumbnails (/art/…)
+       The list asks for one image per track; album art repeats a lot, so a
+       small in-memory LRU plus a week of HTTP caching keeps it instant.
+       ====================================================== */
+
+    private val artCache = LruCache<String, ByteArray>(96)
+
+    private fun artResponse(request: WebResourceRequest): WebResourceResponse? {
+        val path = request.url.path ?: return null
+        val headers = HashMap<String, String>()
+        headers["Access-Control-Allow-Origin"] = ORIGIN
+        try {
+            // path = /art/{a|v}/{id}/{content uri}   (Uri.path() is already decoded)
+            val seg = path.substring(ART_PREFIX.length)
+            val kind = seg.substringBefore('/')
+            val rest = seg.substringAfter('/')
+            val id = rest.substringBefore('/').toLongOrNull() ?: -1L
+            val target = Uri.parse(rest.substringAfter('/'))
+            if ((kind != "a" && kind != "v") || id <= 0 || target.scheme != "content")
+                return WebResourceResponse("text/plain", null, 404, "Not Found", headers, null)
+
+            val bytes = artBytes(kind, id, target)
+            if (bytes == null)
+                return WebResourceResponse("text/plain", null, 404, "Not Found", headers, null)
+
+            headers["Cache-Control"] = "public, max-age=604800"
+            return WebResourceResponse(
+                "image/jpeg", null, 200, "OK", headers, ByteArrayInputStream(bytes)
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "art failed", e)
+            return WebResourceResponse("text/plain", null, 404, "Not Found", headers, null)
+        }
+    }
+
+    private fun artBytes(kind: String, id: Long, target: Uri): ByteArray? {
+        val key = "$kind/$id"
+        artCache.get(key)?.let { return it }
+
+        val bytes = (if (kind == "a") audioArt(id, target) else videoThumb(id, target))
+            ?.takeIf { it.isNotEmpty() }
+        if (bytes != null) artCache.put(key, bytes)   // only real art is cached
+        return bytes
+    }
+
+    /** Album art for an audio file: the MediaStore album entry first, then the
+     *  picture embedded in the file itself (ID3 APIC / FLAC / MP4 covr). */
+    private fun audioArt(albumId: Long, target: Uri): ByteArray? {
+        if (Build.VERSION.SDK_INT >= 29) {
+            try {
+                val albumUri = ContentUris.withAppendedId(
+                    Uri.parse("content://media/external/audio/albums"), albumId
+                )
+                contentResolver.openInputStream(albumUri)?.use { s ->
+                    val b = s.readBytes()
+                    if (b.isNotEmpty()) return b
+                }
+            } catch (e: Exception) { /* fall through to the embedded picture */ }
+        } else {
+            try {
+                @Suppress("DEPRECATION")
+                contentResolver.query(
+                    MediaStore.Audio.Albums.EXTERNAL_CONTENT_URI,
+                    arrayOf(MediaStore.Audio.Albums.ALBUM_ART),
+                    MediaStore.Audio.Albums._ID + "=?",
+                    arrayOf(albumId.toString()), null
+                )?.use { c ->
+                    if (c.moveToFirst()) {
+                        val f = c.getString(0)
+                        if (!f.isNullOrBlank() && File(f).isFile) return File(f).readBytes()
+                    }
+                }
+            } catch (e: Exception) { }
+        }
+        return embeddedArt(target)
+    }
+
+    /** A poster frame for a video, generated (and cached) by MediaStore itself. */
+    private fun videoThumb(id: Long, target: Uri): ByteArray? {
+        try {
+            val bmp: Bitmap? = if (Build.VERSION.SDK_INT >= 29)
+                contentResolver.loadThumbnail(target, Size(320, 320), null)
+            else @Suppress("DEPRECATION") MediaStore.Video.Thumbnails.getThumbnail(
+                contentResolver, id, MediaStore.Images.Thumbnails.MINI_KIND, null
+            )
+            if (bmp != null) return bmp.toJpeg()
+        } catch (e: Exception) { }
+        // fall back to the very first frame
+        val mmr = MediaMetadataRetriever()
+        return try {
+            mmr.setDataSource(this, target)
+            mmr.getFrameAtTime(0, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)?.toJpeg()
+        } catch (e: Exception) { null } finally {
+            try { mmr.release() } catch (e: Exception) { }
+        }
+    }
+
+    private fun embeddedArt(target: Uri): ByteArray? {
+        val mmr = MediaMetadataRetriever()
+        return try {
+            mmr.setDataSource(this, target)
+            mmr.embeddedPicture
+        } catch (e: Exception) { null } finally {
+            try { mmr.release() } catch (e: Exception) { }
+        }
+    }
+
+    private fun Bitmap.toJpeg(): ByteArray = ByteArrayOutputStream().also {
+        compress(Bitmap.CompressFormat.JPEG, 84, it)
+    }.toByteArray()
 
     private fun skipFully(input: InputStream, bytes: Long) {
         var left = bytes
@@ -698,12 +902,31 @@ class MainActivity : AppCompatActivity() {
             } catch (e: Exception) { }
 
             val mime = contentResolver.getType(data) ?: guessMime(name)
+            val kind = if (mime.startsWith("video")) "video" else "audio"
+
+            // cover art too, when the uri is a MediaStore row
+            var art = ""
+            try {
+                val rowId = ContentUris.parseId(data)
+                val artId: Long = if (kind == "audio") {
+                    var albumId = 0L
+                    try {
+                        contentResolver.query(
+                            data, arrayOf(MediaStore.Audio.Media.ALBUM_ID), null, null, null
+                        )?.use { c -> if (c.moveToFirst()) albumId = c.getLong(0) }
+                    } catch (e: Exception) { }
+                    albumId
+                } else rowId
+                art = artUrl(data, if (kind == "audio") "a" else "v", artId)
+            } catch (e: Exception) { /* not a MediaStore uri — no art, the icon shows */ }
+
             arr.put(
                 JSONObject()
                     .put("uri", "$ORIGIN$MEDIA_PREFIX" + Uri.encode(data.toString()))
+                    .put("art", art)
                     .put("name", name).put("title", "").put("artist", "").put("album", "")
                     .put("size", size).put("mime", mime).put("duration", 0)
-                    .put("kind", if (mime.startsWith("video")) "video" else "audio")
+                    .put("kind", kind)
             )
         }
         if (arr.length() == 0) return

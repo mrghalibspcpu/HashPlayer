@@ -341,6 +341,12 @@
       <label class="switch row"><input type="checkbox" id="set-autoland" checked><i></i><span data-i18n="autoLandscape">Rotate to landscape → full-screen video</span></label>
       <label class="switch row"><input type="checkbox" id="set-autopip" checked><i></i><span data-i18n="autoPip">Keep playing in a floating window when I leave the app</span></label>
       <label class="switch row"><input type="checkbox" id="set-autoscan" checked><i></i><span data-i18n="autoScan">Scan this device for media automatically</span></label>
+      <div class="set-row" id="bgplay-row" hidden>
+        <div><b data-i18n="bgPlay">Background playback</b><small data-i18n="bgPlaySub">Audio and video keep playing with the screen off or the app in the background. If music still stops on your phone, remove HashPlayer from the battery saver.</small></div>
+        <div class="head-actions">
+          <button class="btn small ghost" id="btn-battery"><svg class="ic"><use href="#i-sparkle"/></svg><span data-i18n="batteryBtn">Battery settings</span></button>
+        </div>
+      </div>
       <div class="set-row">
         <div><b data-i18n="seekStep">Double-tap seek</b><small data-i18n="seekStepSub">Seconds jumped by a double tap / arrow key.</small></div>
         <label class="select"><select id="set-seekstep"><option>5</option><option selected>10</option><option>15</option><option>30</option></select></label>
