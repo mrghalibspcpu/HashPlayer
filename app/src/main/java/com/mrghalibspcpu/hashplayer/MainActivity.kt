@@ -1022,4 +1022,3 @@ class MainActivity : AppCompatActivity() {
         js("window.HashBridge && window.HashBridge.onOpenUri(${JSONObject.quote(arr.toString())});")
     }
 }
-}
