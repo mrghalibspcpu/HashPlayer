@@ -8,4 +8,5 @@
     <string name="scanning">Scanning your device…</string>
     <string name="open_with">Play with HashPlayer</string>
     <string name="play_in_hashplayer">Play in HashPlayer</string>
+    <string name="vis_needs_mic">The visualiser needs audio access — playback keeps working without it</string>
 </resources>

@@ -7,11 +7,16 @@ import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import android.media.audiofx.BassBoost
+import android.media.audiofx.Equalizer
+import android.media.audiofx.Visualizer
 import android.view.Gravity
-import android.view.SurfaceView
+import android.view.TextureView
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import androidx.media3.common.AudioAttributes
+import androidx.media3.common.CueGroup
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
@@ -19,7 +24,9 @@ import androidx.media3.common.Player
 import androidx.media3.common.VideoSize
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
+import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
 
 /**
  * The real playback engine.
@@ -49,8 +56,17 @@ class NativePlayback(
 
     private val main = Handler(Looper.getMainLooper())
     private var player: ExoPlayer? = null
-    private var surface: SurfaceView? = null
+    private var surface: TextureView? = null
+    private var eq: Equalizer? = null
+    private var bass: BassBoost? = null
+    private var vis: Visualizer? = null
+    private var visWanted = false
+    private var lastWave: JSONArray? = null
+    private var eqOn = false
+    private var eqGains = FloatArray(10)
 
+    /** What the web app calls this track — echoed back so it can match events. */
+    private var reportUri: String = ""
     private var currentUri: String = ""
     private var isVideo = false
     private var retried = false
@@ -92,7 +108,12 @@ class NativePlayback(
         p.addListener(object : Player.Listener {
             override fun onPlaybackStateChanged(state: Int) {
                 when (state) {
-                    Player.STATE_READY -> { retried = false; post("ready") }
+                    Player.STATE_READY -> {
+                        retried = false
+                        applyEq()
+                        if (visWanted) attachVisualiser()
+                        post("ready")
+                    }
                     Player.STATE_BUFFERING -> post("waiting")
                     Player.STATE_ENDED -> { stopTick(); post("ended") }
                     Player.STATE_IDLE -> post("idle")
@@ -106,6 +127,12 @@ class NativePlayback(
 
             override fun onVideoSizeChanged(size: VideoSize) {
                 post("resize")
+            }
+
+            override fun onCues(cueGroup: CueGroup) {
+                val txt = cueGroup.cues.mapNotNull { it.text?.toString() }
+                    .filter { it.isNotBlank() }.joinToString("\n")
+                emitCues(txt)
             }
 
             override fun onPlayerError(error: PlaybackException) {
@@ -134,11 +161,18 @@ class NativePlayback(
 
     /* ------------------------------------------------------------ surface */
 
-    /** The video is drawn by a SurfaceView *behind* the (transparent) WebView. */
-    private fun ensureSurface(): SurfaceView {
+    /**
+     * The video is drawn by a TextureView *behind* the (transparent) WebView.
+     *
+     * A SurfaceView would be cheaper, but it lives in its own window below the
+     * app window — the opaque root view then covers it and you get sound with a
+     * black screen. A TextureView is composited inside the normal view tree, so
+     * the web UI can sit on top of it.
+     */
+    private fun ensureSurface(): TextureView {
         surface?.let { return it }
-        val sv = SurfaceView(activity).apply {
-            setBackgroundColor(Color.BLACK)
+        val sv = TextureView(activity).apply {
+            isOpaque = true
             layoutParams = FrameLayout.LayoutParams(1, 1, Gravity.TOP or Gravity.START)
         }
         root.addView(sv, 0)                       // index 0 → underneath the WebView
@@ -162,7 +196,7 @@ class NativePlayback(
         if (show) {
             val sv = ensureSurface()
             sv.visibility = android.view.View.VISIBLE
-            player?.setVideoSurfaceView(sv)
+            player?.setVideoTextureView(sv)
         } else {
             player?.clearVideoSurface()
             surface?.visibility = android.view.View.GONE
@@ -171,13 +205,17 @@ class NativePlayback(
 
     /* ------------------------------------------------------------ commands */
 
-    fun load(uri: String, startSec: Double, autoplay: Boolean, video: Boolean) = main.post {
+    fun load(uri: String, reportAs: String, startSec: Double, autoplay: Boolean, video: Boolean, subtitle: String) = main.post {
         try {
             val p = engine()
             currentUri = uri
+            reportUri = if (reportAs.isNotEmpty()) reportAs else uri
             isVideo = video
             retried = false
-            p.setMediaItem(MediaItem.fromUri(Uri.parse(uri)))
+
+            val b = MediaItem.Builder().setUri(Uri.parse(uri))
+            subtitleItem(subtitle)?.let { b.setSubtitleConfigurations(listOf(it)) }
+            p.setMediaItem(b.build())
             p.prepare()
             if (startSec > 0) p.seekTo((startSec * 1000).toLong())
             showSurface(video)
@@ -217,6 +255,9 @@ class NativePlayback(
 
     fun release() = main.post {
         stopTick()
+        try { vis?.enabled = false; vis?.release() } catch (e: Throwable) { }
+        try { eq?.release(); bass?.release() } catch (e: Throwable) { }
+        vis = null; eq = null; bass = null
         player?.release()
         player = null
         surface?.let { root.removeView(it) }
@@ -225,10 +266,152 @@ class NativePlayback(
 
     fun isPlayingNow(): Boolean = player?.isPlaying == true
 
+    /** For the media notification / lock-screen scrubber. -1 when idle. */
+    fun positionMs(): Long = player?.let { if (currentUri.isEmpty()) -1L else it.currentPosition } ?: -1L
+    fun durationMs(): Long = player?.let {
+        val d = it.duration
+        if (currentUri.isEmpty() || d == C.TIME_UNSET || d < 0) -1L else d
+    } ?: -1L
+
     fun hasVideoNow(): Boolean = isVideo && (player?.videoSize?.width ?: 0) > 0
 
     fun videoWidth(): Int = player?.videoSize?.width ?: 0
     fun videoHeight(): Int = player?.videoSize?.height ?: 0
+
+    /* ------------------------------------------------------------ subtitles */
+
+    /**
+     * External .srt/.vtt the web app already parsed: ExoPlayer wants a Uri, so the
+     * text is dropped into the cache directory and handed over as a side-loaded
+     * subtitle track. Embedded tracks (mkv) need nothing — they just arrive.
+     */
+    private fun subtitleItem(text: String): MediaItem.SubtitleConfiguration? {
+        if (text.isBlank()) return null
+        return try {
+            val f = File(activity.cacheDir, "subtitle.vtt")
+            f.writeText(if (text.trimStart().startsWith("WEBVTT")) text else "WEBVTT\n\n" + text)
+            MediaItem.SubtitleConfiguration.Builder(Uri.fromFile(f))
+                .setMimeType(MimeTypes.TEXT_VTT)
+                .setLanguage("en")
+                .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
+                .build()
+        } catch (e: Exception) { null }
+    }
+
+    fun setSubtitlesEnabled(on: Boolean) = main.post {
+        try {
+            val p = player ?: return@post
+            p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
+                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !on).build()
+            if (!on) emitCues("")
+        } catch (e: Exception) { }
+    }
+
+    private fun emitCues(text: String) {
+        val o = JSONObject()
+        try { o.put("e", "cues"); o.put("detail", text); o.put("uri", reportUri) } catch (e: Exception) { return }
+        emit(o.toString())
+    }
+
+    /* ------------------------------------------------------------ equaliser */
+
+    /** 10 web sliders (31 Hz … 16 kHz) mapped onto the device's own EQ bands. */
+    fun setEq(on: Boolean, gains: FloatArray) = main.post {
+        eqOn = on
+        if (gains.size == 10) eqGains = gains
+        applyEq()
+    }
+
+    private val webFreqs = intArrayOf(31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000)
+
+    private fun applyEq() {
+        val p = player ?: return
+        try {
+            if (eq == null) {
+                eq = Equalizer(0, p.audioSessionId)
+                bass = try { BassBoost(0, p.audioSessionId) } catch (e: Throwable) { null }
+            }
+            val e = eq ?: return
+            e.enabled = eqOn
+            bass?.enabled = eqOn && eqGains[0] > 0.5f
+            if (!eqOn) return
+            val range = e.bandLevelRange              // millibel
+            val lo = range[0].toInt(); val hi = range[1].toInt()
+            for (band in 0 until e.numberOfBands) {
+                val centerHz = e.getCenterFreq(band.toShort()) / 1000
+                // nearest web slider for this hardware band
+                var best = 0
+                for (i in webFreqs.indices)
+                    if (Math.abs(webFreqs[i] - centerHz) < Math.abs(webFreqs[best] - centerHz)) best = i
+                val mb = (eqGains[best] * 100).toInt().coerceIn(lo, hi)
+                try { e.setBandLevel(band.toShort(), mb.toShort()) } catch (ex: Exception) { }
+            }
+            bass?.let { bb ->
+                if (bb.strengthSupported) {
+                    val amount = ((eqGains[0] + eqGains[1]) / 2f).coerceIn(0f, 12f) / 12f
+                    try { bb.setStrength((amount * 900).toInt().toShort()) } catch (ex: Exception) { }
+                }
+            }
+        } catch (e: Throwable) { Log.w(TAG, "equaliser unavailable", e) }
+    }
+
+    /* ------------------------------------------------------------ visualiser */
+
+    /** Needs RECORD_AUDIO (Android's rule for tapping an audio session). */
+    fun setVisualiser(on: Boolean) = main.post {
+        visWanted = on
+        if (on) {
+            attachVisualiser()
+        } else {
+            try { vis?.enabled = false; vis?.release() } catch (e: Throwable) { }
+            vis = null
+        }
+    }
+
+    private fun attachVisualiser() {
+        val p = player ?: return
+        if (vis != null) return
+        try {
+            val v = Visualizer(p.audioSessionId)
+            v.captureSize = Visualizer.getCaptureSizeRange()[1].coerceAtMost(256)
+            v.setDataCaptureListener(object : Visualizer.OnDataCaptureListener {
+                override fun onWaveFormDataCapture(vz: Visualizer?, wave: ByteArray?, rate: Int) {
+                    val wv = wave ?: return
+                    val out = JSONArray()
+                    val step = maxOf(1, wv.size / 128)
+                    var i = 0
+                    while (i < wv.size && out.length() < 128) {
+                        out.put(wv[i].toInt() and 0xFF)      // already 0..255, like getByteTimeDomainData
+                        i += step
+                    }
+                    lastWave = out
+                }
+                override fun onFftDataCapture(vz: Visualizer?, fft: ByteArray?, rate: Int) {
+                    val f = fft ?: return
+                    val bins = 64
+                    val arr = JSONArray()
+                    var i = 0
+                    while (i < bins) {
+                        val re = f.getOrElse(i * 2) { 0 }.toInt()
+                        val im = f.getOrElse(i * 2 + 1) { 0 }.toInt()
+                        val mag = Math.hypot(re.toDouble(), im.toDouble())
+                        arr.put(Math.min(255.0, mag * 3).toInt())
+                        i++
+                    }
+                    val o = JSONObject()
+                    try {
+                        o.put("e", "fft"); o.put("fft", arr); o.put("uri", reportUri)
+                        lastWave?.let { o.put("wave", it) }
+                    } catch (e: Exception) { return }
+                    emit(o.toString())
+                }
+            }, (Visualizer.getMaxCaptureRate() / 2).coerceAtMost(20000), true, true)
+            v.enabled = true
+            vis = v
+        } catch (e: Throwable) {
+            Log.w(TAG, "visualiser unavailable", e)
+        }
+    }
 
     /* ------------------------------------------------------------ state out */
 
@@ -241,7 +424,7 @@ class NativePlayback(
         try {
             o.put("e", event)
             o.put("detail", detail)
-            o.put("uri", currentUri)
+            o.put("uri", reportUri)
             o.put("pos", p.currentPosition / 1000.0)
             val d = p.duration
             o.put("dur", if (d == C.TIME_UNSET || d < 0) 0.0 else d / 1000.0)

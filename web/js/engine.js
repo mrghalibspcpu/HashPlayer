@@ -160,11 +160,17 @@
   E.ramp = ramp;
 
   E.setBand = function (i, db) {
+    pushNative();
     S.eqGains[i] = db;
     if (E.ready) ramp(E.bands[i].gain, S.eqOn ? db : 0, 80);
     HP.save();
   };
+  function pushNative() {
+    try { HP.NativeMedia && HP.NativeMedia.pushEq && HP.NativeMedia.pushEq(); } catch (e) { }
+  }
+
   E.applyEQ = function () {
+    pushNative();
     if (!E.ready) return;
     E.bands.forEach((b, i) => ramp(b.gain, S.eqOn ? (S.eqGains[i] || 0) : 0, 90));
   };

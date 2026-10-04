@@ -37,12 +37,17 @@ class PlaybackService : Service() {
         /** Set by MainActivity: forwards notification / lock-screen taps into the web app. */
         var transport: ((String) -> Unit)? = null
 
-        fun update(ctx: Context, playing: Boolean, title: String, artist: String) {
+        fun update(
+            ctx: Context, playing: Boolean, title: String, artist: String,
+            posMs: Long = -1L, durMs: Long = -1L
+        ) {
             if (!playing && !running) return
             val i = Intent(ctx, PlaybackService::class.java)
                 .putExtra("playing", playing)
                 .putExtra("title", title)
                 .putExtra("artist", artist)
+                .putExtra("pos", posMs)
+                .putExtra("dur", durMs)
             try {
                 if (playing) {
                     if (Build.VERSION.SDK_INT >= 26) ctx.startForegroundService(i) else ctx.startService(i)
@@ -73,6 +78,7 @@ class PlaybackService : Service() {
                 override fun onSkipToNext() { transport?.invoke("next") }
                 override fun onSkipToPrevious() { transport?.invoke("prev") }
                 override fun onStop() { transport?.invoke("pause") }
+                override fun onSeekTo(pos: Long) { transport?.invoke("seek:" + pos) }
             })
             isActive = true
         }
@@ -90,12 +96,17 @@ class PlaybackService : Service() {
         title = intent?.getStringExtra("title")?.ifBlank { getString(R.string.nothing_playing) }
             ?: getString(R.string.nothing_playing)
         artist = intent?.getStringExtra("artist") ?: ""
+        val posMs = intent?.getLongExtra("pos", -1L) ?: -1L
+        val durMs = intent?.getLongExtra("dur", -1L) ?: -1L
 
         session?.apply {
             setMetadata(
                 MediaMetadataCompat.Builder()
                     .putString(MediaMetadataCompat.METADATA_KEY_TITLE, title)
                     .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, artist)
+                    .putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_TITLE, title)
+                    .putString(MediaMetadataCompat.METADATA_KEY_DISPLAY_SUBTITLE, artist)
+                    .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, if (durMs > 0) durMs else -1L)
                     .build()
             )
             setPlaybackState(
@@ -105,11 +116,13 @@ class PlaybackService : Service() {
                             PlaybackStateCompat.ACTION_PLAY_PAUSE or
                             PlaybackStateCompat.ACTION_SKIP_TO_NEXT or
                             PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS or
+                            PlaybackStateCompat.ACTION_SEEK_TO or
                             PlaybackStateCompat.ACTION_STOP
                     )
                     .setState(
                         if (playing) PlaybackStateCompat.STATE_PLAYING else PlaybackStateCompat.STATE_PAUSED,
-                        PlaybackStateCompat.PLAYBACK_POSITION_UNKNOWN, 1f
+                        if (posMs >= 0) posMs else PlaybackStateCompat.PLAYBACK_POSITION_UNKNOWN,
+                        if (playing) 1f else 0f
                     ).build()
             )
         }

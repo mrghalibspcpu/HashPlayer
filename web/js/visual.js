@@ -51,9 +51,21 @@
   V.setMode = function (m) {
     V.mode = m; S.vis = m; HP.save();
     document.body.classList.toggle('vis-off', m === 'off');
+    try { HP.NativeMedia && HP.NativeMedia.pushVis && HP.NativeMedia.pushVis(); } catch (e) { }
     if (ctx) ctx.clearRect(0, 0, W, H);
     HP.emit('vis', m);
   };
+  /** Spectrum pushed in from the native engine (64 bins + 128 samples). */
+  V.feed = function (f, wv) {
+    V.ext = {
+      freq: f && f.length ? Uint8Array.from(f) : new Uint8Array(64),
+      wave: wv && wv.length ? Uint8Array.from(wv) : new Uint8Array(128).fill(128)
+    };
+    V.extAt = performance.now();
+  };
+  V.ext = null; V.extAt = 0;
+  V.clearFeed = function () { V.ext = null; };
+
   V.start = function () { if (V.running) return; V.running = true; loop(); };
   V.stop = function () { V.running = false; cancelAnimationFrame(raf); };
 
@@ -64,13 +76,19 @@
     const now = performance.now();
     if (now - lastFrame < frameGap) return;        // honour the frame budget
     lastFrame = now;
-    const an = HP.Engine.analyser;
     ctx.clearRect(0, 0, W, H);
-    if (!an) { idle(); return; }
-    const n = an.frequencyBinCount;
-    if (!freq || freq.length !== n) { freq = new Uint8Array(n); time = new Uint8Array(n); }
-    an.getByteFrequencyData(freq);
-    an.getByteTimeDomainData(time);
+    /* Native (ExoPlayer) playback never enters the Web Audio graph, so the
+       Android shell streams us the spectrum of its own audio session instead. */
+    if (V.ext && now - V.extAt < 500) {
+      freq = V.ext.freq; time = V.ext.wave;
+    } else {
+      const an = HP.Engine.analyser;
+      if (!an) { idle(); return; }
+      const n = an.frequencyBinCount;
+      if (!freq || freq.length !== n) { freq = new Uint8Array(n); time = new Uint8Array(n); }
+      an.getByteFrequencyData(freq);
+      an.getByteTimeDomainData(time);
+    }
     switch (V.mode) {
       case 'mirror': mirror(); break;
       case 'wave': wave(); break;

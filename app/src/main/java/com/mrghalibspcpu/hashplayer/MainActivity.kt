@@ -108,6 +108,13 @@ class MainActivity : AppCompatActivity() {
     private val notifPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
+    /** Only ever used to read our own audio session for the visualiser. */
+    private val micPermission =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            nativePlayer.setVisualiser(granted)
+            if (!granted) toast(getString(R.string.vis_needs_mic))
+        }
+
     /* ====================================================== lifecycle */
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -262,7 +269,9 @@ class MainActivity : AppCompatActivity() {
         web.addJavascriptInterface(Bridge(), "HashNative")
         PlaybackService.transport = { action ->
             runOnUiThread {
-                web.evaluateJavascript("window.HashBridge && window.HashBridge.onTransport('$action');", null)
+                web.evaluateJavascript(
+                    "window.HashBridge && window.HashBridge.onTransport(" + JSONObject.quote(action) + ");", null
+                )
             }
         }
 
@@ -348,7 +357,10 @@ class MainActivity : AppCompatActivity() {
                 ContextCompat.checkSelfPermission(this@MainActivity, "android.permission.POST_NOTIFICATIONS")
                 != PackageManager.PERMISSION_GRANTED
             ) notifPermission.launch("android.permission.POST_NOTIFICATIONS")
-            PlaybackService.update(this@MainActivity, playing, title ?: "", artist ?: "")
+            PlaybackService.update(
+                this@MainActivity, playing, title ?: "", artist ?: "",
+                nativePlayer.positionMs(), nativePlayer.durationMs()
+            )
         }
 
         /** The web player tells us whether the current track is a video, and its shape. */
@@ -421,10 +433,44 @@ class MainActivity : AppCompatActivity() {
         fun nativeEngine(): Boolean = true
 
         @android.webkit.JavascriptInterface
-        fun nLoad(uri: String, pos: Double, autoplay: Boolean, video: Boolean) {
+        fun nLoad(uri: String, pos: Double, autoplay: Boolean, video: Boolean, subtitle: String?) {
             runOnUiThread { webTransparent(video) }
-            nativePlayer.load(realUri(uri), pos, autoplay, video)
+            nativePlayer.load(realUri(uri), uri, pos, autoplay, video, subtitle ?: "")
         }
+
+        /** Turn the (embedded or side-loaded) subtitle track on and off. */
+        @android.webkit.JavascriptInterface
+        fun nSubs(on: Boolean) = nativePlayer.setSubtitlesEnabled(on)
+
+        /** The 10 equaliser sliders, in dB, applied to the native audio session. */
+        @android.webkit.JavascriptInterface
+        fun nEq(on: Boolean, gainsJson: String?) {
+            val g = FloatArray(10)
+            try {
+                val a = JSONArray(gainsJson ?: "[]")
+                for (i in 0 until minOf(10, a.length())) g[i] = a.optDouble(i, 0.0).toFloat()
+            } catch (e: Exception) { }
+            nativePlayer.setEq(on, g)
+        }
+
+        /**
+         * The visualiser taps the audio session, which Android only allows with
+         * RECORD_AUDIO. Nothing is ever recorded or sent anywhere — if the user
+         * says no we simply leave the bars idle.
+         */
+        @android.webkit.JavascriptInterface
+        fun nVis(on: Boolean) = runOnUiThread {
+            if (!on) { nativePlayer.setVisualiser(false); return@runOnUiThread }
+            if (ContextCompat.checkSelfPermission(this@MainActivity, "android.permission.RECORD_AUDIO")
+                == PackageManager.PERMISSION_GRANTED
+            ) nativePlayer.setVisualiser(true)
+            else micPermission.launch("android.permission.RECORD_AUDIO")
+        }
+
+        @android.webkit.JavascriptInterface
+        fun visualiserAllowed(): Boolean =
+            ContextCompat.checkSelfPermission(this@MainActivity, "android.permission.RECORD_AUDIO") ==
+                PackageManager.PERMISSION_GRANTED
 
         @android.webkit.JavascriptInterface
         fun nPlay() = nativePlayer.play()

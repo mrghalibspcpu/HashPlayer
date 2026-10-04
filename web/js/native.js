@@ -125,14 +125,17 @@
 
     /* ---------- commands ---------- */
     this.setTrack = function (t, startAt, autoplay) {
+      const sub = (t.kind === 'video' && t.sub) ? String(t.sub) : '';
       uri = t.nativeUri;
       isVideo = t.kind === 'video';
       pos = startAt || 0; dur = t.duration || 0;
       buffered = 0; ended = false; ready = false; failed = null;
       paused = !autoplay;
       document.body.classList.toggle('nv-mode', isVideo);
-      try { bridge().nLoad(uri, pos, !!autoplay, isVideo); } catch (e) { }
+      try { bridge().nLoad(uri, pos, !!autoplay, isVideo, sub); } catch (e) { }
       try { bridge().nRate(rate); bridge().nVolume(muted ? 0 : vol); } catch (e) { }
+      N.pushEq();
+      N.pushVis();
       watchRect(isVideo);
       return Promise.resolve(self);
     };
@@ -149,6 +152,9 @@
       watchRect(false);
       paused = true;
       document.body.classList.remove('nv-mode');
+      showCues('');
+      if (HP.Vis && HP.Vis.clearFeed) HP.Vis.clearFeed();
+      try { bridge().nVis(false); } catch (e) { }
       try { bridge().nStop(); } catch (e) { }
     };
 
@@ -198,6 +204,12 @@
         case 'resize':
           fire('resize'); pushRect();
           break;
+        case 'cues':
+          showCues(s.detail || '');
+          break;
+        case 'fft':
+          if (HP.Vis && HP.Vis.feed) HP.Vis.feed(s.fft, s.wave);
+          break;
         case 'error':
           failed = { code: 4, message: s.detail || 'playback error' };
           fire('error');
@@ -205,6 +217,45 @@
       }
     };
   }
+
+  /* ---------- subtitle overlay ----------
+     ExoPlayer decodes the subtitle track (embedded in the mkv, or the .srt the
+     user attached) and hands us the lines; we draw them over the video with the
+     same look the <video> cues had. */
+  function showCues(text) {
+    let box = document.getElementById('nv-cc');
+    if (!box) {
+      const stage = document.getElementById('stage');
+      if (!stage) return;
+      box = document.createElement('div');
+      box.id = 'nv-cc';
+      box.className = 'nv-cc';
+      stage.appendChild(box);
+    }
+    box.textContent = text || '';
+    box.hidden = !text;
+  }
+  N.showCues = showCues;
+
+  /** Mirror the 10-band equaliser onto the device's own audio effects. */
+  N.pushEq = function () {
+    const n = bridge(); if (!n || !n.nEq) return;
+    const S = HP.S || {};
+    try { n.nEq(!!S.eqOn, JSON.stringify(S.eqGains || [])); } catch (e) { }
+  };
+
+  /** Ask for the spectrum only while a visualiser mode is actually on screen. */
+  N.pushVis = function () {
+    const n = bridge(); if (!n || !n.nVis) return;
+    const want = (HP.S && HP.S.vis && HP.S.vis !== 'off');
+    try { n.nVis(!!want); } catch (e) { }
+  };
+
+  N.setSubtitles = function (on) {
+    const n = bridge(); if (!n || !n.nSubs) return;
+    try { n.nSubs(!!on); } catch (e) { }
+    if (!on) showCues('');
+  };
 
   N.create = function () { return new NativeMedia(); };
 })(window);

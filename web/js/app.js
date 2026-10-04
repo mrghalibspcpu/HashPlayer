@@ -786,6 +786,10 @@
     },
 
     onTransport(action) {
+      if (typeof action === 'string' && action.indexOf('seek:') === 0) {
+        P.seek((parseInt(action.slice(5), 10) || 0) / 1000);
+        return;
+      }
       ({ play: () => P.play(), pause: () => P.pause(), next: () => P.next(), prev: () => P.prev(), toggle: () => P.toggle() }[action] || (() => { }))();
     }
   };

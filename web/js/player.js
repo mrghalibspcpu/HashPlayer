@@ -162,6 +162,8 @@
       P.n.playbackRate = S.speed;
       P.n.volume = S.volume; P.n.muted = S.muted;
       await P.n.setTrack(t, pos0, !!autoplay);
+      P.ccOn = true;
+      $('#v-cc').classList.toggle('on', isVideo);
 
       loadLyrics(t);
       HP.Vis.Energy.load(t.id, await HP.DB.kvGet('energy:' + t.id, null));
@@ -753,6 +755,13 @@
   }
   P.addSubtitle = addSubtitle;
   P.toggleCC = function () {
+    if (isNat(P.active)) {                       // ExoPlayer owns the subtitle track
+      P.ccOn = !P.ccOn;
+      HP.NativeMedia.setSubtitles(P.ccOn);
+      $('#v-cc').classList.toggle('on', P.ccOn);
+      HP.toast('Subtitles ' + (P.ccOn ? 'on' : 'off'));
+      return;
+    }
     const tt = P.a.textTracks;
     if (!tt || !tt.length) { HP.toast('No subtitles loaded — add a .srt / .vtt file'); return; }
     const on = tt[0].mode === 'showing';

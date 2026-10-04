@@ -7,6 +7,10 @@
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
 
+    <!-- Reading our own audio session so the visualiser can draw the music.
+         Nothing is recorded; playback works fine if this is refused. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
     <!-- Background playback notification -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
