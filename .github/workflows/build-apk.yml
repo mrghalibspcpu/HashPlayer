@@ -44,7 +44,14 @@ jobs:
           cache-read-only: false
 
       - name: Build debug APK
-        run: gradle --no-daemon --stacktrace assembleDebug
+        run: |
+          set -o pipefail
+          gradle --no-daemon --stacktrace assembleDebug 2>&1 | tee /tmp/build.log || {
+            echo "--- compile errors ---"
+            grep -E "^(e:|w: .*error)|error:|FAILURE:|Caused by" /tmp/build.log | head -40 \
+              | while read -r line; do echo "::error::$line"; done
+            exit 1
+          }
 
       - name: Build release APK (signed with the debug key so it installs)
         run: gradle --no-daemon assembleRelease
