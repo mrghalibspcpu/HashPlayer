@@ -6,7 +6,7 @@
   'use strict';
   const HP = w.HP, S = HP.S, $ = HP.$, $$ = HP.$$, el = HP.el, icon = HP.icon, clamp = HP.clamp;
   const L = HP.Lib, P = HP.Player, E = HP.Engine, UI = {};
-  const APP_VERSION = '2.0.0';
+  const APP_VERSION = '2.2.2';
 
   /* =========================================================
      views & navigation
@@ -54,13 +54,45 @@
     $('#scrim').classList.toggle('on', on);
     if (on) P.renderQueue();
   };
+  /* The player is an overlay route. Keep the underlying route and scroll
+     position so Android/browser Back can pop it without losing the view. */
+  const routeStack = [];
   UI.openNP = function (on) {
     const np = $('#np');
-    const show = on === undefined ? !np.classList.contains('on') : on;
+    const wasOpen = np.classList.contains('on');
+    const show = on === undefined ? !wasOpen : !!on;
+    if (show === wasOpen) {
+      P.syncMiniPlayer && P.syncMiniPlayer();
+      return;
+    }
+
+    if (show) {
+      routeStack.push({
+        name: 'player',
+        view: document.body.dataset.view || 'library',
+        scrollTop: $('#views').scrollTop
+      });
+    }
+
     np.classList.toggle('on', show);
     np.setAttribute('aria-hidden', show ? 'false' : 'true');
     document.body.classList.toggle('np-open', show);
     if (show && S.lyricsOn) $('#lyrics').hidden = false;
+    if (P.setPlayerViewActive) P.setPlayerViewActive(show);
+
+    if (!show) {
+      const route = routeStack.length ? routeStack.pop() : null;
+      const view = route && route.name === 'player' ? route.view : (document.body.dataset.view || 'library');
+      const active = $('.view.active');
+      const expected = view === 'playlists' ? 'view-playlists'
+        : view === 'eq' ? 'view-eq'
+          : view === 'settings' ? 'view-settings' : 'view-library';
+      /* Normally the old view never unmounts. This guard repairs it if a
+         fullscreen/native lifecycle transition caused its active state to be lost. */
+      if (!active || active.id !== expected) UI.nav(view);
+      else if (view === 'library' || view === 'favorites') L.render();
+      requestAnimationFrame(() => { $('#views').scrollTop = route ? route.scrollTop : 0; });
+    }
   };
 
   /* =========================================================
@@ -742,6 +774,8 @@
       if (openSheetId) { UI.closeAll(); return true; }
       if ($('#queue-panel').classList.contains('on')) { UI.toggleQueue(false); return true; }
       if ($('#np').classList.contains('on')) { UI.openNP(false); return true; }
+      /* Defensive lifecycle repair for an interrupted native player transition. */
+      if (document.body.classList.contains('nv-mode')) { P.setPlayerViewActive(false); return true; }
       if (document.body.dataset.view !== 'library') { UI.nav('library'); return true; }
       return false;
     },
@@ -976,7 +1010,7 @@
     if (S.resume && S.lastId && L.tracks.has(S.lastId)) {
       const t = L.get(S.lastId);
       P.queue = [t.id]; P.index = 0; P.current = t;
-      $('#minibar').hidden = false;
+      P.syncMiniPlayer && P.syncMiniPlayer();
       $('#mini-title').textContent = t.title || t.name;
       $('#mini-artist').textContent = (t.artist || '—') + ' · tap to resume';
       const cu = L.coverUrl(t);

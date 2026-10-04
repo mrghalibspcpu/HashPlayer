@@ -41,10 +41,10 @@
     const self = this;
     const bus = document.createDocumentFragment();
 
-    let uri = '', isVideo = false;
+    let uri = '', isVideo = false, viewActive = false;
     let pos = 0, dur = 0, buffered = 0, paused = true, ended = false;
     let rate = 1, vol = 1, muted = false, ready = false, failed = null;
-    let rectTimer = 0, playResolve = null;
+    let resizeMode = 'contain', rectTimer = 0, playResolve = null;
 
     this.__native = true;
 
@@ -123,6 +123,21 @@
       rectTimer = setInterval(pushRect, 300);
     }
 
+    /** Mount/unmount the native picture with the now-playing route. */
+    this.setViewActive = function (on) {
+      viewActive = !!on && isVideo;
+      document.body.classList.toggle('nv-mode', viewActive);
+      watchRect(viewActive);
+      try { bridge().nVideoVisible(viewActive); } catch (e) { }
+      if (viewActive) requestAnimationFrame(pushRect);
+    };
+
+    this.setResizeMode = function (mode) {
+      resizeMode = ['cover', 'fill'].indexOf(mode) > -1 ? mode : 'contain';
+      try { bridge().nResizeMode(resizeMode); } catch (e) { }
+      if (viewActive) pushRect();
+    };
+
     /* ---------- commands ---------- */
     this.setTrack = function (t, startAt, autoplay) {
       const sub = (t.kind === 'video' && t.sub) ? String(t.sub) : '';
@@ -131,12 +146,18 @@
       pos = startAt || 0; dur = t.duration || 0;
       buffered = 0; ended = false; ready = false; failed = null;
       paused = !autoplay;
-      document.body.classList.toggle('nv-mode', isVideo);
+      resizeMode = 'contain';
+      viewActive = isVideo;
+      document.body.classList.toggle('nv-mode', viewActive);
       try { bridge().nLoad(uri, pos, !!autoplay, isVideo, sub); } catch (e) { }
-      try { bridge().nRate(rate); bridge().nVolume(muted ? 0 : vol); } catch (e) { }
+      try {
+        bridge().nResizeMode(resizeMode);
+        bridge().nRate(rate);
+        bridge().nVolume(muted ? 0 : vol);
+      } catch (e) { }
       N.pushEq();
       N.pushVis();
-      watchRect(isVideo);
+      watchRect(viewActive);
       return Promise.resolve(self);
     };
 
@@ -151,6 +172,7 @@
     this.stop = function () {
       watchRect(false);
       paused = true;
+      viewActive = false;
       document.body.classList.remove('nv-mode');
       showCues('');
       if (HP.Vis && HP.Vis.clearFeed) HP.Vis.clearFeed();

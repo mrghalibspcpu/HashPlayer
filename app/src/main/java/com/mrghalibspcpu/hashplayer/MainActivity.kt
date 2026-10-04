@@ -162,7 +162,7 @@ class MainActivity : AppCompatActivity() {
             cacheMode = WebSettings.LOAD_DEFAULT
             mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
             textZoom = 100
-            userAgentString = "$userAgentString HashPlayer/2.2"
+            userAgentString = "$userAgentString HashPlayer/2.2.2"
         }
 
         web.webViewClient = object : WebViewClient() {
@@ -424,7 +424,7 @@ class MainActivity : AppCompatActivity() {
         fun toastMsg(msg: String) = runOnUiThread { toast(msg) }
 
         @android.webkit.JavascriptInterface
-        fun version(): String = "2.2.1"
+        fun version(): String = "2.2.2"
 
         /* ---------------- native ExoPlayer engine ---------------- */
 
@@ -492,6 +492,21 @@ class MainActivity : AppCompatActivity() {
             nativePlayer.stop()
             runOnUiThread { webTransparent(false) }
         }
+
+        /**
+         * The player route was pushed/popped. Hiding the TextureView and making
+         * the WebView opaque on pop is essential: otherwise the transparent web
+         * shell exposes the black native root after the now-playing view leaves.
+         */
+        @android.webkit.JavascriptInterface
+        fun nVideoVisible(visible: Boolean) = runOnUiThread {
+            nativePlayer.setVideoVisible(visible)
+            webTransparent(visible)
+        }
+
+        /** Native equivalent of CSS object-fit: contain / cover / fill. */
+        @android.webkit.JavascriptInterface
+        fun nResizeMode(mode: String) = nativePlayer.setResizeMode(mode)
 
         /** Where to draw the video, in CSS pixels, so the web UI stays on top of it. */
         @android.webkit.JavascriptInterface

@@ -11,8 +11,10 @@
     a: null, b: null, active: null, current: null,
     queue: [], order: [], index: -1, context: 'Library',
     ab: { a: null, b: null }, sleep: null, wake: null, lyrics: null, lrcIndex: -1,
-    pendingSrc: null, crossing: false, speedHold: false, brightness: 1, zoom: 1
+    pendingSrc: null, crossing: false, speedHold: false, brightness: 1, zoom: 1,
+    videoFit: 'contain'
   };
+  const VIDEO_FITS = ['contain', 'cover', 'fill'];
 
   /* =========================================================
      setup
@@ -69,6 +71,45 @@
     E().applyAll();
   }
 
+  /** Keep the compact audio controls out of every full player/video route. */
+  function syncMiniPlayer() {
+    const mini = $('#minibar');
+    if (!mini) return;
+    const isVideo = !!(P.current && P.current.kind === 'video');
+    const playerOpen = !!($('#np') && $('#np').classList.contains('on'));
+    mini.hidden = !P.current || isVideo || playerOpen;
+  }
+  P.syncMiniPlayer = syncMiniPlayer;
+
+  /**
+   * Mount native video only while its route is visible. On route pop, pause it,
+   * detach the TextureView and return to an opaque, renderable browsing view.
+   */
+  P.setPlayerViewActive = function (active) {
+    const video = !!(P.current && P.current.kind === 'video');
+    const visible = !!active && video;
+    document.body.classList.toggle('video-view-active', visible);
+    if (isNat(P.active) && P.active.setViewActive) P.active.setViewActive(visible);
+    if (!active && video) {
+      if (P.active && !P.active.paused) P.pause();
+      document.body.classList.remove('cinema', 'ui-show');
+      try {
+        if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen();
+      } catch (e) { }
+      try { window.HashNative && window.HashNative.setFullscreen && window.HashNative.setFullscreen(false); } catch (e) { }
+      P.setOrientation('auto');
+    }
+    syncMiniPlayer();
+  };
+
+  P.setVideoFit = function (mode, announce) {
+    P.videoFit = VIDEO_FITS.indexOf(mode) > -1 ? mode : 'contain';
+    document.body.classList.remove('fit-cover', 'fit-fill');
+    if (P.videoFit !== 'contain') document.body.classList.add('fit-' + P.videoFit);
+    if (isNat(P.active) && P.active.setResizeMode) P.active.setResizeMode(P.videoFit);
+    if (announce) HP.toast('Fit: ' + P.videoFit);
+  };
+
   P.playTrack = async function (id, ids, startAt) {
     const t = L().get(id);
     if (!t) return;
@@ -115,6 +156,9 @@
 
     const isVideo = t.kind === 'video';
     const yt = t.source === 'yt';
+    /* Never inherit cover/fill from a previous item: native aspect-fit and CSS
+       object-fit both start at contain for every newly loaded video. */
+    if (isVideo) P.setVideoFit('contain', false);
 
     if (yt && !P.y) { HP.toast('YouTube playback is unavailable here', 'err'); return; }
     if (!yt && P.y) P.y.stop();                     // leaving YouTube → tear the embed down
@@ -469,7 +513,6 @@
     $('#np-context').textContent = P.context;
     $('#mini-title').textContent = t.title || t.name;
     $('#mini-artist').textContent = t.artist || (t.kind === 'video' ? 'Video' : 'Unknown artist');
-    $('#minibar').hidden = false;
     $('#np-fav').classList.toggle('on', !!t.fav);
     $('#mini-fav').classList.toggle('on', !!t.fav);
 
@@ -486,6 +529,8 @@
       if (S.autoTheme) clearTint();
     }
     mini.classList.toggle('has-vid', t.kind === 'video' && !cu);
+    document.body.classList.toggle('video-view-active', t.kind === 'video' && $('#np').classList.contains('on'));
+    syncMiniPlayer();
     updateTimes();
     setMediaSession(t, cu);
   }
@@ -896,13 +941,9 @@
       document.body.classList.toggle('mirror');
       $('#v-mirror').classList.toggle('on', document.body.classList.contains('mirror'));
     });
-    const FITS = ['contain', 'cover', 'fill'];
-    let fitI = 0;
     $('#v-aspect').addEventListener('click', () => {
-      fitI = (fitI + 1) % FITS.length;
-      document.body.classList.remove('fit-cover', 'fit-fill');
-      if (FITS[fitI] !== 'contain') document.body.classList.add('fit-' + FITS[fitI]);
-      HP.toast('Fit: ' + FITS[fitI]);
+      const fitI = (VIDEO_FITS.indexOf(P.videoFit) + 1) % VIDEO_FITS.length;
+      P.setVideoFit(VIDEO_FITS[fitI], true);
     });
     let rot = 0;
     $('#v-rotate').addEventListener('click', () => {

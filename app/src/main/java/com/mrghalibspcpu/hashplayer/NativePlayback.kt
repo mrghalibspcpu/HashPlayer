@@ -3,6 +3,7 @@ package com.mrghalibspcpu.hashplayer
 import android.app.Activity
 import android.content.Context
 import android.graphics.Color
+import android.graphics.Matrix
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
@@ -73,6 +74,13 @@ class NativePlayback(
     private var ticking = false
     private var lastEmit = 0L
 
+    /* The TextureView always occupies the web stage. ExoPlayer renders into a
+       TextureView by stretching its buffer to that view, so we counter-scale
+       the texture below to preserve the video's display aspect ratio. */
+    private var resizeMode = "contain"
+    private var stageWidth = 1
+    private var stageHeight = 1
+
     private val tick = object : Runnable {
         override fun run() {
             val p = player ?: return
@@ -126,6 +134,7 @@ class NativePlayback(
             }
 
             override fun onVideoSizeChanged(size: VideoSize) {
+                applyVideoTransform()
                 post("resize")
             }
 
@@ -185,11 +194,63 @@ class NativePlayback(
         val sv = surface ?: return@post
         val d = activity.resources.displayMetrics.density
         val lp = sv.layoutParams as FrameLayout.LayoutParams
-        lp.width = maxOf(1, (w * d).toInt())
-        lp.height = maxOf(1, (h * d).toInt())
+        stageWidth = maxOf(1, (w * d).toInt())
+        stageHeight = maxOf(1, (h * d).toInt())
+        lp.width = stageWidth
+        lp.height = stageHeight
         lp.leftMargin = (x * d).toInt()
         lp.topMargin = (y * d).toInt()
         sv.layoutParams = lp
+        applyVideoTransform()
+    }
+
+    /**
+     * TextureView stretches its decoded buffer to its own bounds. Apply the
+     * inverse scale around the centre so `contain` (the default) letterboxes
+     * instead of distorting. `cover` crops and `fill` is the explicit stretch
+     * option exposed by the web controls.
+     */
+    private fun applyVideoTransform() {
+        val sv = surface ?: return
+        val size = player?.videoSize ?: return
+        if (stageWidth <= 0 || stageHeight <= 0 || size.width <= 0 || size.height <= 0) {
+            sv.setTransform(Matrix())
+            return
+        }
+
+        var videoAspect = size.width.toFloat() * size.pixelWidthHeightRatio / size.height.toFloat()
+        if (size.unappliedRotationDegrees == 90 || size.unappliedRotationDegrees == 270) {
+            videoAspect = 1f / videoAspect
+        }
+        if (!videoAspect.isFinite() || videoAspect <= 0f) videoAspect = 16f / 9f
+        val viewAspect = stageWidth.toFloat() / stageHeight.toFloat()
+        var sx = 1f
+        var sy = 1f
+
+        when (resizeMode) {
+            "fill" -> Unit
+            "cover" -> {
+                if (videoAspect > viewAspect) sx = videoAspect / viewAspect
+                else sy = viewAspect / videoAspect
+            }
+            else -> { // contain / aspect-fit
+                if (videoAspect > viewAspect) sy = viewAspect / videoAspect
+                else sx = videoAspect / viewAspect
+            }
+        }
+
+        val matrix = Matrix().apply {
+            setScale(sx, sy, stageWidth / 2f, stageHeight / 2f)
+        }
+        sv.setTransform(matrix)
+    }
+
+    fun setResizeMode(mode: String) = main.post {
+        resizeMode = when (mode) {
+            "cover", "fill" -> mode
+            else -> "contain"
+        }
+        applyVideoTransform()
     }
 
     private fun showSurface(show: Boolean) = main.post {
@@ -197,11 +258,15 @@ class NativePlayback(
             val sv = ensureSurface()
             sv.visibility = android.view.View.VISIBLE
             player?.setVideoTextureView(sv)
+            applyVideoTransform()
         } else {
             player?.clearVideoSurface()
             surface?.visibility = android.view.View.GONE
         }
     }
+
+    /** Hide only the picture when leaving the player route; media stays loaded. */
+    fun setVideoVisible(visible: Boolean) = showSurface(visible && isVideo)
 
     /* ------------------------------------------------------------ commands */
 
@@ -211,6 +276,7 @@ class NativePlayback(
             currentUri = uri
             reportUri = if (reportAs.isNotEmpty()) reportAs else uri
             isVideo = video
+            resizeMode = "contain"                 // every video starts aspect-correct
             retried = false
 
             val b = MediaItem.Builder().setUri(Uri.parse(uri))
