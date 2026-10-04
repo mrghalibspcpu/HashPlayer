@@ -9,6 +9,7 @@ import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.media.MediaMetadataRetriever
 import android.net.Uri
@@ -53,6 +54,7 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FilterInputStream
 import java.io.InputStream
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.concurrent.thread
 
 /**
@@ -356,6 +358,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        warming = false
         PlaybackService.transport = null
         PlaybackService.stop(this)
         web.destroy()
@@ -474,7 +477,7 @@ class MainActivity : AppCompatActivity() {
         fun toastMsg(msg: String) = runOnUiThread { toast(msg) }
 
         @android.webkit.JavascriptInterface
-        fun version(): String = "2.2.0"
+        fun version(): String = "2.2.1"
     }
 
     private fun toast(s: String) = Toast.makeText(this, s, Toast.LENGTH_SHORT).show()
@@ -557,6 +560,7 @@ class MainActivity : AppCompatActivity() {
                     null
                 )
             }
+            prewarmArt(out)     // fills the cover cache quietly, after the library is up
         }
     }
 
@@ -707,11 +711,25 @@ class MainActivity : AppCompatActivity() {
 
     /* ======================================================
        album art & video thumbnails (/art/…)
-       The list asks for one image per track; album art repeats a lot, so a
-       small in-memory LRU plus a week of HTTP caching keeps it instant.
+
+       RULE ONE: art is second-class to playback. The library grid asks for
+       one image per track, and some covers are slow to produce (embedded
+       ID3 pictures, first video frames). If that work runs freely on the
+       WebView's request threads it starves the <video> element's own
+       stream — the buffer runs dry mid-song and playback dies with
+       "re-open the file". So: at most two covers are generated at a time,
+       everything else 404s instantly (the card falls back to its icon and
+       retries on the next render), and a background pre-warm pass fills
+       the cache off the request path entirely.
        ====================================================== */
 
-    private val artCache = LruCache<String, ByteArray>(96)
+    private val artCache = LruCache<String, ByteArray>(240)
+    private val artInFlight = AtomicInteger(0)
+    @Volatile private var warming = false
+
+    private fun notFound(headers: HashMap<String, String>) = WebResourceResponse(
+        "text/plain", null, 404, "Not Found", headers, null
+    )
 
     private fun artResponse(request: WebResourceRequest): WebResourceResponse? {
         val path = request.url.path ?: return null
@@ -725,75 +743,84 @@ class MainActivity : AppCompatActivity() {
             val id = rest.substringBefore('/').toLongOrNull() ?: -1L
             val target = Uri.parse(rest.substringAfter('/'))
             if ((kind != "a" && kind != "v") || id <= 0 || target.scheme != "content")
-                return WebResourceResponse("text/plain", null, 404, "Not Found", headers, null)
+                return notFound(headers)
 
-            val bytes = artBytes(kind, id, target)
-            if (bytes == null)
-                return WebResourceResponse("text/plain", null, 404, "Not Found", headers, null)
+            artCache.get("$kind/$id")?.let { cached ->
+                headers["Cache-Control"] = "public, max-age=604800"
+                return WebResourceResponse(
+                    "image/jpeg", null, 200, "OK", headers, ByteArrayInputStream(cached)
+                )
+            }
 
-            headers["Cache-Control"] = "public, max-age=604800"
-            return WebResourceResponse(
-                "image/jpeg", null, 200, "OK", headers, ByteArrayInputStream(bytes)
-            )
+            /* playback first: never let cover work occupy the request threads */
+            if (artInFlight.get() >= 2) return notFound(headers)
+            artInFlight.incrementAndGet()
+            try {
+                val bytes = artBytes(kind, id, target) ?: return notFound(headers)
+                headers["Cache-Control"] = "public, max-age=604800"
+                return WebResourceResponse(
+                    "image/jpeg", null, 200, "OK", headers, ByteArrayInputStream(bytes)
+                )
+            } finally {
+                artInFlight.decrementAndGet()
+            }
         } catch (e: Exception) {
             Log.w(TAG, "art failed", e)
-            return WebResourceResponse("text/plain", null, 404, "Not Found", headers, null)
+            return notFound(headers)
         }
     }
 
     private fun artBytes(kind: String, id: Long, target: Uri): ByteArray? {
         val key = "$kind/$id"
         artCache.get(key)?.let { return it }
-
-        val bytes = (if (kind == "a") audioArt(id, target) else videoThumb(id, target))
+        val bytes = (if (kind == "a") albumArtBytes(id) ?: embeddedArt(target)
+                     else videoThumbBytes(id, target) ?: firstFrameBytes(target))
             ?.takeIf { it.isNotEmpty() }
-        if (bytes != null) artCache.put(key, bytes)   // only real art is cached
+            ?.let { clampArt(it) }
+        if (bytes != null) artCache.put(key, bytes)
         return bytes
     }
 
-    /** Album art for an audio file: the MediaStore album entry first, then the
-     *  picture embedded in the file itself (ID3 APIC / FLAC / MP4 covr). */
-    private fun audioArt(albumId: Long, target: Uri): ByteArray? {
+    /** MediaStore's own album art — the fast path, no media parsing. */
+    private fun albumArtBytes(albumId: Long): ByteArray? {
         if (Build.VERSION.SDK_INT >= 29) {
-            try {
+            return try {
                 val albumUri = ContentUris.withAppendedId(
                     Uri.parse("content://media/external/audio/albums"), albumId
                 )
-                contentResolver.openInputStream(albumUri)?.use { s ->
-                    val b = s.readBytes()
-                    if (b.isNotEmpty()) return b
-                }
-            } catch (e: Exception) { /* fall through to the embedded picture */ }
-        } else {
-            try {
-                @Suppress("DEPRECATION")
-                contentResolver.query(
-                    MediaStore.Audio.Albums.EXTERNAL_CONTENT_URI,
-                    arrayOf(MediaStore.Audio.Albums.ALBUM_ART),
-                    MediaStore.Audio.Albums._ID + "=?",
-                    arrayOf(albumId.toString()), null
-                )?.use { c ->
-                    if (c.moveToFirst()) {
-                        val f = c.getString(0)
-                        if (!f.isNullOrBlank() && File(f).isFile) return File(f).readBytes()
-                    }
-                }
-            } catch (e: Exception) { }
+                contentResolver.openInputStream(albumUri)?.use { s -> s.readBytes() }?.takeIf { it.isNotEmpty() }
+            } catch (e: Exception) { null }
         }
-        return embeddedArt(target)
+        var bytes: ByteArray? = null
+        try {
+            @Suppress("DEPRECATION")
+            contentResolver.query(
+                MediaStore.Audio.Albums.EXTERNAL_CONTENT_URI,
+                arrayOf(MediaStore.Audio.Albums.ALBUM_ART),
+                MediaStore.Audio.Albums._ID + "=?",
+                arrayOf(albumId.toString()), null
+            )?.use { c ->
+                if (c.moveToFirst()) {
+                    val f = c.getString(0)
+                    if (!f.isNullOrBlank() && File(f).isFile) bytes = File(f).readBytes()
+                }
+            }
+        } catch (e: Exception) { }
+        return bytes?.takeIf { it.isNotEmpty() }
     }
 
-    /** A poster frame for a video, generated (and cached) by MediaStore itself. */
-    private fun videoThumb(id: Long, target: Uri): ByteArray? {
-        try {
-            val bmp: Bitmap? = if (Build.VERSION.SDK_INT >= 29)
-                contentResolver.loadThumbnail(target, Size(320, 320), null)
-            else @Suppress("DEPRECATION") MediaStore.Video.Thumbnails.getThumbnail(
-                contentResolver, id, MediaStore.Images.Thumbnails.MINI_KIND, null
-            )
-            if (bmp != null) return bmp.toJpeg()
-        } catch (e: Exception) { }
-        // fall back to the very first frame
+    /** MediaStore's own (usually already generated) video thumbnail. */
+    private fun videoThumbBytes(id: Long, target: Uri): ByteArray? = try {
+        val bmp: Bitmap? = if (Build.VERSION.SDK_INT >= 29)
+            contentResolver.loadThumbnail(target, Size(320, 320), null)
+        else @Suppress("DEPRECATION") MediaStore.Video.Thumbnails.getThumbnail(
+            contentResolver, id, MediaStore.Images.Thumbnails.MINI_KIND, null
+        )
+        bmp?.toJpeg()
+    } catch (e: Exception) { null }
+
+    /** Slow fallbacks — only ever reached under the in-flight cap. */
+    private fun firstFrameBytes(target: Uri): ByteArray? {
         val mmr = MediaMetadataRetriever()
         return try {
             mmr.setDataSource(this, target)
@@ -810,6 +837,68 @@ class MainActivity : AppCompatActivity() {
             mmr.embeddedPicture
         } catch (e: Exception) { null } finally {
             try { mmr.release() } catch (e: Exception) { }
+        }
+    }
+
+    /** Embedded pictures can be multi-megabyte — keep the cache small and the
+     *  WebView's memory flat by re-encoding anything oversized. */
+    private fun clampArt(bytes: ByteArray): ByteArray {
+        if (bytes.size <= 220 * 1024) return bytes
+        return try {
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+            if (bounds.outWidth <= 0) bytes
+            else {
+                val opts = BitmapFactory.Options().apply {
+                    inSampleSize = maxOf(1, maxOf(bounds.outWidth, bounds.outHeight) / 480)
+                }
+                val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts) ?: return bytes
+                val out = bmp.toJpeg()
+                bmp.recycle()
+                out
+            }
+        } catch (e: Exception) { bytes }
+    }
+
+    /**
+     * After a scan, warm the art cache in the background so the list shows
+     * covers instantly and the request threads never do heavy image work.
+     * Playback always wins: warming pauses while anything is playing, and it
+     * only uses the fast MediaStore lookups (no file parsing).
+     */
+    private fun prewarmArt(scan: JSONArray) {
+        if (warming) return
+        warming = true
+        try {
+            val seen = HashSet<String>()
+            var videos = 0
+            var i = 0
+            while (i < scan.length()) {
+                if (!warming) return
+                if (isPlaying) { Thread.sleep(600); continue }      // the music goes first
+                val o = scan.optJSONObject(i)
+                i++
+                if (o == null) continue
+                val art = o.optString("art")
+                if (art.isBlank() || !art.startsWith(ORIGIN)) continue
+                try {
+                    val parts = art.removePrefix("$ORIGIN$ART_PREFIX").split('/', limit = 3)
+                    if (parts.size < 3) continue
+                    val kind = parts[0]
+                    val id = parts[1].toLongOrNull() ?: continue
+                    val key = "$kind/$id"
+                    if (!seen.add(key) || artCache.get(key) != null) continue
+                    val target = Uri.parse(Uri.decode(parts[2]))
+                    if (target.scheme != "content") continue
+                    val bytes: ByteArray? = if (kind == "a") albumArtBytes(id)
+                    else if (videos < 200) { videos++; videoThumbBytes(id, target) }
+                    else null
+                    if (bytes != null && bytes.isNotEmpty()) artCache.put(key, clampArt(bytes))
+                    if (i % 8 == 0) Thread.sleep(40)                 // let the disk breathe
+                } catch (e: Exception) { }
+            }
+        } finally {
+            warming = false
         }
     }
 
@@ -932,4 +1021,5 @@ class MainActivity : AppCompatActivity() {
         if (arr.length() == 0) return
         js("window.HashBridge && window.HashBridge.onOpenUri(${JSONObject.quote(arr.toString())});")
     }
+}
 }

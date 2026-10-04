@@ -201,7 +201,8 @@
       self.mount.hidden = false;
       return loadAPI().then(api => new Promise((resolve, reject) => {
         const fail = setTimeout(() => reject(new Error('timeout')), 15000);
-        const done = () => { clearTimeout(fail); resolve(self); };
+        let settled = false;                       // after this, errors are mid-playback
+        const done = () => { clearTimeout(fail); settled = true; resolve(self); };
 
         if (player && ready) {
           try {
@@ -237,9 +238,9 @@
             },
             onStateChange: onState,
             onError: ev => {
-              clearTimeout(fail);
               const why = { 2: 'bad link', 5: 'player error', 100: 'video removed or private', 101: 'embedding disabled by the uploader', 150: 'embedding disabled by the uploader' };
-              reject(new Error(why[ev.data] || 'cannot be played'));
+              if (settled) fire('error');         // died mid-playback → the player skips
+              else { clearTimeout(fail); reject(new Error(why[ev.data] || 'cannot be played')); }
             }
           }
         });

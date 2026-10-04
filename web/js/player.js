@@ -11,7 +11,8 @@
     a: null, b: null, active: null, current: null,
     queue: [], order: [], index: -1, context: 'Library',
     ab: { a: null, b: null }, sleep: null, wake: null, lyrics: null, lrcIndex: -1,
-    pendingSrc: null, crossing: false, speedHold: false, brightness: 1, zoom: 1
+    pendingSrc: null, crossing: false, speedHold: false, brightness: 1, zoom: 1,
+    retries: null
   };
 
   /* =========================================================
@@ -35,6 +36,14 @@
     bindGestures();
     mediaSession();
     tick();
+    /* rAF stops when the page is hidden (screen off) — but a native player keeps
+       its sleep timer running and its position saved. This cheap interval does
+       exactly that while the music keeps playing in the background. */
+    setInterval(() => {
+      if (!document.hidden || !P.current || !P.active) return;
+      savePos();
+      if (P.sleep && P.sleep.at) tickSleep();
+    }, 3000);
   };
 
   function bind(m) {
@@ -45,8 +54,15 @@
     m.addEventListener('progress', () => { if (m === P.active) drawBuffer(); });
     m.addEventListener('loadedmetadata', () => { if (m === P.active) onMeta(); });
     m.addEventListener('error', () => { if (m === P.active) onError(); });
-    m.addEventListener('waiting', () => { if (m === P.active) document.body.classList.add('buffering'); });
-    m.addEventListener('playing', () => document.body.classList.remove('buffering'));
+    m.addEventListener('waiting', () => {
+      if (m !== P.active) return;
+      document.body.classList.add('buffering');
+      armStall();
+    });
+    m.addEventListener('playing', () => {
+      document.body.classList.remove('buffering');
+      clearStall();
+    });
     m.addEventListener('ratechange', () => { if (m === P.active) updateSpeedLabel(); });
     m.addEventListener('volumechange', () => { });
   }
@@ -98,7 +114,7 @@
     }
   }
 
-  async function load(t, autoplay, startAt) {
+  async function load(t, autoplay, startAt, force) {
     if (!t) return;
     const src = await L().resolveSrc(t);
     if (!src) {
@@ -157,7 +173,7 @@
     target.playbackRate = S.speed;
     if ('preservesPitch' in target) target.preservesPitch = S.pitch;
     if (t.source === 'url') target.crossOrigin = 'anonymous'; else target.removeAttribute('crossorigin');
-    if (target.src !== src) { target.src = src; target.load(); }
+    if (force || target.src !== src) { target.src = src; target.load(); }
 
     document.body.classList.toggle('has-video', isVideo);
     gain(target, S.fade && autoplay ? 0 : 1);
@@ -222,13 +238,59 @@
   function onError() {
     const t = P.current; if (!t) return;
     const err = P.active.error;
-    console.warn('[media error]', err && err.code, t.name);
-    if (t.source === 'url') HP.toast('Could not play that link (format or CORS blocked)', 'err');
-    else {
-      t.file = null;
-      HP.Lib.countRelink(); HP.Lib.render();
-      HP.toast('File unavailable — re-open it from your device', 'err');
+    console.warn('[media error]', err && err.code, t.name, t.source);
+    clearStall();
+    if (t.source === 'yt') { HP.toast('This video cannot be played — skipping', 'err'); P.next(true); return; }
+    /* device files and streams can hiccup (busy storage, scanner burst, a read
+       that failed mid-file) — a native player reconnects, so do we */
+    if (t.source === 'native' || t.source === 'url' || t.source === 'handle') { selfHeal(t); return; }
+    t.file = null;
+    HP.Lib.countRelink(); HP.Lib.render();
+    HP.toast('File unavailable — re-open it from your device', 'err');
+  }
+
+  /* =========================================================
+     self-healing playback
+
+     If the stream breaks or stalls, reload it and carry on from where it
+     stopped — up to four attempts with growing patience. Only a track that
+     refuses all four is declared unplayable (and the device is rescanned).
+     ========================================================= */
+  let stallTimer = null;
+  function armStall() {
+    const t = P.current;
+    if (!t || (t.source !== 'native' && t.source !== 'url')) return;
+    clearTimeout(stallTimer);
+    stallTimer = setTimeout(() => {
+      if (P.current === t && P.active && !P.active.paused &&
+          document.body.classList.contains('buffering')) {
+        console.warn('[stall] stream stuck for 14s — reloading');
+        selfHeal(t);
+      }
+    }, 14000);
+  }
+  function clearStall() { clearTimeout(stallTimer); stallTimer = null; }
+
+  async function selfHeal(t) {
+    if (!t) return;
+    const n = (P.retries && P.retries.id === t.id) ? P.retries.n + 1 : 1;
+    if (n > 4) {
+      P.retries = null;
+      if (t.source === 'url') HP.toast('Could not play that link (format or CORS blocked)', 'err');
+      else {
+        HP.toast('“' + (t.title || t.name) + '” could not be read — rescanning your device', 'err');
+        try { window.HashNative && window.HashNative.scanMedia && window.HashNative.scanMedia(); } catch (e) { }
+      }
+      return;
     }
+    P.retries = { id: t.id, n };
+    const el = P.active;
+    const pos = (el && isFinite(el.currentTime) && el.currentTime > 1) ? el.currentTime : (t.pos || 0);
+    t.pos = pos; L().saveTrack(t);
+    if (n === 1) HP.toast('Connection hiccup — reconnecting…');
+    await new Promise(r => setTimeout(r, 300 * n * n));
+    if (P.current !== t) return;                 // the user moved on meanwhile
+    load(t, true, pos, true);
   }
 
   P.toggle = function () {
@@ -261,6 +323,8 @@
   function onPlay() {
     document.body.classList.add('playing');
     $$('#btn-play use, #mini-play use').forEach(u => u.setAttribute('href', '#i-pause'));
+    P.retries = null;                        // the stream is healthy again
+    clearStall();
     HP.Vis.start();
     if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
     keepAwake(true);
