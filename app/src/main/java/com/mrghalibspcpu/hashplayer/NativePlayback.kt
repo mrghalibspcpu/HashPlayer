@@ -392,8 +392,8 @@ class NativePlayback(
                     val arr = JSONArray()
                     var i = 0
                     while (i < bins) {
-                        val re = f.getOrElse(i * 2) { 0 }.toInt()
-                        val im = f.getOrElse(i * 2 + 1) { 0 }.toInt()
+                        val re = if (i * 2 < f.size) f[i * 2].toInt() else 0
+                        val im = if (i * 2 + 1 < f.size) f[i * 2 + 1].toInt() else 0
                         val mag = Math.hypot(re.toDouble(), im.toDouble())
                         arr.put(Math.min(255.0, mag * 3).toInt())
                         i++
