@@ -8,7 +8,9 @@ import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
 import android.content.res.Configuration
+import android.graphics.Bitmap
 import android.graphics.Color
+import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -41,7 +43,9 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.webkit.WebViewAssetLoader
 import org.json.JSONArray
 import org.json.JSONObject
+import android.util.Base64
 import java.io.BufferedInputStream
+import java.io.ByteArrayOutputStream
 import java.io.FilterInputStream
 import java.io.InputStream
 import kotlin.concurrent.thread
@@ -86,6 +90,7 @@ class MainActivity : AppCompatActivity() {
     private var didAutoScan = false
     private var customView: View? = null
     private var customCallback: WebChromeClient.CustomViewCallback? = null
+    private lateinit var nativePlayer: NativePlayback
 
     private val fileChooser =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { res ->
@@ -128,6 +133,14 @@ class MainActivity : AppCompatActivity() {
         }
         setContentView(root)
 
+        nativePlayer = NativePlayback(this, root) { json ->
+            runOnUiThread {
+                web.evaluateJavascript(
+                    "window.HashBridge && window.HashBridge.onNative(" + JSONObject.quote(json) + ");", null
+                )
+            }
+        }
+
         web.settings.apply {
             javaScriptEnabled = true
             domStorageEnabled = true
@@ -142,7 +155,7 @@ class MainActivity : AppCompatActivity() {
             cacheMode = WebSettings.LOAD_DEFAULT
             mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
             textZoom = 100
-            userAgentString = "$userAgentString HashPlayer/2.1"
+            userAgentString = "$userAgentString HashPlayer/2.2"
         }
 
         web.webViewClient = object : WebViewClient() {
@@ -317,6 +330,7 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         PlaybackService.transport = null
         PlaybackService.stop(this)
+        nativePlayer.release()
         web.destroy()
         super.onDestroy()
     }
@@ -398,7 +412,108 @@ class MainActivity : AppCompatActivity() {
         fun toastMsg(msg: String) = runOnUiThread { toast(msg) }
 
         @android.webkit.JavascriptInterface
-        fun version(): String = "2.1.0"
+        fun version(): String = "2.2.0"
+
+        /* ---------------- native ExoPlayer engine ---------------- */
+
+        /** The web app asks this before routing a device file away from <video>. */
+        @android.webkit.JavascriptInterface
+        fun nativeEngine(): Boolean = true
+
+        @android.webkit.JavascriptInterface
+        fun nLoad(uri: String, pos: Double, autoplay: Boolean, video: Boolean) {
+            runOnUiThread { webTransparent(video) }
+            nativePlayer.load(realUri(uri), pos, autoplay, video)
+        }
+
+        @android.webkit.JavascriptInterface
+        fun nPlay() = nativePlayer.play()
+
+        @android.webkit.JavascriptInterface
+        fun nPause() = nativePlayer.pause()
+
+        @android.webkit.JavascriptInterface
+        fun nSeek(sec: Double) = nativePlayer.seek(sec)
+
+        @android.webkit.JavascriptInterface
+        fun nRate(r: Float) = nativePlayer.rate(r)
+
+        @android.webkit.JavascriptInterface
+        fun nVolume(v: Float) = nativePlayer.volume(v)
+
+        @android.webkit.JavascriptInterface
+        fun nStop() {
+            nativePlayer.stop()
+            runOnUiThread { webTransparent(false) }
+        }
+
+        /** Where to draw the video, in CSS pixels, so the web UI stays on top of it. */
+        @android.webkit.JavascriptInterface
+        fun nRect(x: Float, y: Float, w: Float, h: Float) = nativePlayer.setRect(x, y, w, h)
+
+        /* ---------------- artwork ---------------- */
+
+        /**
+         * Album art / video thumbnails for the library grid. MediaStore gives us
+         * these in one cheap call per file — the web side could never read them,
+         * which is why every device track showed a blank tile.
+         */
+        @android.webkit.JavascriptInterface
+        fun requestArt(json: String) {
+            thread {
+                val list = try { JSONArray(json) } catch (e: Exception) { return@thread }
+                for (i in 0 until list.length()) {
+                    val u = list.optString(i) ?: continue
+                    val data = artFor(realUri(u)) ?: continue
+                    runOnUiThread {
+                        web.evaluateJavascript(
+                            "window.HashBridge && window.HashBridge.onArt(" +
+                                JSONObject.quote(u) + "," + JSONObject.quote(data) + ");", null
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    /** `https://appassets…/media/<encoded content uri>` → the real `content://` uri. */
+    private fun realUri(s: String): String {
+        val i = s.indexOf(MEDIA_PREFIX)
+        return if (i >= 0) Uri.decode(s.substring(i + MEDIA_PREFIX.length)) else s
+    }
+
+    /** While a native video is on screen the WebView must be see-through. */
+    private fun webTransparent(on: Boolean) {
+        web.setBackgroundColor(if (on) Color.TRANSPARENT else Color.parseColor("#07080C"))
+    }
+
+    private fun artFor(uri: String): String? {
+        val target = try { Uri.parse(uri) } catch (e: Exception) { return null }
+        var bmp: Bitmap? = null
+        if (Build.VERSION.SDK_INT >= 29) {
+            bmp = try { contentResolver.loadThumbnail(target, android.util.Size(320, 320), null) }
+            catch (e: Throwable) { null }
+        }
+        if (bmp == null) {
+            val mmr = MediaMetadataRetriever()
+            try {
+                mmr.setDataSource(this, target)
+                val pic = mmr.embeddedPicture
+                bmp = if (pic != null) android.graphics.BitmapFactory.decodeByteArray(pic, 0, pic.size)
+                else mmr.getFrameAtTime(1_000_000)
+            } catch (e: Throwable) { } finally { try { mmr.release() } catch (e: Exception) { } }
+        }
+        val b = bmp ?: return null
+        return try {
+            val max = 320
+            val scale = minOf(1f, max.toFloat() / maxOf(b.width, b.height))
+            val out = if (scale < 1f)
+                Bitmap.createScaledBitmap(b, (b.width * scale).toInt(), (b.height * scale).toInt(), true)
+            else b
+            val bos = ByteArrayOutputStream()
+            out.compress(Bitmap.CompressFormat.JPEG, 82, bos)
+            "data:image/jpeg;base64," + Base64.encodeToString(bos.toByteArray(), Base64.NO_WRAP)
+        } catch (e: Throwable) { null }
     }
 
     private fun toast(s: String) = Toast.makeText(this, s, Toast.LENGTH_SHORT).show()

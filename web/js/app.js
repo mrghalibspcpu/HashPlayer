@@ -703,6 +703,7 @@
   HP.Native = Native;
 
   /* called from Kotlin */
+  let artTimer = 0;
   w.HashBridge = {
     /** silent = the automatic scan at launch; stay quiet unless we actually found something */
     onScan(json, silent) {
@@ -764,6 +765,26 @@
         });
       } catch (e) { HP.toast('Could not open that file', 'err'); }
     },
+    /** ExoPlayer state for the track currently playing natively. */
+    onNative(json) {
+      if (!P.n) return;
+      let s; try { s = JSON.parse(json); } catch (e) { return; }
+      P.n.onState(s);
+    },
+
+    /** Album art / video thumbnail extracted natively for a device file. */
+    onArt(uri, dataUrl) {
+      if (!uri || !dataUrl) return;
+      let hit = null;
+      L.tracks.forEach(t => { if (!hit && t.nativeUri === uri) hit = t; });
+      if (!hit || hit.thumb === dataUrl) return;
+      hit.thumb = dataUrl;
+      L.saveTrack(hit);
+      HP.emit('track-updated', hit);
+      clearTimeout(artTimer);
+      artTimer = setTimeout(() => L.render(), 350);   // one repaint per burst
+    },
+
     onTransport(action) {
       ({ play: () => P.play(), pause: () => P.pause(), next: () => P.next(), prev: () => P.prev(), toggle: () => P.toggle() }[action] || (() => { }))();
     }
@@ -930,6 +951,7 @@
 
     /* load the library */
     await L.load();
+    setTimeout(() => { try { L.requestArt(); } catch (e) { } }, 1200);   // fill in device artwork
     const qp = new URLSearchParams(location.search).get('view');
     UI.nav(['library', 'playlists', 'favorites', 'eq', 'settings'].indexOf(qp) > -1 ? qp : 'library');
     L.queueMeta(Array.from(L.tracks.values()).filter(t => !t.tagged));

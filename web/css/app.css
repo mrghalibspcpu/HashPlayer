@@ -406,3 +406,27 @@ body[dir=rtl] .lrc-hit{text-align:right}
   border:1px solid color-mix(in srgb,var(--gold) 32%,transparent)}
 .yt-warn .ic{flex:none;width:17px;height:17px;color:var(--gold);margin-top:1px}
 body.yt-mode .yt-warn{display:flex}
+
+/* ------------------------------------------------------------------
+   phones in portrait: the filter chips and the Play-all / Shuffle pair
+   used to run off the right edge of the screen — make the chip row
+   swipeable and let the right-hand tools wrap instead of overflowing.
+   ------------------------------------------------------------------ */
+@media (max-width:859px){
+  .toolbar{align-items:stretch}
+  .chips{
+    width:100%;overflow-x:auto;overflow-y:hidden;flex-wrap:nowrap;
+    scrollbar-width:none;-webkit-overflow-scrolling:touch;
+    padding-bottom:2px;scroll-snap-type:x proximity;
+  }
+  .chips::-webkit-scrollbar{display:none}
+  .chip{flex:0 0 auto;scroll-snap-align:start}
+  .tool-right{width:100%;margin:0;flex-wrap:wrap;gap:8px}
+  .tool-right .select{flex:1 1 140px;min-width:0}
+  .tool-right .btn{flex:1 1 auto;justify-content:center;min-width:0}
+  .tool-right .btn span{white-space:nowrap}
+  #btn-view-mode{flex:0 0 auto}
+}
+@media (max-width:380px){
+  .tool-right .btn{padding:9px 10px;font-size:12.5px}
+}

@@ -24,8 +24,11 @@
     document.body.appendChild(P.b);
     P.active = P.a;
     P.y = HP.YT ? HP.YT.media($('#yt-mount')) : null;     // YouTube embed, disguised as a media element
+    /* Android: device files play through ExoPlayer, not the WebView */
+    P.n = (HP.NativeMedia && HP.NativeMedia.available()) ? HP.NativeMedia.create() : null;
     [P.a, P.b].forEach(bind);
     if (P.y) bind(P.y);
+    if (P.n) { bind(P.n); document.body.classList.add('has-native-engine'); }
     P.a.volume = 1; P.b.volume = 1;
     HP.Vis.init($('#vis'));
     HP.Vis.visible = () => $('#np').classList.contains('on') && !document.body.classList.contains('yt-mode');
@@ -55,8 +58,10 @@
      loading & playback
      ========================================================= */
   const isYT = m => !!(m && m.__yt);
-  function gain(m, v) { if (!isYT(m)) E().elementGain(m, v); }
-  function fade(m, to, ms) { return isYT(m) ? Promise.resolve() : E().fadeElement(m, to, ms); }
+  const isNat = m => !!(m && m.__native);
+  const external = m => isYT(m) || isNat(m);        // not routed through Web Audio
+  function gain(m, v) { if (!external(m)) E().elementGain(m, v); }
+  function fade(m, to, ms) { return external(m) ? Promise.resolve() : E().fadeElement(m, to, ms); }
 
   async function ensureAudio() {
     await E().resume();
@@ -117,6 +122,7 @@
 
     if (yt) {
       P.a.pause(); if (P.b) P.b.pause();
+      if (P.n) P.n.stop();
       P.current = t; P.active = P.y;
       document.body.classList.add('has-video');
       paintNowPlaying(t);
@@ -144,6 +150,32 @@
       }
       return;
     }
+
+    /* ---------- device file → native ExoPlayer ---------- */
+    if (P.n && HP.NativeMedia.handles(t)) {
+      P.a.pause(); if (P.b) P.b.pause();
+      P.current = t;
+      P.active = P.n;
+      document.body.classList.toggle('has-video', isVideo);
+      const pos0 = startAt != null ? startAt
+        : (S.resume && t.pos > 3 && (!t.duration || t.pos < t.duration - 8) ? t.pos : 0);
+      P.n.playbackRate = S.speed;
+      P.n.volume = S.volume; P.n.muted = S.muted;
+      await P.n.setTrack(t, pos0, !!autoplay);
+
+      loadLyrics(t);
+      HP.Vis.Energy.load(t.id, await HP.DB.kvGet('energy:' + t.id, null));
+      P.ab = { a: null, b: null }; updateAB();
+      renderMarks();
+      paintNowPlaying(t);
+      if (isVideo && HP.UI && !$('#np').classList.contains('on')) HP.UI.openNP(true);
+      reportVideo();
+      HP.emit('track-changed', t);
+      highlightCards();
+      renderQueue();
+      return;
+    }
+    if (P.n) P.n.stop();                            // leaving the native engine
 
     let target = P.a;
     if (!isVideo && P.crossing && P.active === P.a) target = P.b;     // crossfade lands on B
@@ -200,7 +232,8 @@
       const n = window.HashNative;
       if (!n || !n.setVideoState) return;
       const v = document.body.classList.contains('has-video');
-      n.setVideoState(v, P.a.videoWidth || 1280, P.a.videoHeight || 720);
+      const m = P.active || P.a;
+      n.setVideoState(v, m.videoWidth || 1280, m.videoHeight || 720);
     } catch (e) { }
   }
   P.reportVideo = reportVideo;
@@ -223,6 +256,11 @@
     const t = P.current; if (!t) return;
     const err = P.active.error;
     console.warn('[media error]', err && err.code, t.name);
+    if (isNat(P.active) || t.nativeUri) {
+      HP.toast('This file could not be played — skipping', 'err');
+      if (P.queue.length > 1) setTimeout(() => P.next(true), 600);
+      return;
+    }
     if (t.source === 'url') HP.toast('Could not play that link (format or CORS blocked)', 'err');
     else {
       t.file = null;
@@ -249,7 +287,7 @@
   };
   P.pause = function () {
     if (!P.current) return;
-    if (S.fade && E().ready && !isYT(P.active)) {
+    if (S.fade && E().ready && !external(P.active)) {
       fade(P.active, 0, 220).then(() => { P.active.pause(); gain(P.active, 1); });
       onPause();
     } else P.active.pause();
@@ -647,7 +685,7 @@
      ========================================================= */
   function checkCrossfade(cur, dur) {
     const xf = S.crossfade | 0;
-    if (!xf || !dur || P.crossing || P.active.paused || isYT(P.active)) return;
+    if (!xf || !dur || P.crossing || P.active.paused || external(P.active)) return;
     if (S.repeat === 'one' || !S.autoplayNext) return;
     if (dur - cur > xf || dur - cur <= 0) return;
     const oi = P.order.indexOf(P.index), ni = oi + 1;

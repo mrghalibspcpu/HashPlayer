@@ -363,3 +363,24 @@ body.in-pip #toasts,body.in-pip .aurora{display:none !important}
 body.in-pip #np{transform:none !important;visibility:visible}
 body.in-pip #np .np-body{padding:0}
 body.in-pip .stage{border-radius:0;box-shadow:none}
+
+/* ============================================================
+   native video (Android): the picture is an ExoPlayer surface drawn
+   *behind* the WebView, so everything above the stage rectangle has to
+   be see-through — otherwise the page would simply cover the video.
+   ============================================================ */
+body.nv-mode,
+body.nv-mode #np,
+body.nv-mode #np .np-body,
+body.nv-mode .stage{background:transparent !important}
+body.nv-mode #np::before,
+body.nv-mode #np::after{display:none !important}
+body.nv-mode .stage{box-shadow:none}
+body.nv-mode .art-wrap,
+body.nv-mode #vis,
+body.nv-mode #media{display:none !important}
+/* the surface itself handles scaling/rotation, so hide the CSS-only video tools */
+body.nv-mode #v-shot,body.nv-mode #v-mirror,body.nv-mode #v-rotate{display:none}
+body.nv-mode .np-top,
+body.nv-mode .np-ctrl{background:linear-gradient(to bottom,rgba(7,8,12,.78),rgba(7,8,12,0))}
+body.nv-mode .np-ctrl{background:linear-gradient(to top,rgba(7,8,12,.85),rgba(7,8,12,0))}

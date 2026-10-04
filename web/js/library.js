@@ -229,8 +229,26 @@
     add.forEach(t => L.tracks.set(t.id, t));
     if (add.length) await DB.bulkPut('tracks', add);
     HP.emit('library');
+    L.requestArt();                       // native album art / video thumbnails
     if (!opts.quiet) HP.toast(add.length ? add.length + ' tracks found on device' : 'No new tracks found', add.length ? 'ok' : '');
     return add;
+  };
+
+  /**
+   * Album art for device files can only be read natively (MediaStore /
+   * MediaMetadataRetriever) — ask the shell for every tile that is still blank,
+   * in small batches so a big library does not stall the UI.
+   */
+  L.requestArt = function () {
+    const n = window.HashNative;
+    if (!n || !n.requestArt) return;
+    const want = [];
+    L.tracks.forEach(t => { if (t.nativeUri && !t.thumb && !t.cover && !t.artAsked) { t.artAsked = true; want.push(t.nativeUri); } });
+    if (!want.length) return;
+    for (let i = 0; i < want.length; i += 40) {
+      const chunk = want.slice(i, i + 40);
+      setTimeout(() => { try { n.requestArt(JSON.stringify(chunk)); } catch (e) { } }, (i / 40) * 400);
+    }
   };
 
   /* ---------------- background metadata pipeline ---------------- */
