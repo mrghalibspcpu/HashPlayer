@@ -15,7 +15,7 @@ import android.view.TextureView
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import androidx.media3.common.AudioAttributes
-import androidx.media3.common.CueGroup
+import androidx.media3.common.text.CueGroup
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
