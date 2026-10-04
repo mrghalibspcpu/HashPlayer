@@ -424,7 +424,7 @@ class MainActivity : AppCompatActivity() {
         fun toastMsg(msg: String) = runOnUiThread { toast(msg) }
 
         @android.webkit.JavascriptInterface
-        fun version(): String = "2.2.0"
+        fun version(): String = "2.2.1"
 
         /* ---------------- native ExoPlayer engine ---------------- */
 
