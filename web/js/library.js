@@ -288,14 +288,39 @@
   L.fileOf = fileOf;
 
   /* ---------------- source resolution ---------------- */
-  const srcCache = new Map();           // id → objectURL
+  const srcCache = new Map();           // id → objectURL (insertion order = LRU)
   const MAX_SRC = 6;
+  let pinnedId = null;                  // the track currently loaded in a media element
+
+  /* the playing track's blob URL must never be recycled underneath it —
+     background tagging/probing used to evict it and the element died mid-song */
+  L.pinSrc = function (id) { pinnedId = id || null; };
+
+  function touch(id) {                  // move to the "most recent" end
+    if (!srcCache.has(id)) return;
+    const u = srcCache.get(id);
+    srcCache.delete(id); srcCache.set(id, u);
+  }
+  function trim(keepId) {
+    while (srcCache.size > MAX_SRC) {
+      let victim = null;
+      for (const k of srcCache.keys()) { if (k !== keepId && k !== pinnedId) { victim = k; break; } }
+      if (victim == null) break;
+      URL.revokeObjectURL(srcCache.get(victim)); srcCache.delete(victim);
+    }
+  }
+
+  L.dropSrc = function (id) {
+    if (!srcCache.has(id)) return;
+    URL.revokeObjectURL(srcCache.get(id)); srcCache.delete(id);
+  };
+
   L.resolveSrc = async function (t, silent) {
     if (!t) return null;
     if (t.source === 'yt') return 'yt:' + t.ytId;
     if (t.source === 'url') return t.url;
     if (t.nativeUri) return t.nativeUri;
-    if (srcCache.has(t.id)) return srcCache.get(t.id);
+    if (srcCache.has(t.id)) { touch(t.id); return srcCache.get(t.id); }
     let f = t.file;
     if (!f && t.handle) {
       try {
@@ -309,10 +334,7 @@
     catch (e) { t.file = null; L.countRelink(); HP.emit('library'); return null; }
     const u = URL.createObjectURL(f);
     srcCache.set(t.id, u);
-    if (srcCache.size > MAX_SRC) {
-      const k = srcCache.keys().next().value;
-      if (k !== t.id) { URL.revokeObjectURL(srcCache.get(k)); srcCache.delete(k); }
-    }
+    trim(t.id);
     return u;
   };
 
