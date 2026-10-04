@@ -154,8 +154,6 @@
 
     P.current = t;
     P.active = target;
-    L().pinSrc && L().pinSrc(t.id);     // keep this blob URL alive while it plays
-    P.recovering = false;
     target.playbackRate = S.speed;
     if ('preservesPitch' in target) target.preservesPitch = S.pitch;
     if (t.source === 'url') target.crossOrigin = 'anonymous'; else target.removeAttribute('crossorigin');
@@ -221,51 +219,16 @@
     updateTimes();
   }
 
-  async function onError() {
+  function onError() {
     const t = P.current; if (!t) return;
-    const m = P.active, err = m.error;
-    const code = err && err.code;
-    console.warn('[media error]', code, t.name);
-
-    if (t.source === 'url') {
-      HP.toast(navigator.onLine === false
-        ? 'You are offline — this link needs a connection'
-        : 'Could not play that link (format or CORS blocked)', 'err');
-      return;
+    const err = P.active.error;
+    console.warn('[media error]', err && err.code, t.name);
+    if (t.source === 'url') HP.toast('Could not play that link (format or CORS blocked)', 'err');
+    else {
+      t.file = null;
+      HP.Lib.countRelink(); HP.Lib.render();
+      HP.toast('File unavailable — re-open it from your device', 'err');
     }
-
-    /* A dead blob URL looks exactly like a missing file. Before accusing the
-       user's storage, throw the stale URL away and try once more from scratch. */
-    if (!P.recovering && code !== 4) {
-      P.recovering = true;
-      const at = m.currentTime || t.pos || 0;
-      const wasPlaying = !m.paused;
-      HP.Lib.dropSrc && HP.Lib.dropSrc(t.id);
-      const src = await HP.Lib.resolveSrc(t, true);
-      if (src) {
-        m.src = src; m.load();
-        const go = () => { try { if (at) m.currentTime = at; } catch (e) { } if (wasPlaying) m.play().catch(() => { }); };
-        if (m.readyState >= 1) go(); else m.addEventListener('loadedmetadata', go, { once: true });
-        return;                                     // recovered silently
-      }
-    }
-    P.recovering = false;
-
-    /* genuinely gone: only forget the file when we can prove it is unreadable */
-    const f = t.file;
-    if (f) {
-      try { await f.slice(0, 1).arrayBuffer(); }     // still readable → it was a decode problem
-      catch (e) { t.file = null; }
-    }
-    if (t.file || t.handle || t.nativeUri) {
-      HP.toast(code === 3 || code === 4
-        ? 'This format can’t be decoded on this device'
-        : 'Playback stalled — tap play to retry', 'err');
-      return;
-    }
-    HP.Lib.saveTrack && HP.Lib.saveTrack(t);
-    HP.Lib.countRelink(); HP.Lib.render();
-    HP.toast('File unavailable — re-open it from your device', 'err');
   }
 
   P.toggle = function () {
@@ -282,13 +245,7 @@
     try {
       await P.active.play();
       if (S.fade) fade(P.active, 1, 300);
-    } catch (e) {
-      /* AbortError just means a newer load()/pause() superseded this play()
-         — that is normal, not something to nag the user about */
-      if (!e || e.name === 'AbortError') return;
-      if (e.name === 'NotAllowedError') { HP.toast('Tap play again to allow audio'); return; }
-      console.warn('[play]', e);
-    }
+    } catch (e) { HP.toast('Tap play again to allow audio'); }
   };
   P.pause = function () {
     if (!P.current) return;
