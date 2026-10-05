@@ -216,13 +216,13 @@
   /* ---------------- YouTube search results ----------------
      The same search box, extended online. Results are shown in their own
      section under the library and only become real tracks once you play one. */
-  const YTS = L.yt = { query: '', rows: [], loading: false, error: '', seq: 0, off: false };
+  const YTS = L.yt = { query: '', rows: [], loading: false, error: '', seq: 0 };
 
   L.ytSearch = function (query) {
     const q = String(query || '').trim();
     YTS.query = q;
     const mine = ++YTS.seq;
-    const can = S.ytSearch !== false && !YTS.off && q.length >= 2 &&
+    const can = S.ytSearch !== false && q.length >= 2 &&
       navigator.onLine !== false && HP.YT && HP.YT.canSearch();
     if (!can) { YTS.rows = []; YTS.loading = false; YTS.error = ''; L.renderYt(); return; }
 

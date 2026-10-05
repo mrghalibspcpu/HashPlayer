@@ -147,13 +147,18 @@ object YouTubeStream {
 
     /* ------------------------------------------------------------ resolve */
 
+    /** Nobody should watch a spinner longer than this while we try clients. */
+    private const val DEADLINE_MS = 25_000L
+
     /** Blocking — always call from a background thread. */
     fun resolve(videoId: String, maxHeight: Int = 1080): Result? {
         if (videoId.isBlank()) return null
         cached(videoId)?.let { return it }
 
+        val until = System.currentTimeMillis() + DEADLINE_MS
         var lastReason = ""
         for (client in CLIENTS) {
+            if (System.currentTimeMillis() > until) { Log.w(TAG, "resolve deadline hit"); break }
             val json = try { post(PLAYER_URL, playerBody(client, videoId), client) } catch (e: Exception) {
                 Log.w(TAG, "player call failed (${client.name})", e); null
             } ?: continue

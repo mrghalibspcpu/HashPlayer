@@ -1083,7 +1083,9 @@
         if (k === 'keepAwake') HP.Native.call('keepAwake', !!v);
       });
     }
-    if (HP.YT && navigator.onLine && [...L.tracks.values()].some(t => t.source === 'yt')) HP.YT.preload();
+    /* The IFrame API is only the fallback once the shell can stream YouTube itself. */
+    if (HP.YT && navigator.onLine && !(HP.NativeMedia && HP.NativeMedia.youtube()) &&
+      [...L.tracks.values()].some(t => t.source === 'yt')) HP.YT.preload();
 
     registerSW();
     setTimeout(() => $('#boot').classList.add('gone'), 420);
