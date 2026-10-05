@@ -6,7 +6,7 @@
   'use strict';
   const HP = w.HP, S = HP.S, $ = HP.$, $$ = HP.$$, el = HP.el, icon = HP.icon, clamp = HP.clamp;
   const L = HP.Lib, P = HP.Player, E = HP.Engine, UI = {};
-  const APP_VERSION = '2.2.2';
+  const APP_VERSION = '2.3.0';
 
   /* =========================================================
      views & navigation
@@ -505,7 +505,8 @@
     const sw = [['#set-autotheme', 'autoTheme'], ['#set-motion', 'motion'], ['#set-simple', 'simple'],
     ['#set-perf', 'perf'], ['#set-gestures', 'gestures'], ['#set-resume', 'resume'],
     ['#set-autoplay', 'autoplayNext'], ['#set-keepawake', 'keepAwake'],
-    ['#set-autoland', 'autoLandscape'], ['#set-autopip', 'autoPip'], ['#set-autoscan', 'autoScan']];
+    ['#set-autoland', 'autoLandscape'], ['#set-autopip', 'autoPip'], ['#set-autoscan', 'autoScan'],
+    ['#set-ytsearch', 'ytSearch']];
     sw.forEach(([sel, key]) => {
       const c = $(sel); if (!c) return;
       c.checked = !!S[key];
@@ -515,6 +516,7 @@
         if (key === 'motion' || key === 'simple' || key === 'perf') applyTheme();
         if (key === 'perf') { HP.Vis.retune && HP.Vis.retune(); HP.toast(c.checked ? 'Smooth mode on — fewer effects, steadier playback' : 'Full effects on', 'ok'); }
         if (key === 'autoTheme') { if (!c.checked) P.clearTint(); else if (P.current) HP.emit('track-changed', P.current); }
+        if (key === 'ytSearch') L.ytSearch(c.checked ? L.search : '');
       });
     });
     const ss = $('#set-seekstep');
@@ -613,6 +615,7 @@
     ['F', 'Fullscreen'], ['P', 'Picture-in-picture'], ['S', 'Shuffle'], ['R', 'Repeat mode'],
     ['E', 'Sound Lab'], ['Q', 'Queue'], ['Y', 'Lyrics'], ['C', 'Subtitles'], ['V', 'Next visualiser'],
     ['A', 'Set A-B loop point'], ['D', 'Bookmark this moment'], ['[ / ]', 'Slower / faster'],
+    ['U', 'Lock / unlock the screen'],
     ['0–9', 'Jump to 0–90 %'], ['/', 'Search'], ['Esc', 'Close panels']
   ];
   function buildKeys() {
@@ -630,6 +633,11 @@
       const k = e.key.toLowerCase();
       const step = +S.seekStep || 10;
       const hit = () => e.preventDefault();
+      /* While the screen is locked only the unlock key works. */
+      if (P.locked) {
+        if (k === 'escape' || k === 'u') { hit(); P.setLock(false); }
+        return;
+      }
       switch (k) {
         case ' ': case 'k': hit(); P.toggle(); break;
         case 'arrowright': hit(); P.seekBy(e.shiftKey ? 60 : step); break;
@@ -649,6 +657,7 @@
         case 'q': UI.toggleQueue(); break;
         case 'y': UI.openNP(true); P.toggleLyrics(); break;
         case 'c': P.toggleCC(); break;
+        case 'u': if (document.body.classList.contains('has-video')) { hit(); P.toggleLock(); } break;
         case 'v': cycleVis(); break;
         case 'a': P.markAB(); break;
         case 'd': P.addBookmark(); break;
@@ -770,6 +779,7 @@
     /** Device rotated — offer full-screen video in landscape. */
     onRotate(landscape) { UI.autoLandscape(!!landscape); },
     onBack() {
+      if (P.locked) { P.setLock(false); return true; }   // one back press = unlock
       if (!$('#ctx').hidden) { $('#ctx').hidden = true; $('#scrim').classList.remove('on'); return true; }
       if (openSheetId) { UI.closeAll(); return true; }
       if ($('#queue-panel').classList.contains('on')) { UI.toggleQueue(false); return true; }
@@ -825,6 +835,22 @@
         return;
       }
       ({ play: () => P.play(), pause: () => P.pause(), next: () => P.next(), prev: () => P.prev(), toggle: () => P.toggle() }[action] || (() => { }))();
+    },
+
+    /**
+     * The device media volume changed (hardware keys, another app, the system
+     * panel). Follow it in the UI without writing it straight back.
+     */
+    onVolume(value) {
+      const v = Math.max(0, Math.min(1, +value || 0));
+      if (Math.abs((S.volume || 0) - v) < .005 && !S.muted) return;
+      S.muted = false;
+      HP.Engine.setVolume(v, { fromDevice: true });
+    },
+
+    /** Rows for one YouTube search, answered on the id we asked with. */
+    onYtSearch(reqId, json) {
+      if (HP.YT && HP.YT.deliver) HP.YT.deliver(reqId, json);
     }
   };
 
@@ -889,7 +915,17 @@
       $('#search-clear').hidden = !search.value;
       L.render();
     }, 160));
-    $('#search-clear').addEventListener('click', () => { search.value = ''; L.search = ''; $('#search-clear').hidden = true; L.render(); search.focus(); });
+    /* The same box also looks online — on a longer delay, so it waits for you
+       to stop typing instead of firing a request per keystroke. */
+    search.addEventListener('input', HP.debounce(() => L.ytSearch(search.value), 420));
+    search.addEventListener('keydown', e => { if (e.key === 'Enter') L.ytSearch(search.value); });
+    $('#search-clear').addEventListener('click', () => {
+      search.value = ''; L.search = ''; $('#search-clear').hidden = true;
+      L.render(); L.ytSearch(''); search.focus();
+    });
+    const ytHide = $('#yt-hide');
+    if (ytHide) ytHide.addEventListener('click', () => { L.yt.rows = []; L.yt.error = ''; L.renderYt(); });
+    w.addEventListener('online', () => { if (L.search) L.ytSearch(L.search); });
     $('#btn-play-all').addEventListener('click', () => { P.context = 'Library'; P.playList(L.contextIds()); UI.openNP(true); });
     $('#btn-shuffle-all').addEventListener('click', () => { P.context = 'Shuffle'; P.playList(L.contextIds(), true); UI.openNP(true); });
     $('#btn-scan').addEventListener('click', () => Native.scan());
@@ -1027,6 +1063,17 @@
     if (Native.available) {
       HP.Native.call('setAutoPip', !!S.autoPip);
       HP.Native.call('keepAwake', !!S.keepAwake);
+      /* Start from the device's real media volume so the slider tells the truth. */
+      const dev = HP.Device && HP.Device.volume;
+      if (dev && dev.available()) {
+        const v = dev.get();
+        if (v != null) { S.volume = v; S.muted = false; HP.save(); E.applyVolume({ fromDevice: true }); }
+      }
+      /* Real titles for YouTube videos resolved by the native engine. */
+      if (HP.NativeMedia) HP.NativeMedia.onMeta = m => {
+        if (!m || !m.uri || String(m.uri).indexOf('hpyt:') !== 0) return;
+        L.updateYt(String(m.uri).slice(5), m);
+      };
       const scanBtn = $('#btn-scan');
       if (scanBtn) { scanBtn.hidden = false; scanBtn.querySelector('span').textContent = 'Rescan device'; }
       /* the shell scans by itself on launch; this covers a reload with the page already granted */

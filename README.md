@@ -17,6 +17,17 @@ Install it as an app on your phone or desktop, or build a real Android APK — s
 
 ---
 
+## 🆕 Naya kya hai — 2.3
+
+| Masla / feature | Ab kya hota hai |
+|---|---|
+| **Volume slider aur swipe se awaaz nahi badalti thi** | Slider aur dayein side ki vertical swipe ab **device ki asli media volume** chalate hain — bilkul waise hi jaise volume buttons. Hardware buttons dabayein to app ka slider bhi saath chalta hai, aur swipe device ke apne steps par snap hoti hai. (Pehle ye sirf Web Audio gain hilati thi, jis se ExoPlayer aur YouTube ki awaaz guzarti hi nahi.) |
+| **YouTube par app ke controls nahi thay** | Android par YouTube ab **HashPlayer ke apne engine (ExoPlayer) me** chalti hai: wahi seek bar, gestures, speed, sleep timer, queue, PiP aur lock-screen notification jo local video ke liye hain. Agar koi video natively na khule to app chupke se purane IFrame embed par chali jaati hai — video har haal me chalti hai. |
+| **Speed aur Lock buttons** | Video ke side panel me do naye buttons: **Playback speed** (0.25× – 3×, button par chhota badge) aur **Screen lock** — lock karte hi poori screen ki touch band, taake jeb me ya ungli lagne se video na ruke. Unlock: tap → *Tap to unlock* (desktop par `U` ya `Esc`, phone par back button). |
+| **Search sirf apni library me thi** | Ab wahi search bar **YouTube bhi search karta hai** (internet ho to). Apni library ke neeche alag “From YouTube” section aata hai — tap karein aur video seedha app ke player me chal padti hai. Settings → Playback me band bhi kar sakte hain. |
+
+---
+
 ## 🆕 Naya kya hai — 2.1
 
 | Masla / feature | Ab kya hota hai |
@@ -65,7 +76,14 @@ Install it as an app on your phone or desktop, or build a real Android APK — s
 ### Video
 - Swipe gestures: **left/right = seek, left half = brightness, right half = volume**, double-tap = ±10 s, long-press = fast-forward, pinch = zoom
 - Picture-in-picture, fullscreen, rotate, mirror, fit/cover/fill, **frame screenshots**
+- **Playback speed** and **screen lock** right in the side panel — the lock swallows every touch until you tap *unlock*
 - **Subtitles**: `.srt`, `.vtt` and `.ass` (converted on the fly), toggle with one tap
+
+### YouTube (Android)
+- Paste a link, share from the YouTube app, or just **search** — the same library search box also lists YouTube results when you are online
+- Videos play **inside HashPlayer's own engine**, so every control, gesture and side tool works exactly like a local file
+- Streams are resolved through YouTube's own API on the device; nothing is downloaded, no account, no key, no third-party server
+- If a video refuses to stream (age gate, region block), the player silently falls back to the embedded YouTube frame
 
 ### Words
 - **Lyrics**: embedded (USLT/SYLT) or `.lrc` files — synced, karaoke-style, tap a line to jump, offset adjust
@@ -128,11 +146,14 @@ web/                     the player (this is the product)
  │   ├─ meta.js          tag reader, LRC parser, SRT→VTT converter
  │   ├─ engine.js        Web Audio graph (EQ, effects, analyser)
  │   ├─ visual.js        visualizers + energy timeline
- │   ├─ library.js       import pipeline, storage, grid rendering
+ │   ├─ yt.js            YouTube parsing, online search, IFrame fallback player
+ │   ├─ native.js        bridge to the Android engine (ExoPlayer, device volume)
+ │   ├─ library.js       import pipeline, storage, grid + YouTube result rendering
  │   ├─ player.js        playback, queue, gestures, lyrics, media session
  │   └─ app.js           shell wiring, settings, shortcuts, PWA, Android bridge
  ├─ manifest.webmanifest · sw.js · icons/
 app/                     Android shell (Kotlin) — WebView + MediaStore + media notification
+ └─ src/main/java/.../YouTubeStream.kt   resolves YouTube streams for the native engine
 .github/workflows/       APK build + Pages deploy
 legacy/                  the original single-file v1 player, kept for reference
 ```
@@ -147,13 +168,15 @@ which is also why it works completely offline and inside the APK.
 `Space`/`K` play · `←/→` seek · `Shift+←/→` 1 min · `↑/↓` volume · `M` mute · `N/B` next/prev
 `F` fullscreen · `P` picture-in-picture · `S` shuffle · `R` repeat · `E` Sound Lab · `Q` queue
 `Y` lyrics · `C` subtitles · `V` visualizer · `A` A–B loop · `D` bookmark · `[ ]` speed · `/` search
+`U` lock / unlock the video screen
 
 ---
 
 ## 🔒 Privacy
 
 There is no server. No analytics, no accounts, no network calls except the ones you make
-yourself by adding a URL. Tags, album art, playlists and settings live in your browser's
+yourself by adding a URL or searching YouTube (that request goes straight to YouTube,
+with no key and no account, and only while you are typing in the search box). Tags, album art, playlists and settings live in your browser's
 IndexedDB / localStorage on your own device and are deleted when you clear the app's data.
 
 ---

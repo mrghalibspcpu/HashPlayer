@@ -23,11 +23,19 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.VideoSize
+import androidx.media3.datasource.DataSource
+import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.ResolvingDataSource
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.hls.HlsMediaSource
+import androidx.media3.exoplayer.source.MediaSource
+import androidx.media3.exoplayer.source.MergingMediaSource
+import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import kotlin.concurrent.thread
 
 /**
  * The real playback engine.
@@ -53,7 +61,11 @@ class NativePlayback(
     private val emit: (String) -> Unit
 ) {
 
-    companion object { private const val TAG = "HashPlayerNative" }
+    companion object {
+        private const val TAG = "HashPlayerNative"
+        /** Pseudo-scheme the web app uses for "play this YouTube id natively". */
+        const val YT_SCHEME = "hpyt:"
+    }
 
     private val main = Handler(Looper.getMainLooper())
     private var player: ExoPlayer? = null
@@ -73,6 +85,9 @@ class NativePlayback(
     private var retried = false
     private var ticking = false
     private var lastEmit = 0L
+
+    /** Bumped on every load so a slow YouTube lookup cannot hijack a newer track. */
+    private var generation = 0
 
     /* The TextureView always occupies the web stage. ExoPlayer renders into a
        TextureView by stretching its buffer to that view, so we counter-scale
@@ -146,6 +161,10 @@ class NativePlayback(
 
             override fun onPlayerError(error: PlaybackException) {
                 Log.w(TAG, "playback error", error)
+                // A YouTube url that stops working (expired, or refused by this
+                // network) must not be reused from the cache on the next attempt.
+                if (currentUri.startsWith(YT_SCHEME))
+                    YouTubeStream.forget(currentUri.removePrefix(YT_SCHEME))
                 // One silent re-prepare fixes the transient decoder/IO hiccups that
                 // used to surface as a scary "file unavailable" toast.
                 if (!retried) {
@@ -299,6 +318,9 @@ class NativePlayback(
             isVideo = video
             resizeMode = "contain"                 // every video starts aspect-correct
             retried = false
+            val mine = ++generation
+
+            if (uri.startsWith(YT_SCHEME)) { loadYouTube(uri.removePrefix(YT_SCHEME), mine, startSec, autoplay); return@post }
 
             val b = MediaItem.Builder().setUri(Uri.parse(uri))
             subtitleItem(subtitle)?.let { b.setSubtitleConfigurations(listOf(it)) }
@@ -313,6 +335,107 @@ class NativePlayback(
             Log.w(TAG, "load failed", e)
             post("error", "OPEN_FAILED")
         }
+    }
+
+    /* ------------------------------------------------------------ YouTube */
+
+    /**
+     * Ask YouTube's own API for the direct stream urls (off the UI thread) and
+     * then play them like any other file. If nothing playable comes back we say
+     * so and the web app silently falls back to the IFrame embed.
+     */
+    private fun loadYouTube(videoId: String, mine: Int, startSec: Double, autoplay: Boolean) {
+        showSurface(true)
+        // Set the intent now, on the still-empty player, so a play/pause tap during
+        // the lookup wins instead of being overwritten when the streams arrive.
+        try { engine().playWhenReady = autoplay } catch (e: Exception) { }
+        post("waiting")
+        thread(name = "hp-yt-resolve") {
+            val r = try { YouTubeStream.resolve(videoId) } catch (e: Throwable) {
+                Log.w(TAG, "youtube resolve crashed", e); null
+            }
+            main.post {
+                if (mine != generation) return@post               // a newer track won the race
+                if (r == null || !r.playable) { post("error", "YT_UNRESOLVED"); return@post }
+                try {
+                    val p = engine()
+                    postMeta(r)
+                    p.setMediaSource(youTubeSource(r))
+                    p.prepare()
+                    if (startSec > 0) p.seekTo((startSec * 1000).toLong())
+                    showSurface(true)
+                    post("loaded")
+                    startTick()
+                } catch (e: Throwable) {
+                    Log.w(TAG, "youtube load failed", e)
+                    YouTubeStream.forget(videoId)
+                    post("error", "YT_UNRESOLVED")
+                }
+            }
+        }
+    }
+
+    /** video+audio, muxed or live — whatever this video actually offers. */
+    private fun youTubeSource(r: YouTubeStream.Result): MediaSource {
+        val http = DefaultHttpDataSource.Factory()
+            .setUserAgent(r.userAgent)
+            .setAllowCrossProtocolRedirects(true)
+            .setConnectTimeoutMs(15_000)
+            .setReadTimeoutMs(20_000)
+            .setKeepPostFor302Redirects(true)
+            .setDefaultRequestProperties(
+                mapOf(
+                    "Origin" to "https://www.youtube.com",
+                    "Referer" to "https://www.youtube.com/"
+                )
+            )
+
+        r.hls?.let { return HlsMediaSource.Factory(http).createMediaSource(MediaItem.fromUri(it)) }
+
+        val video = r.video
+        val audio = r.audio
+        if (r.muxed != null && (video == null || audio == null)) return progressive(http, r.muxed!!)
+        if (video != null && audio != null) {
+            /* Adaptive streams are delivered separately, exactly like the YouTube
+               app does it — merging them gives 720p/1080p instead of the 360p
+               muxed fallback. */
+            return MergingMediaSource(false, true, progressive(http, video), progressive(http, audio))
+        }
+        r.muxed?.let { return progressive(http, it) }
+        return progressive(http, audio ?: video!!)
+    }
+
+    private fun progressive(http: DataSource.Factory, s: YouTubeStream.Stream): MediaSource =
+        ProgressiveMediaSource.Factory(bounded(http, s.contentLength))
+            .createMediaSource(MediaItem.fromUri(s.url))
+
+    /**
+     * Google's media hosts answer some clients with 403 for an open-ended GET and
+     * only serve explicit byte ranges. ExoPlayer asks open-ended by default, so
+     * when the API told us the exact size we turn every request into a bounded one.
+     */
+    private fun bounded(base: DataSource.Factory, length: Long): DataSource.Factory {
+        if (length <= 0) return base
+        return ResolvingDataSource.Factory(base) { spec ->
+            if (spec.length == C.LENGTH_UNSET.toLong() && spec.position in 0 until length)
+                spec.subrange(0, length - spec.position)
+            else spec
+        }
+    }
+
+    /** Title / channel / duration straight from YouTube, so the row is not just an id. */
+    private fun postMeta(r: YouTubeStream.Result) {
+        val o = JSONObject()
+        try {
+            o.put("e", "meta")
+            o.put("uri", reportUri)
+            o.put("title", r.title)
+            o.put("author", r.author)
+            o.put("dur", r.durationMs / 1000.0)
+            o.put("live", r.isLive)
+            o.put("detail", r.client)
+        } catch (e: Exception) { return }
+        emit(o.toString())
     }
 
     fun play() = main.post {
@@ -334,6 +457,7 @@ class NativePlayback(
 
     fun stop() = main.post {
         stopTick()
+        generation++                                   // abandon any in-flight YouTube lookup
         player?.stop()
         player?.clearMediaItems()
         currentUri = ""

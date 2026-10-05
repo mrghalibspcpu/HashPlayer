@@ -179,15 +179,40 @@
     S.eqPreset = name; S.eqGains = p.slice();
     E.applyEQ(); HP.save(); HP.emit('eq', name);
   };
-  E.setVolume = function (v) {
+  E.setVolume = function (v, opts) {
     S.volume = clamp(v, 0, 1);
-    E.applyVolume(); HP.save(); HP.emit('volume', S.volume);
+    E.applyVolume(opts); HP.save();
   };
-  E.applyVolume = function () {
-    const vol = S.muted ? 0 : S.volume * (S.boost / 100);
-    if (E.ready) ramp(E.master.gain, vol, 60);
-    else if (HP.Player) {                       // no Web Audio → drive the elements directly
-      [HP.Player.a, HP.Player.b].forEach(m => { if (m) m.volume = clamp(vol, 0, 1); });
+  /**
+   * One volume, every engine.
+   *
+   * Only `<audio>/<video>` elements run through the Web Audio graph, so ramping
+   * the master gain alone left the two engines that make their own sound — the
+   * native ExoPlayer and the YouTube embed — at whatever level they were loaded
+   * with. That is why the slider and the swipe gesture appeared to do nothing.
+   *
+   * Inside the Android app the device's media stream is the real master: the
+   * slider moves the same volume the hardware keys do, and the engines stay at
+   * unity so the two never multiply each other.
+   */
+  E.applyVolume = function (opts) {
+    const dev = HP.Device && HP.Device.volume;
+    const useDevice = !!(dev && dev.available());
+    const level = S.muted ? 0 : clamp(S.volume, 0, 1);
+    /* With a device master every engine stays at unity, so the two levels can
+       never multiply into a muffled half-volume. Mute still happens in-app. */
+    const inApp = useDevice ? (S.muted ? 0 : 1) : level;
+    const boosted = clamp(inApp * ((S.boost || 100) / 100), 0, 3);
+    if (E.ready) ramp(E.master.gain, boosted, 60);
+
+    const P = HP.Player;
+    if (P) {
+      if (!E.ready) [P.a, P.b].forEach(m => { if (m) m.volume = clamp(boosted, 0, 1); });
+      [P.y, P.n].forEach(m => {
+        if (!m) return;
+        try { m.muted = !!S.muted; m.volume = inApp; } catch (e) { }
+      });
+      if (useDevice && !S.muted && !(opts && opts.fromDevice)) dev.set(level);
     }
     HP.emit('volume', S.volume);
   };

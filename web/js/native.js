@@ -23,6 +23,7 @@
   HP.NativeMedia = N;
 
   const bridge = () => w.HashNative;
+  const clamp01 = v => Math.max(0, Math.min(1, +v || 0));
 
   /** True only inside the Android shell that ships the ExoPlayer engine. */
   N.available = function () {
@@ -30,8 +31,58 @@
     try { return !!(n && n.nativeEngine && n.nativeEngine()); } catch (e) { return false; }
   };
 
-  /** Device-backed tracks and direct network media play through ExoPlayer on Android. */
-  N.handles = t => !!(t && (t.nativeUri || (t.source === 'url' && /^https?:\/\//i.test(t.url || ''))) && N.available());
+  /** True when the shell can stream YouTube itself instead of using the embed. */
+  let ytFlag = null;
+  N.youtube = function () {
+    if (ytFlag === null) {
+      const n = bridge();
+      try { ytFlag = !!(n && n.ytEngine && n.ytEngine()); } catch (e) { ytFlag = false; }
+    }
+    return ytFlag && !N.ytDisabled;
+  };
+  /** Set when a video turned out to be unplayable natively → use the embed. */
+  N.ytDisabled = false;
+
+  /** The pseudo-uri the Kotlin side resolves into real YouTube stream urls. */
+  N.ytUri = id => 'hpyt:' + id;
+
+  /** Device-backed tracks, direct network media and YouTube play through ExoPlayer. */
+  N.handles = function (t) {
+    if (!t || !N.available()) return false;
+    if (t.source === 'yt') return !!(t.ytId && N.youtube() && !t.ytEmbed);
+    return !!(t.nativeUri || (t.source === 'url' && /^https?:\/\//i.test(t.url || '')));
+  };
+
+  /* ------------------------------------------------------------------
+     device volume — the Android media stream, i.e. what the hardware
+     volume keys control. The web build simply reports "not available".
+     ------------------------------------------------------------------ */
+  const Device = (HP.Device = HP.Device || {});
+  let volFlag = null, volSteps = 0;
+  Device.volume = {
+    available() {
+      if (volFlag === null) {
+        const n = bridge();
+        try { volFlag = !!(n && n.setVolume && n.volumeControl && n.volumeControl()); }
+        catch (e) { volFlag = false; }
+      }
+      return volFlag;
+    },
+    get() {
+      if (!this.available()) return null;
+      try { const v = +bridge().getVolume(); return isFinite(v) ? clamp01(v) : null; } catch (e) { return null; }
+    },
+    set(v) {
+      if (!this.available()) return false;
+      try { bridge().setVolume(clamp01(v)); return true; } catch (e) { return false; }
+    },
+    /** How many notches the device itself has, so the UI can snap to them. */
+    steps() {
+      if (!this.available()) return 0;
+      if (!volSteps) { try { volSteps = +bridge().getVolumeSteps() || 15; } catch (e) { volSteps = 15; } }
+      return volSteps;
+    }
+  };
 
   function ranges(end) {
     return { length: end > 0 ? 1 : 0, start: () => 0, end: () => end };
@@ -141,7 +192,7 @@
     /* ---------- commands ---------- */
     this.setTrack = function (t, startAt, autoplay) {
       const sub = (t.kind === 'video' && t.sub) ? String(t.sub) : '';
-      uri = t.nativeUri;
+      uri = t.source === 'yt' ? N.ytUri(t.ytId) : t.nativeUri;
       isVideo = t.kind === 'video';
       pos = startAt || 0; dur = t.duration || 0;
       buffered = 0; ended = false; ready = false; failed = null;
@@ -228,6 +279,12 @@
           break;
         case 'cues':
           showCues(s.detail || '');
+          break;
+        case 'meta':
+          /* YouTube told us the real title/channel/length — pass it on so the
+             library row stops saying “YouTube video”. */
+          if (typeof N.onMeta === 'function') { try { N.onMeta(s); } catch (e) { } }
+          if (s.dur > 0) { dur = s.dur; fire('durationchange'); }
           break;
         case 'fft':
           if (HP.Vis && HP.Vis.feed) HP.Vis.feed(s.fft, s.wave);

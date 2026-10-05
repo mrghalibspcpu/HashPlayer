@@ -213,6 +213,125 @@
     return t;
   };
 
+  /* ---------------- YouTube search results ----------------
+     The same search box, extended online. Results are shown in their own
+     section under the library and only become real tracks once you play one. */
+  const YTS = L.yt = { query: '', rows: [], loading: false, error: '', seq: 0, off: false };
+
+  L.ytSearch = function (query) {
+    const q = String(query || '').trim();
+    YTS.query = q;
+    const mine = ++YTS.seq;
+    const can = S.ytSearch !== false && !YTS.off && q.length >= 2 &&
+      navigator.onLine !== false && HP.YT && HP.YT.canSearch();
+    if (!can) { YTS.rows = []; YTS.loading = false; YTS.error = ''; L.renderYt(); return; }
+
+    YTS.loading = true; YTS.error = ''; L.renderYt();
+    HP.YT.search(q).then(rows => {
+      if (mine !== YTS.seq) return;                 // a newer keystroke won
+      YTS.rows = rows || []; YTS.loading = false; YTS.error = '';
+      L.renderYt();
+    }).catch(() => {
+      if (mine !== YTS.seq) return;
+      YTS.rows = []; YTS.loading = false;
+      YTS.error = HP.t ? HP.t('ytOffline') : 'YouTube search is not reachable right now';
+      L.renderYt();
+    });
+  };
+
+  /** Turn a search result into a library track (or reuse the one we already have). */
+  L.addYt = async function (row) {
+    if (!row || !row.id) return null;
+    const known = [...L.tracks.values()].find(t => t.ytId === row.id);
+    if (known) {
+      let dirty = false;
+      if (row.title && known.title === 'YouTube video') { known.title = row.title; known.name = row.title; dirty = true; }
+      if (row.author && !known.artist) { known.artist = row.author; dirty = true; }
+      if (row.seconds && !known.duration) { known.duration = row.seconds; dirty = true; }
+      if (dirty) { await saveTrack(known); HP.emit('library'); }
+      return known;
+    }
+    const t = {
+      id: HP.uid(), key: 'yt:' + row.id, name: row.title || 'YouTube video',
+      title: row.title || 'YouTube video', artist: row.author || 'YouTube',
+      album: '', genre: '', year: '', trackNo: '',
+      duration: row.seconds || 0, size: 0, mime: 'video/youtube', kind: 'video',
+      source: 'yt', ytId: row.id, thumb: row.thumb || HP.YT.thumb(row.id), file: null, handle: null,
+      nativeUri: null, url: 'https://www.youtube.com/watch?v=' + row.id, cover: null, folder: '',
+      added: Date.now(), plays: 0, lastPlayed: 0, fav: false, pos: 0, lrc: null, sub: null,
+      bookmarks: [], tagged: true, live: !!row.live
+    };
+    L.tracks.set(t.id, t);
+    await saveTrack(t);
+    HP.emit('library');
+    return t;
+  };
+
+  /** Metadata that came back from the native resolver — keep the row honest. */
+  L.updateYt = async function (ytId, meta) {
+    const t = [...L.tracks.values()].find(x => x.ytId === ytId);
+    if (!t || !meta) return;
+    let dirty = false;
+    if (meta.title && (!t.title || t.title === 'YouTube video')) { t.title = meta.title; t.name = meta.title; dirty = true; }
+    if (meta.author && (!t.artist || t.artist === 'YouTube')) { t.artist = meta.author; dirty = true; }
+    if (meta.dur > 0 && Math.abs((t.duration || 0) - meta.dur) > 1) { t.duration = meta.dur; dirty = true; }
+    if (!dirty) return;
+    await saveTrack(t);
+    HP.emit('track-updated', t);
+    if (HP.Player && HP.Player.current && HP.Player.current.id === t.id && HP.Player.paintNowPlaying)
+      HP.Player.paintNowPlaying(t);
+  };
+
+  L.playYt = async function (row) {
+    const t = await L.addYt(row);
+    if (!t) return;
+    L.render();                                   // it is a library track now
+    HP.Player.playTrack(t.id, [t.id]);
+  };
+
+  function ytRow(r) {
+    const thumb = el('div', { class: 'yt-thumb' }, [
+      el('img', { src: r.thumb, alt: '', loading: 'lazy', referrerpolicy: 'no-referrer' }),
+      el('span', { class: 'dur' + (r.live ? ' live' : ''), text: r.live ? 'LIVE' : (r.duration || '—') })
+    ]);
+    const sub = [r.author, r.views, r.published].filter(Boolean).join(' · ');
+    const node = el('div', { class: 'yt-row', tabindex: '0', role: 'button' }, [
+      thumb,
+      el('div', { class: 'yt-info' }, [
+        el('div', { class: 'yt-title', text: r.title }),
+        el('div', { class: 'yt-sub', text: sub })
+      ]),
+      el('div', { class: 'yt-go' }, [icon('play')])
+    ]);
+    const go = () => L.playYt(r);
+    node.addEventListener('click', go);
+    node.addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
+    return node;
+  }
+
+  L.renderYt = function () {
+    const box = $('#yt-results'), list = $('#yt-list'), count = $('#yt-count');
+    if (!box || !list) return;
+    const show = !!YTS.query && (YTS.loading || YTS.rows.length > 0 || !!YTS.error);
+    box.hidden = !show;
+    if (!show) { list.innerHTML = ''; if (count) count.textContent = ''; return; }
+
+    list.innerHTML = '';
+    if (YTS.loading) {
+      list.appendChild(el('div', { class: 'yt-state' }, [
+        el('i', { class: 'yt-spin' }),
+        el('span', { text: (HP.t ? HP.t('ytSearching') : 'Searching YouTube') + ' “' + YTS.query + '”…' })
+      ]));
+    } else if (YTS.error) {
+      list.appendChild(el('div', { class: 'yt-state' }, [el('span', { text: YTS.error })]));
+    } else {
+      const frag = document.createDocumentFragment();
+      YTS.rows.forEach(r => frag.appendChild(ytRow(r)));
+      list.appendChild(frag);
+    }
+    if (count) count.textContent = YTS.loading || YTS.error ? '' : YTS.rows.length + '';
+  };
+
   /* Android native scan (MediaStore via the APK bridge) */
   L.addNative = async function (items, opts) {
     opts = opts || {};
@@ -518,9 +637,13 @@
     empty.classList.toggle('show', none && !L.search);
     grid.hidden = none && !L.search;
     if (none && L.search) {
+      const online = YTS.rows.length > 0 || YTS.loading;
       grid.appendChild(el('div', { class: 'no-results' }, [
-        el('b', { text: 'Nothing matched “' + L.search + '”' }),
-        el('span', { text: 'Try a different word, or clear the search to see everything.' })
+        el('b', { text: 'Nothing in your library matched “' + L.search + '”' }),
+        el('span', {
+          text: online ? 'Have a look at the YouTube results below.'
+            : 'Try a different word, or clear the search to see everything.'
+        })
       ]));
     }
     const st = L.stats();

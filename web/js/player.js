@@ -88,6 +88,7 @@
   P.setPlayerViewActive = function (active) {
     const video = !!(P.current && P.current.kind === 'video');
     const visible = !!active && video;
+    if (!active && P.locked) P.setLock(false, true);   // never leave the lock on behind you
     document.body.classList.toggle('video-view-active', visible);
     if (isNat(P.active) && P.active.setViewActive) P.active.setViewActive(visible);
     if (!active && video) {
@@ -156,15 +157,21 @@
 
     const isVideo = t.kind === 'video';
     const yt = t.source === 'yt';
+    /* On Android we stream YouTube through our own ExoPlayer engine, so it gets
+       the very same controls, gestures and side tools as a local video. The
+       IFrame embed stays as the fallback for the web build (and for anything
+       the resolver cannot open). */
+    const ytNative = yt && !!P.n && HP.NativeMedia.handles(t) && !ytFallback.has(t.ytId);
     /* Never inherit cover/fill from a previous item: native aspect-fit and CSS
        object-fit both start at contain for every newly loaded video. */
     if (isVideo) P.setVideoFit('contain', false);
 
-    if (yt && !P.y) { HP.toast('YouTube playback is unavailable here', 'err'); return; }
-    if (!yt && P.y) P.y.stop();                     // leaving YouTube → tear the embed down
-    document.body.classList.toggle('yt-mode', yt);
+    if (yt && !ytNative && !P.y) { HP.toast('YouTube playback is unavailable here', 'err'); return; }
+    if ((!yt || ytNative) && P.y) P.y.stop();       // leaving the embed → tear it down
+    document.body.classList.toggle('yt-mode', yt && !ytNative);
+    document.body.classList.toggle('yt-track', yt);   // “open in YouTube” applies to both routes
 
-    if (yt) {
+    if (yt && !ytNative) {
       P.a.pause(); if (P.b) P.b.pause();
       if (P.n) P.n.stop();
       P.current = t; P.active = P.y;
@@ -182,7 +189,7 @@
           !!autoplay
         );
         P.y.playbackRate = S.speed;
-        P.y.volume = S.volume; P.y.muted = S.muted;
+        E().applyVolume();                          // one level across every engine
         if (autoplay) await P.y.play();
         const info = P.y.info();
         if (info && info.title && t.title !== info.title) {
@@ -210,8 +217,9 @@
       P.n.playbackRate = S.speed;
       P.n.volume = S.volume; P.n.muted = S.muted;
       await P.n.setTrack(t, pos0, !!autoplay);
+      E().applyVolume();                            // one level across every engine
       P.ccOn = true;
-      $('#v-cc').classList.toggle('on', isVideo);
+      $('#v-cc').classList.toggle('on', isVideo && !ytNative);
 
       loadLyrics(t);
       HP.Vis.Energy.load(t.id, await HP.DB.kvGet('energy:' + t.id, null));
@@ -306,10 +314,27 @@
     updateTimes();
   }
 
+  /** YouTube ids the native resolver could not open — they use the embed instead. */
+  const ytFallback = new Set();
+
   function onError() {
     const t = P.current; if (!t) return;
     const err = P.active.error;
     console.warn('[media error]', err && err.code, t.name);
+    /* Native YouTube did not work out (age gate, odd region, flaky network):
+       quietly hand this one video over to the IFrame embed and carry on. */
+    if (isNat(P.active) && t.source === 'yt') {
+      if (P.y && !ytFallback.has(t.ytId)) {
+        ytFallback.add(t.ytId);
+        const at = P.active.currentTime || (S.resume ? t.pos || 0 : 0);
+        const wasPlaying = !P.active.paused;
+        P.n.stop();
+        setTimeout(() => load(t, wasPlaying, at), 50);
+      } else {
+        HP.toast('This video could not be played', 'err');
+      }
+      return;
+    }
     if (isNat(P.active) || t.nativeUri) {
       HP.toast('This file could not be played — skipping', 'err');
       if (P.queue.length > 1) setTimeout(() => P.next(true), 600);
@@ -413,15 +438,29 @@
   };
   P.setSpeed = function (v) {
     S.speed = clamp(v, .25, 4); HP.save();
-    [P.a, P.b, P.y].forEach(m => { if (!m) return; m.playbackRate = S.speed; if ('preservesPitch' in m) m.preservesPitch = S.pitch; });
+    // P.n is the native ExoPlayer engine — it used to be left out, so speed
+    // silently did nothing for device files and YouTube on Android.
+    [P.a, P.b, P.y, P.n].forEach(m => {
+      if (!m) return;
+      try { m.playbackRate = S.speed; if ('preservesPitch' in m) m.preservesPitch = S.pitch; } catch (e) { }
+    });
     updateSpeedLabel();
   };
+  const speedText = r => (r % 1 === 0 ? r.toFixed(1) : String(+r.toFixed(2))) + '×';
   function updateSpeedLabel() {
-    const l = $('#speed-label'); if (l) l.textContent = S.speed.toFixed(S.speed % 1 ? (S.speed * 100 % 10 ? 2 : 1) : 1).replace(/0$/, '0') + '×';
+    const l = $('#speed-label'); if (l) l.textContent = speedText(S.speed);
     const t = $('#t-speed'); if (t) t.classList.toggle('on', S.speed !== 1);
     const r = $('#speed-range'); if (r) { r.value = Math.round(S.speed * 100); rangeFill(r); }
     $$('#speed-chips .chip').forEach(c => c.classList.toggle('active', +c.dataset.sp === S.speed));
+    // side panel button: light it up and show the rate while it is not 1×
+    const vb = $('#v-speed'); if (vb) vb.classList.toggle('on', S.speed !== 1);
+    const badge = $('#v-speed-badge');
+    if (badge) {
+      badge.hidden = S.speed === 1;
+      badge.textContent = (S.speed % 1 === 0 ? S.speed.toFixed(0) : String(+S.speed.toFixed(2))) + '×';
+    }
   }
+  P.updateSpeedLabel = updateSpeedLabel;
   P.cycleRepeat = function () {
     S.repeat = S.repeat === 'off' ? 'all' : S.repeat === 'all' ? 'one' : 'off';
     HP.save(); syncToggles();
@@ -514,6 +553,7 @@
   /* =========================================================
      now playing UI
      ========================================================= */
+  P.paintNowPlaying = t => paintNowPlaying(t);
   function paintNowPlaying(t) {
     const cu = L().coverUrl(t);
     $('#np-title').textContent = t.title || t.name;
@@ -924,7 +964,11 @@
 
     const vol = $('#mini-vol');
     vol.value = Math.round(S.volume * 100); rangeFill(vol);
-    vol.addEventListener('input', () => { E().setVolume(vol.value / 100); rangeFill(vol); S.muted = false; updateMuteIcon(); });
+    vol.addEventListener('input', () => {
+      S.muted = false;                       // unmute first, so the level is not applied as 0
+      E().setVolume(vol.value / 100);
+      rangeFill(vol); updateMuteIcon();
+    });
     $('#mini-mute').addEventListener('click', () => { S.muted = !S.muted; HP.save(); E().applyVolume(); updateMuteIcon(); });
     function updateMuteIcon() {
       $('#mini-mute use').setAttribute('href', S.muted || !S.volume ? '#i-mute' : '#i-vol');
@@ -944,6 +988,11 @@
       else window.open(u, '_blank', 'noopener');
     });
     $('#v-cc').addEventListener('click', () => P.toggleCC());
+    const vSpeed = $('#v-speed');
+    if (vSpeed) vSpeed.addEventListener('click', () => HP.UI.sheet('sheet-speed'));
+    const vLock = $('#v-lock');
+    if (vLock) vLock.addEventListener('click', () => P.setLock(true));
+    bindLock();
     $('#v-shot').addEventListener('click', () => P.screenshot());
     $('#v-mirror').addEventListener('click', () => {
       document.body.classList.toggle('mirror');
@@ -970,6 +1019,59 @@
 
     syncToggles(); updateSpeedLabel();
   }
+
+  /* ============================================================
+     Screen lock — a transparent catcher over the player that eats
+     every touch, so a pocket or a stray thumb cannot pause, seek or
+     change the volume. The video itself keeps playing untouched.
+     ============================================================ */
+  let lockTimer = 0;
+  P.locked = false;
+
+  function bindLock() {
+    const layer = $('#lock-layer'), release = $('#lock-release');
+    if (!layer || !release) return;
+    /* Swallow everything that reaches the layer; a tap only reveals the
+       unlock button, so a single accidental touch can never unlock. */
+    ['pointerdown', 'pointerup', 'pointermove', 'touchstart', 'touchmove', 'touchend',
+      'click', 'dblclick', 'wheel', 'contextmenu'].forEach(ev => {
+        layer.addEventListener(ev, e => {
+          if (release.contains(e.target)) return;
+          e.preventDefault(); e.stopPropagation();
+          if (ev === 'pointerdown' || ev === 'touchstart') peekRelease();
+        }, { passive: false, capture: true });
+      });
+    release.addEventListener('click', e => { e.stopPropagation(); P.setLock(false); });
+  }
+
+  function peekRelease() {
+    const release = $('#lock-release'); if (!release) return;
+    release.hidden = false;
+    clearTimeout(lockTimer);
+    lockTimer = setTimeout(() => { if (P.locked) release.hidden = true; }, 2500);
+  }
+
+  /** @param {boolean} on @param {boolean} [quiet] skip the toast (auto-unlock) */
+  P.setLock = function (on, quiet) {
+    on = !!on;
+    if (on === P.locked) return;
+    P.locked = on;
+    const layer = $('#lock-layer'), release = $('#lock-release'), btn = $('#v-lock');
+    document.body.classList.toggle('locked', on);
+    if (layer) layer.hidden = !on;
+    if (release) release.hidden = true;
+    clearTimeout(lockTimer);
+    if (btn) {
+      btn.classList.toggle('on', on);
+      const u = btn.querySelector('use');
+      if (u) u.setAttribute('href', on ? '#i-unlock' : '#i-lock');
+      btn.title = on ? 'Unlock screen' : 'Lock screen';
+    }
+    if (on) peekRelease();
+    if (!quiet) HP.toast(on ? 'Screen locked — tap, then tap unlock' : 'Screen unlocked', 'ok');
+  };
+
+  P.toggleLock = function () { P.setLock(!P.locked); };
 
   P.toggleLyrics = function (force) {
     const box = $('#lyrics');
@@ -1085,6 +1187,17 @@
     clearTimeout(b._t); b._t = setTimeout(() => b.classList.remove('on'), 800);
   }
 
+  /* Start the swipe from whatever the device is actually at — the user may
+     have used the hardware keys since the app last touched the volume. */
+  function liveVolume() {
+    const dev = HP.Device && HP.Device.volume;
+    if (dev && dev.available()) {
+      const v = dev.get();
+      if (v != null && !S.muted) { S.volume = v; return v; }
+    }
+    return S.volume;
+  }
+
   function bindGestures() {
     const stage = $('#stage');
     let st = null, lastTap = 0, tapTimer = null, holdTimer = null, pts = new Map(), pinch0 = 0;
@@ -1108,7 +1221,7 @@
       st = {
         x: e.clientX, y: e.clientY, t: Date.now(), axis: null,
         side: (e.clientX - r.left) / r.width, w: r.width, h: r.height,
-        time0: P.active.currentTime || 0, vol0: S.volume, br0: P.brightness,
+        time0: P.active.currentTime || 0, vol0: liveVolume(), br0: P.brightness,
         screen0, moved: false
       };
       try { stage.setPointerCapture(e.pointerId); } catch (x) { }
@@ -1149,8 +1262,13 @@
       } else {
         const frac = -dy / (st.h * .7);
         if (st.side > .5) {
-          const v = clamp(st.vol0 + frac, 0, 1);
-          E().setVolume(v); S.muted = false;
+          let v = clamp(st.vol0 + frac, 0, 1);
+          // Snap to the device's own notches so the swipe lands exactly where
+          // the hardware keys would, instead of drifting half a step away.
+          const steps = (HP.Device && HP.Device.volume.steps && HP.Device.volume.steps()) || 0;
+          if (steps > 1) v = Math.round(v * steps) / steps;
+          S.muted = false;                      // unmute first, then apply the level
+          E().setVolume(v);
           showBar(v ? 'vol' : 'mute', Math.round(v * 100) + '%', v * 100);
         } else {
           P.brightness = clamp(st.br0 + frac, .2, 1.8);

@@ -59,6 +59,129 @@
   YT.isYouTube = url => !!YT.parse(url);
   YT.thumb = id => 'https://i.ytimg.com/vi/' + id + '/hqdefault.jpg';
 
+  /* ============================================================
+     online search
+
+     Inside the Android app the shell asks YouTube's own API (no key, no
+     account) and hands back the rows — no CORS, no proxy, no tracking.
+     In a plain browser that request is blocked by CORS, so there we try a
+     couple of public, CORS-enabled mirrors instead and quietly give up if
+     none answer. Either way nothing is searched unless the user types.
+     ============================================================ */
+  const native = () => {
+    const n = w.HashNative;
+    try { return (n && typeof n.ytSearch === 'function') ? n : null; } catch (e) { return null; }
+  };
+  YT.canSearch = () => !!(native() || (typeof fetch === 'function'));
+
+  const waiting = new Map();
+  /** Called from Kotlin with the rows for one request id. */
+  YT.deliver = function (reqId, json) {
+    const job = waiting.get(reqId);
+    if (!job) return;
+    waiting.delete(reqId);
+    clearTimeout(job.timer);
+    let rows = [];
+    try { rows = JSON.parse(json) || []; } catch (e) { }
+    job.resolve(rows.map(normalise).filter(Boolean));
+  };
+
+  function normalise(r) {
+    if (!r || !r.id) return null;
+    return {
+      id: String(r.id),
+      title: String(r.title || 'YouTube video'),
+      author: String(r.author || 'YouTube'),
+      duration: String(r.duration || ''),
+      seconds: +r.seconds || hms(r.duration),
+      views: String(r.views || ''),
+      published: String(r.published || ''),
+      thumb: String(r.thumb || YT.thumb(r.id)),
+      live: !!r.live
+    };
+  }
+  function hms(s) {
+    const parts = String(s || '').split(':').map(n => parseInt(n, 10));
+    if (!parts.length || parts.some(isNaN)) return 0;
+    return parts.reduce((a, b) => a * 60 + b, 0);
+  }
+
+  let seq = 0;
+  function searchNative(q) {
+    const n = native();
+    if (!n) return Promise.reject(new Error('no bridge'));
+    return new Promise((resolve, reject) => {
+      const id = 'q' + (++seq);
+      const timer = setTimeout(() => { waiting.delete(id); reject(new Error('timeout')); }, 12000);
+      waiting.set(id, { resolve, timer });
+      try { n.ytSearch(q, id); }
+      catch (e) { waiting.delete(id); clearTimeout(timer); reject(e); }
+    });
+  }
+
+  /* public mirrors for the browser/PWA build — best effort, never required */
+  const MIRRORS = [
+    { url: q => 'https://pipedapi.kavin.rocks/search?filter=videos&q=' + encodeURIComponent(q), map: pipedRows },
+    { url: q => 'https://pipedapi.adminforge.de/search?filter=videos&q=' + encodeURIComponent(q), map: pipedRows },
+    { url: q => 'https://inv.nadeko.net/api/v1/search?type=video&q=' + encodeURIComponent(q), map: invidiousRows }
+  ];
+  function pipedRows(d) {
+    const list = (d && (d.items || d)) || [];
+    return list.filter(x => x && (x.url || x.videoId)).map(x => {
+      const id = x.videoId || String(x.url || '').split('v=')[1] || '';
+      return {
+        id, title: x.title, author: x.uploaderName || x.uploader, seconds: x.duration,
+        duration: fmt(x.duration), views: x.views ? short(x.views) + ' views' : '',
+        published: x.uploadedDate || '', thumb: x.thumbnail || YT.thumb(id),
+        live: !!x.isLive || x.duration < 0
+      };
+    });
+  }
+  function invidiousRows(d) {
+    return (d || []).filter(x => x && x.videoId).map(x => ({
+      id: x.videoId, title: x.title, author: x.author, seconds: x.lengthSeconds,
+      duration: fmt(x.lengthSeconds), views: x.viewCount ? short(x.viewCount) + ' views' : '',
+      published: x.publishedText || '',
+      thumb: (x.videoThumbnails && x.videoThumbnails[0] && x.videoThumbnails[0].url) || YT.thumb(x.videoId),
+      live: !!x.liveNow
+    }));
+  }
+  const fmt = s => {
+    s = Math.max(0, Math.round(+s || 0));
+    const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = s % 60;
+    return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(x).padStart(2, '0');
+  };
+  const short = n => n >= 1e9 ? (n / 1e9).toFixed(1) + 'B' : n >= 1e6 ? (n / 1e6).toFixed(1) + 'M'
+    : n >= 1e3 ? (n / 1e3).toFixed(1) + 'K' : String(n);
+
+  async function searchMirrors(q) {
+    for (const m of MIRRORS) {
+      try {
+        const ctrl = typeof AbortController === 'function' ? new AbortController() : null;
+        const t = setTimeout(() => ctrl && ctrl.abort(), 7000);
+        const res = await fetch(m.url(q), { signal: ctrl ? ctrl.signal : undefined, mode: 'cors' });
+        clearTimeout(t);
+        if (!res.ok) continue;
+        const rows = m.map(await res.json()).map(normalise).filter(Boolean);
+        if (rows.length) return rows;
+      } catch (e) { /* try the next mirror */ }
+    }
+    throw new Error('unreachable');
+  }
+
+  /** Search YouTube. Resolves with [] rather than throwing when simply nothing matched. */
+  YT.search = async function (query) {
+    const q = String(query || '').trim();
+    if (q.length < 2) return [];
+    if (native()) {
+      try {
+        const rows = await searchNative(q);
+        if (rows.length) return rows;
+      } catch (e) { /* fall through to the mirrors */ }
+    }
+    return searchMirrors(q);
+  };
+
   /* ---------------- iframe api loader ---------------- */
   let apiPromise = null;
   function loadAPI() {

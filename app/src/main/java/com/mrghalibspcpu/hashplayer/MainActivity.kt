@@ -8,12 +8,16 @@ import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
 import android.content.res.Configuration
+import android.database.ContentObserver
 import android.graphics.Bitmap
 import android.graphics.Color
+import android.media.AudioManager
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.os.ParcelFileDescriptor
 import android.provider.MediaStore
 import android.provider.OpenableColumns
@@ -93,6 +97,14 @@ class MainActivity : AppCompatActivity() {
     private var customCallback: WebChromeClient.CustomViewCallback? = null
     private lateinit var nativePlayer: NativePlayback
 
+    /* The volume slider and the vertical swipe move the *device* media volume,
+       the same thing the hardware keys do — so the UI has to follow the keys too. */
+    private val audio: AudioManager by lazy {
+        getSystemService(Context.AUDIO_SERVICE) as AudioManager
+    }
+    private var lastVolumeSent = -1f
+    private var volumeObserver: ContentObserver? = null
+
     private val fileChooser =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { res ->
             val cb = filePathCallback
@@ -163,7 +175,7 @@ class MainActivity : AppCompatActivity() {
             cacheMode = WebSettings.LOAD_DEFAULT
             mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
             textZoom = 100
-            userAgentString = "$userAgentString HashPlayer/2.2.2"
+            userAgentString = "$userAgentString HashPlayer/2.3.0"
         }
 
         web.webViewClient = object : WebViewClient() {
@@ -294,8 +306,39 @@ class MainActivity : AppCompatActivity() {
             }
         })
 
+        /* Hardware volume keys should always mean "media volume" here, even while
+           nothing is playing yet — otherwise they change the ringer instead. */
+        volumeControlStream = AudioManager.STREAM_MUSIC
+        watchVolume()
+
         if (savedInstanceState == null) web.loadUrl(START_URL) else web.restoreState(savedInstanceState)
         handleIntent(intent)
+    }
+
+    /* ====================================================== device volume */
+
+    private fun maxVolume(): Int = try {
+        audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC).coerceAtLeast(1)
+    } catch (e: Exception) { 15 }
+
+    private fun deviceVolume(): Float = try {
+        audio.getStreamVolume(AudioManager.STREAM_MUSIC).toFloat() / maxVolume()
+    } catch (e: Exception) { 1f }
+
+    /** Mirror hardware-key / system changes into the player UI. */
+    private fun watchVolume() {
+        val obs = object : ContentObserver(Handler(Looper.getMainLooper())) {
+            override fun onChange(selfChange: Boolean) {
+                val v = deviceVolume()
+                if (kotlin.math.abs(v - lastVolumeSent) < 0.001f) return
+                lastVolumeSent = v
+                js("window.HashBridge && window.HashBridge.onVolume($v);")
+            }
+        }
+        volumeObserver = obs
+        try {
+            contentResolver.registerContentObserver(Settings.System.CONTENT_URI, true, obs)
+        } catch (e: Exception) { Log.w(TAG, "volume observer", e) }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -343,6 +386,8 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         PlaybackService.transport = null
         PlaybackService.stop(this)
+        volumeObserver?.let { try { contentResolver.unregisterContentObserver(it) } catch (e: Exception) { } }
+        volumeObserver = null
         nativePlayer.release()
         web.destroy()
         super.onDestroy()
@@ -423,6 +468,56 @@ class MainActivity : AppCompatActivity() {
             window.attributes = attrs
         }
 
+        /* ---------------- device volume ----------------
+           The in-app slider used to move a Web Audio gain node, which the
+           ExoPlayer engine and the YouTube embed never pass through — so it
+           changed nothing you could hear. These drive the real media stream. */
+
+        @android.webkit.JavascriptInterface
+        fun volumeControl(): Boolean = try {
+            !(Build.VERSION.SDK_INT >= 23 && audio.isVolumeFixed)
+        } catch (e: Exception) { true }
+
+        @android.webkit.JavascriptInterface
+        fun getVolume(): Float = deviceVolume()
+
+        @android.webkit.JavascriptInterface
+        fun getVolumeSteps(): Int = maxVolume()
+
+        @android.webkit.JavascriptInterface
+        fun setVolume(value: Float) = runOnUiThread {
+            try {
+                val max = maxVolume()
+                val idx = Math.round(value.coerceIn(0f, 1f) * max).coerceIn(0, max)
+                audio.setStreamVolume(AudioManager.STREAM_MUSIC, idx, 0)
+                lastVolumeSent = idx.toFloat() / max
+            } catch (e: Exception) { Log.w(TAG, "volume", e) }
+        }
+
+        /* ---------------- YouTube, played by our own engine ---------------- */
+
+        /** True when the shell can stream YouTube through ExoPlayer natively. */
+        @android.webkit.JavascriptInterface
+        fun ytEngine(): Boolean = true
+
+        /** Online search for the library search bar. Answers on HashBridge.onYtSearch. */
+        @android.webkit.JavascriptInterface
+        fun ytSearch(query: String?, reqId: String?) {
+            val q = query.orEmpty()
+            val id = reqId.orEmpty()
+            thread {
+                val list = try { YouTubeStream.search(q) } catch (e: Throwable) {
+                    Log.w(TAG, "yt search", e); JSONArray()
+                }
+                runOnUiThread {
+                    web.evaluateJavascript(
+                        "window.HashBridge && window.HashBridge.onYtSearch(" +
+                            JSONObject.quote(id) + "," + JSONObject.quote(list.toString()) + ");", null
+                    )
+                }
+            }
+        }
+
         @android.webkit.JavascriptInterface
         fun share(text: String) = runOnUiThread {
             try {
@@ -447,7 +542,7 @@ class MainActivity : AppCompatActivity() {
         fun toastMsg(msg: String) = runOnUiThread { toast(msg) }
 
         @android.webkit.JavascriptInterface
-        fun version(): String = "2.2.2"
+        fun version(): String = "2.3.0"
 
         /* ---------------- native ExoPlayer engine ---------------- */
 

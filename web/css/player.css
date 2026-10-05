@@ -157,8 +157,29 @@ body.vis-off #vis,body.has-video #vis{display:none}
   opacity:0;transition:opacity .3s}
 body.has-video .vtools{display:flex}
 body.has-video .vtools.show,.stage:hover .vtools{opacity:1}
-.vtools .icon-btn{width:36px;height:36px;color:#fff}
+.vtools .icon-btn{width:36px;height:36px;color:#fff;position:relative}
 .vtools .icon-btn .ic{width:18px;height:18px}
+.vtools .icon-btn.on{color:var(--a1)}
+/* current speed, shown on the button itself so you can see it at a glance */
+.v-badge{position:absolute;right:-2px;bottom:-1px;min-width:17px;padding:0 3px;border-radius:7px;
+  background:var(--a1);color:#04060c;font-size:9px;font-weight:800;line-height:12px;text-align:center;
+  pointer-events:none;box-shadow:0 1px 4px rgba(0,0,0,.45)}
+
+/* ---------------- screen lock ----------------
+   A full-screen catcher: while it is up nothing below it can be tapped,
+   swiped or scrolled, so a pocket or a stray thumb cannot touch playback. */
+.lock-layer{position:absolute;inset:0;z-index:140;touch-action:none;-webkit-user-select:none;user-select:none;
+  background:transparent;display:flex;align-items:center;justify-content:center}
+.lock-layer[hidden]{display:none}
+.lock-release{display:flex;align-items:center;gap:8px;padding:11px 18px;border:1px solid rgba(255,255,255,.16);
+  border-radius:999px;background:rgba(4,6,12,.72);backdrop-filter:blur(14px);color:#fff;
+  font-size:13.5px;font-weight:700;cursor:pointer;animation:lockIn .2s var(--ease)}
+.lock-release[hidden]{display:none}
+.lock-release .ic{width:18px;height:18px}
+@keyframes lockIn{from{opacity:0;transform:scale(.92)}to{opacity:1;transform:none}}
+/* keep the controls out of the way, but leave the video exactly as it was */
+body.locked .vtools,body.locked .np-ctrl,body.locked .np-head,body.locked #minibar,
+body.locked .gbar,body.locked .gfx{opacity:0;pointer-events:none;transition:opacity .2s}
 
 /* ---------------- controls ---------------- */
 .np-ctrl{flex:none;display:flex;flex-direction:column;gap:10px;max-width:760px;width:100%;margin:0 auto}
@@ -299,7 +320,10 @@ body.yt-mode .stage{background:#000}
 body.yt-mode #v-shot,body.yt-mode #v-mirror,body.yt-mode #v-rotate,
 body.yt-mode #v-aspect,body.yt-mode #v-cc{display:none}
 #v-yt{display:none}
-body.yt-mode #v-yt{display:grid;color:#ff4d4d}
+body.yt-mode #v-yt,body.yt-track #v-yt{display:grid;color:#ff4d4d}
+/* YouTube streamed by our own engine: no screenshot of a protected surface and
+   no side-loaded captions, everything else behaves like a normal video. */
+body.yt-track #v-cc{display:none}
 body.yt-mode .vtools{opacity:1}
 
 /* ============================================================
