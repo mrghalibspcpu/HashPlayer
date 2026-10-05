@@ -176,7 +176,11 @@
       HP.emit('track-changed', t);
       highlightCards(); renderQueue();
       try {
-        await P.y.setVideo(t.ytId, startAt != null ? startAt : (S.resume ? t.pos || 0 : 0));
+        await P.y.setVideo(
+          t.ytId,
+          startAt != null ? startAt : (S.resume ? t.pos || 0 : 0),
+          !!autoplay
+        );
         P.y.playbackRate = S.speed;
         P.y.volume = S.volume; P.y.muted = S.muted;
         if (autoplay) await P.y.play();
@@ -234,7 +238,11 @@
     P.active = target;
     target.playbackRate = S.speed;
     if ('preservesPitch' in target) target.preservesPitch = S.pitch;
-    if (t.source === 'url') target.crossOrigin = 'anonymous'; else target.removeAttribute('crossorigin');
+    // Normal media playback does not require CORS. Setting crossorigin on a
+    // remote URL makes servers without Access-Control-Allow-Origin fail before
+    // the browser can decode the stream. Web Audio simply remains unavailable
+    // for such a source, while playback still works.
+    target.removeAttribute('crossorigin');
     if (target.src !== src) { target.src = src; target.load(); }
 
     document.body.classList.toggle('has-video', isVideo);
@@ -1006,9 +1014,19 @@
 
   P.toggleFullscreen = function () {
     const node = $('#np');
-    if (!document.fullscreenElement) {
-      const req = node.requestFullscreen || node.webkitRequestFullscreen;
-      if (req) { try { req.call(node); } catch (e) { } }
+    // Native Android video is rendered by a TextureView behind the WebView.
+    // Asking WebView for DOM fullscreen creates an opaque CustomView above that
+    // surface, which is why the picture disappeared after rotating. Use the
+    // Activity's immersive window instead and keep the native surface in place.
+    const nativeVideo = isNat(P.active) && P.current && P.current.kind === 'video';
+    const fullscreen = nativeVideo
+      ? document.body.classList.contains('cinema')
+      : !!document.fullscreenElement;
+    if (!fullscreen) {
+      if (!nativeVideo) {
+        const req = node.requestFullscreen || node.webkitRequestFullscreen;
+        if (req) { try { req.call(node); } catch (e) { } }
+      }
       document.body.classList.add('cinema');
       try { window.HashNative && window.HashNative.setFullscreen && window.HashNative.setFullscreen(true); } catch (e) { }
       if (P.current && P.current.kind === 'video') P.setOrientation('landscape');
@@ -1080,10 +1098,18 @@
         st = null; return;
       }
       const r = stage.getBoundingClientRect();
+      let screen0 = null;
+      try {
+        if (window.HashNative && window.HashNative.getScreenBrightness) {
+          screen0 = +window.HashNative.getScreenBrightness();
+          if (!isFinite(screen0)) screen0 = null;
+        }
+      } catch (x) { }
       st = {
         x: e.clientX, y: e.clientY, t: Date.now(), axis: null,
         side: (e.clientX - r.left) / r.width, w: r.width, h: r.height,
-        time0: P.active.currentTime || 0, vol0: S.volume, br0: P.brightness, moved: false
+        time0: P.active.currentTime || 0, vol0: S.volume, br0: P.brightness,
+        screen0, moved: false
       };
       try { stage.setPointerCapture(e.pointerId); } catch (x) { }
       holdTimer = setTimeout(() => {
@@ -1129,7 +1155,15 @@
         } else {
           P.brightness = clamp(st.br0 + frac, .2, 1.8);
           applyBrightness();
-          showBar('sun', Math.round(P.brightness * 100) + '%', (P.brightness / 1.8) * 100);
+          // CSS brightness is only visual feedback. On Android also change the
+          // actual Activity window brightness for a real device-level result.
+          let physical = null;
+          if (st.screen0 != null && window.HashNative && window.HashNative.setScreenBrightness) {
+            physical = clamp(st.screen0 + frac, .01, 1);
+            try { window.HashNative.setScreenBrightness(physical); } catch (x) { }
+          }
+          const shown = physical == null ? P.brightness : physical;
+          showBar('sun', Math.round(shown * 100) + '%', shown * 100);
         }
       }
     });

@@ -17,6 +17,7 @@ import android.os.Bundle
 import android.os.ParcelFileDescriptor
 import android.provider.MediaStore
 import android.provider.OpenableColumns
+import android.provider.Settings
 import android.util.Log
 import android.util.Rational
 import android.view.View
@@ -332,6 +333,9 @@ class MainActivity : AppCompatActivity() {
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
+        // Keep ExoPlayer alive across rotation, then re-bind its texture after
+        // the new root bounds have been laid out by the window manager.
+        nativePlayer.onConfigurationChanged()
         val land = newConfig.orientation == Configuration.ORIENTATION_LANDSCAPE
         js("window.HashBridge && window.HashBridge.onRotate($land);")
     }
@@ -398,6 +402,25 @@ class MainActivity : AppCompatActivity() {
         fun keepAwake(on: Boolean) = runOnUiThread {
             if (on) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+
+        /** The video gesture controls the Activity window, not only a CSS filter. */
+        @android.webkit.JavascriptInterface
+        fun getScreenBrightness(): Float {
+            val windowValue = window.attributes.screenBrightness
+            if (windowValue in 0f..1f) return windowValue
+            return try {
+                Settings.System.getInt(
+                    contentResolver, Settings.System.SCREEN_BRIGHTNESS, 128
+                ).coerceIn(0, 255) / 255f
+            } catch (e: Exception) { 0.5f }
+        }
+
+        @android.webkit.JavascriptInterface
+        fun setScreenBrightness(value: Float) = runOnUiThread {
+            val attrs = window.attributes
+            attrs.screenBrightness = value.coerceIn(0.01f, 1f)
+            window.attributes = attrs
         }
 
         @android.webkit.JavascriptInterface

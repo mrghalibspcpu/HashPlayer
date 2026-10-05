@@ -192,11 +192,15 @@
     }
 
     if (!/^https?:\/\//i.test(url)) { HP.toast('Enter a full http(s) link', 'err'); return null; }
-    const name = decodeURIComponent(url.split('/').pop().split('?')[0]) || 'Stream';
-    const kind = HP.kindOf(name) === 'video' ? 'video' : (HP.kindOf(name) || 'audio');
+    let parsed;
+    try { parsed = new URL(url); } catch (e) { HP.toast('Enter a valid media URL', 'err'); return null; }
+    const name = decodeURIComponent(parsed.pathname.split('/').pop() || '') || 'Stream';
+    // Prefer the URL path because CDN links often have a generic display name.
+    const guessedKind = HP.kindOf(name) || HP.kindOf(parsed.pathname);
+    const kind = guessedKind === 'video' ? 'video' : 'audio';
     const g = HP.splitArtistTitle(name);
     const t = {
-      id: HP.uid(), key: url, name, title: g.title || name, artist: g.artist || new URL(url).hostname,
+      id: HP.uid(), key: url, name, title: g.title || name, artist: g.artist || parsed.hostname,
       album: '', genre: '', year: '', trackNo: '', duration: 0, size: 0, mime: '', kind,
       source: 'url', file: null, handle: null, nativeUri: null, url, cover: null, folder: '',
       added: Date.now(), plays: 0, lastPlayed: 0, fav: false, pos: 0, lrc: null, sub: null,

@@ -30,8 +30,8 @@
     try { return !!(n && n.nativeEngine && n.nativeEngine()); } catch (e) { return false; }
   };
 
-  /** Device-backed tracks (MediaStore scan, "open with") play natively. */
-  N.handles = t => !!(t && t.nativeUri && N.available());
+  /** Device-backed tracks and direct network media play through ExoPlayer on Android. */
+  N.handles = t => !!(t && (t.nativeUri || (t.source === 'url' && /^https?:\/\//i.test(t.url || ''))) && N.available());
 
   function ranges(end) {
     return { length: end > 0 ? 1 : 0, start: () => 0, end: () => end };

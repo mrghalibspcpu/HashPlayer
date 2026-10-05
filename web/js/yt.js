@@ -27,18 +27,25 @@
     if (!s) return null;
     let u;
     try { u = new URL(s.indexOf('//') < 0 ? 'https://' + s : s); } catch (e) { return null; }
-    const host = u.hostname.replace(/^www\.|^m\./, '');
-    const yt = host === 'youtube.com' || host === 'youtu.be' ||
-      host === 'music.youtube.com' || host === 'youtube-nocookie.com';
+    const host = u.hostname.toLowerCase().replace(/^(?:www|m|music)\./, '');
+    const yt = host === 'youtube.com' || host === 'youtu.be' || host === 'youtube-nocookie.com';
     if (!yt) return null;
 
     let id = '';
     if (host === 'youtu.be') id = u.pathname.slice(1).split('/')[0];
     else if (u.searchParams.get('v')) id = u.searchParams.get('v');
     else {
-      const m = u.pathname.match(/\/(?:shorts|embed|v|live)\/([^/?#]+)/);
+      const m = decodeURIComponent(u.pathname).match(/\/(?:shorts|embed|v|live)\/([^/?#]+)/i);
       if (m) id = m[1];
+      // YouTube sometimes shares an attribution_link whose real watch URL is
+      // carried in the `u` parameter rather than directly in `v`.
+      if (!id) {
+        const nested = u.searchParams.get('u') || '';
+        const vm = nested.match(/[?&]v=([\w-]{6,20})/i);
+        if (vm) id = vm[1];
+      }
     }
+    try { id = decodeURIComponent(id).split(/[?#&/]/)[0]; } catch (e) { }
     if (!/^[\w-]{6,20}$/.test(id)) return null;
 
     let t = 0;
@@ -194,7 +201,7 @@
     }
 
     /** Point the embed at a video id. Resolves when the player is usable. */
-    this.setVideo = function (id, startAt) {
+    this.setVideo = function (id, startAt, autoplay) {
       videoId = id;
       pos = startAt || 0;
       dur = 0; loaded = 0; ended = false; lastState = -1;
@@ -220,7 +227,7 @@
           videoId: id,
           host: 'https://www.youtube.com',
           playerVars: {
-            autoplay: 0, controls: 0, disablekb: 1, fs: 0, rel: 0,
+            autoplay: autoplay ? 1 : 0, controls: 0, disablekb: 1, fs: 0, rel: 0,
             modestbranding: 1, iv_load_policy: 3, playsinline: 1,
             start: Math.floor(pos) || 0, origin: location.origin
           },

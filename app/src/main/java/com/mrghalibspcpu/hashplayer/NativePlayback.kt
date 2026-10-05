@@ -201,7 +201,28 @@ class NativePlayback(
         lp.leftMargin = (x * d).toInt()
         lp.topMargin = (y * d).toInt()
         sv.layoutParams = lp
+        sv.requestLayout()
+        sv.invalidate()
         applyVideoTransform()
+    }
+
+    /**
+     * Rotation changes the WebView stage and can briefly detach a TextureView's
+     * SurfaceTexture. Keep the existing ExoPlayer item and explicitly attach the
+     * current texture again after the new root layout is committed.
+     */
+    fun onConfigurationChanged() = main.post {
+        val sv = surface ?: return@post
+        if (!isVideo || currentUri.isEmpty()) return@post
+        sv.postDelayed({
+            if (surface !== sv || sv.visibility != android.view.View.VISIBLE) return@postDelayed
+            try { player?.setVideoTextureView(sv) } catch (e: Exception) {
+                Log.w(TAG, "video surface rebind failed", e)
+            }
+            sv.requestLayout()
+            sv.invalidate()
+            applyVideoTransform()
+        }, 50)
     }
 
     /**
