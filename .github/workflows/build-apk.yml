@@ -19,7 +19,9 @@ concurrency:
 jobs:
   build:
     name: Assemble APK
-    runs-on: ubuntu-latest
+    # Pinned on purpose: the generic ubuntu-latest pool has been refusing to
+    # hand out runners, and it migrates to Ubuntu 26 in October 2026 anyway.
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
 
     steps:
