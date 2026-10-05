@@ -177,9 +177,11 @@ body.has-video .vtools.show,.stage:hover .vtools{opacity:1}
 .lock-release[hidden]{display:none}
 .lock-release .ic{width:18px;height:18px}
 @keyframes lockIn{from{opacity:0;transform:scale(.92)}to{opacity:1;transform:none}}
-/* keep the controls out of the way, but leave the video exactly as it was */
-body.locked .vtools,body.locked .np-ctrl,body.locked .np-head,body.locked #minibar,
-body.locked .gbar,body.locked .gfx{opacity:0;pointer-events:none;transition:opacity .2s}
+/* Keep the controls out of the way, but leave the video exactly as it was.
+   !important because the hover/“show” rules for the side tools are more
+   specific and would otherwise fade them back in under the lock. */
+body.locked .vtools,body.locked .np-ctrl,body.locked .np-top,body.locked #minibar,
+body.locked .gbar,body.locked .gfx{opacity:0 !important;pointer-events:none;transition:opacity .2s}
 
 /* ---------------- controls ---------------- */
 .np-ctrl{flex:none;display:flex;flex-direction:column;gap:10px;max-width:760px;width:100%;margin:0 auto}
