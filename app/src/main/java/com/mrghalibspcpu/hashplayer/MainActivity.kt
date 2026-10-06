@@ -185,7 +185,7 @@ class MainActivity : AppCompatActivity() {
             cacheMode = WebSettings.LOAD_DEFAULT
             mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
             textZoom = 100
-            userAgentString = "$userAgentString HashPlayer/2.3.1"
+            userAgentString = "$userAgentString HashPlayer/2.3.2"
         }
 
         web.webViewClient = object : WebViewClient() {
@@ -556,7 +556,7 @@ class MainActivity : AppCompatActivity() {
         fun toastMsg(msg: String) = runOnUiThread { toast(msg) }
 
         @android.webkit.JavascriptInterface
-        fun version(): String = "2.3.0"
+        fun version(): String = "2.3.2"
 
         /* ---------------- native ExoPlayer engine ---------------- */
 

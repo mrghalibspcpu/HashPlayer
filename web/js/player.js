@@ -29,7 +29,14 @@
     /* Android: device files play through ExoPlayer, not the WebView */
     P.n = (HP.NativeMedia && HP.NativeMedia.available()) ? HP.NativeMedia.create() : null;
     [P.a, P.b].forEach(bind);
-    if (P.y) bind(P.y);
+    if (P.y) {
+      bind(P.y);
+      /* The IFrame fallback scans YouTube's own caption module asynchronously. */
+      P.y.addEventListener('captionschange', () => {
+        if (P.active === P.y && P.setYouTubeCaptionAvailability)
+          P.setYouTubeCaptionAvailability(P.y.captionsAvailable && P.y.captionsAvailable());
+      });
+    }
     if (P.n) { bind(P.n); document.body.classList.add('has-native-engine'); }
     P.a.volume = 1; P.b.volume = 1;
     HP.Vis.init($('#vis'));
@@ -179,11 +186,11 @@
       if (P.n) P.n.stop();
       P.current = t; P.active = P.y;
       document.body.classList.add('has-video');
-      /* The official embed exposes its own caption module. We optimistically
-         expose CC here; it reports a friendly unavailable toast if the video
-         has no tracks, without ever asking the user for a subtitle file. */
-      P.ccOn = false; P.ccAvailable = true;
-      setCCUI(false, true);
+      /* The official embed scans its own caption module after metadata arrives.
+         CC remains hidden until YouTube confirms that this exact video has a
+         built-in track — no empty caption control and no subtitle upload. */
+      P.ccOn = false; P.ccAvailable = false;
+      setCCUI(false, false);
       P.setSkipSilence(!!S.skipSilence, true);
       paintNowPlaying(t);
       if (HP.UI && !$('#np').classList.contains('on')) HP.UI.openNP(true);
@@ -900,13 +907,15 @@
   function setCCUI(on, available) {
     P.ccOn = !!on;
     if (available !== undefined) P.ccAvailable = !!available;
+    const isYouTube = !!(P.current && P.current.source === 'yt');
     ['#v-cc', '#t-cc'].forEach(sel => {
       const button = $(sel); if (!button) return;
+      /* Bottom-panel CC is a YouTube-only affordance. It appears only after
+         the native resolver / IFrame API has actually found caption tracks. */
+      if (sel === '#t-cc') button.hidden = !(isYouTube && P.ccAvailable);
       button.classList.toggle('on', P.ccOn);
       button.setAttribute('aria-pressed', P.ccOn ? 'true' : 'false');
-      /* A regular local video can still acquire a sidecar later, so only hard
-         disable the button when the native YouTube resolver confirmed no CC. */
-      button.toggleAttribute('disabled', !!(P.current && P.current.source === 'yt' && !P.ccAvailable));
+      button.toggleAttribute('disabled', isYouTube && !P.ccAvailable);
     });
   }
 
@@ -925,13 +934,22 @@
   }
   P.addSubtitle = addSubtitle;
 
+  /** Apply an automatic YouTube caption scan from either playback engine. */
+  P.setYouTubeCaptionAvailability = function (available) {
+    if (!P.current || P.current.source !== 'yt') return;
+    available = !!available;
+    if (!available && P.ccOn) {
+      if (isNat(P.active)) HP.NativeMedia.setSubtitles(false);
+      else if (isYT(P.active) && P.active.setCaptions) P.active.setCaptions(false);
+    }
+    setCCUI(available ? P.ccOn : false, available);
+  };
+
   /** Metadata from the native YouTube resolver tells the UI whether this
      particular video supplies YouTube's own caption tracks. */
   P.setNativeCaptionAvailability = function (meta) {
     if (!P.current || P.current.source !== 'yt' || !isNat(P.active)) return;
-    const available = !!(meta && +meta.captions > 0);
-    if (!available && P.ccOn) HP.NativeMedia.setSubtitles(false);
-    setCCUI(available ? P.ccOn : false, available);
+    P.setYouTubeCaptionAvailability(!!(meta && +meta.captions > 0));
   };
 
   P.toggleCC = function () {

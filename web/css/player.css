@@ -110,6 +110,13 @@ body.no-motion .art-disc{animation:none !important}
 .art-disc .ph{width:36%;height:36%;color:var(--a1);opacity:.4;stroke-width:1}
 
 #vis{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;opacity:.95;mix-blend-mode:screen}
+/* Keep the audio response close to the album art as a short, lightweight
+   strip instead of painting a full-stage canvas over the cover. */
+body:not(.has-video) #vis{
+  inset:auto;left:50%;bottom:clamp(14px,4vh,32px);transform:translateX(-50%);
+  width:min(76%,360px);height:clamp(48px,9vh,68px);opacity:.78;
+  border-radius:18px;mask-image:linear-gradient(90deg,transparent,#000 10%,#000 90%,transparent);
+}
 body.surface-light #vis{mix-blend-mode:multiply;opacity:.7}
 body.vis-off #vis,body.has-video #vis{display:none}
 
@@ -364,7 +371,8 @@ body.yt-mode .vtools{opacity:1}
   /* Keep the requested video actions in the bottom overlay even on short
      landscape screens; all non-video tools stay tucked away to save height. */
   body.has-video #np .np-tools{display:flex;min-height:0;padding:2px 0 0;gap:6px}
-  body.has-video #np .np-tools .tool:not(.video-tool){display:none}
+  body.has-video #np .np-tools .tool:not(.video-tool),
+  body.has-video #np .np-tools #t-silence{display:none !important}
   body.has-video #np .np-tools .video-tool{display:flex;flex-direction:row;min-width:0;padding:6px 10px;font-size:9px}
   body.has-video #np .np-tools .video-tool .ic{width:16px;height:16px}
   body.has-video #np .np-tools .video-tool span{white-space:nowrap}

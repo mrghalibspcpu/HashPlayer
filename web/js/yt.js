@@ -221,9 +221,11 @@
     let player = null, ready = false, videoId = '', wanted = null;
     let paused = true, ended = false, rate = 1, vol = 1, muted = false;
     let dur = 0, pos = 0, loaded = 0, pollId = 0, lastState = -1;
+    let captionTracks = [], captionTimer = 0;
 
     this.__yt = true;
     this.mount = mount;
+    this.captionsAvailable = () => captionTracks.length > 0;
 
     /* --- event plumbing (addEventListener / removeEventListener) --- */
     this.addEventListener = (k, fn, o) => bus.addEventListener(k, fn, o);
@@ -286,6 +288,26 @@
       } catch (e) { }
     }
 
+    /** Query the IFrame API's own captions module. The module is loaded after
+       video metadata, so retry a few short times before declaring no CC. */
+    function scanCaptions(attempt) {
+      if (!player || !ready) return;
+      const forVideo = videoId;
+      try { player.loadModule && player.loadModule('captions'); } catch (e) { }
+      clearTimeout(captionTimer);
+      captionTimer = setTimeout(() => {
+        if (!player || !ready || videoId !== forVideo) return;
+        let list = [];
+        try {
+          const value = player.getOption && player.getOption('captions', 'tracklist');
+          if (Array.isArray(value)) list = value.filter(x => x && x.languageCode);
+        } catch (e) { }
+        if (!list.length && (attempt || 0) < 4) { scanCaptions((attempt || 0) + 1); return; }
+        captionTracks = list;
+        fire('captionschange');
+      }, attempt ? 180 : 80);
+    }
+
     /* --- polling: YouTube has no timeupdate event --- */
     function startPoll() {
       stopPoll();
@@ -328,6 +350,8 @@
       videoId = id;
       pos = startAt || 0;
       dur = 0; loaded = 0; ended = false; lastState = -1;
+      captionTracks = [];
+      clearTimeout(captionTimer);
       self.mount.hidden = false;
       return loadAPI().then(api => new Promise((resolve, reject) => {
         const fail = setTimeout(() => reject(new Error('timeout')), 15000);
@@ -339,6 +363,7 @@
             apply();
             player.setPlaybackRate(rate);
             startPoll();
+            scanCaptions(0);
             return done();
           } catch (e) { try { player.destroy(); } catch (e2) { } player = null; ready = false; }
         }
@@ -363,10 +388,12 @@
               try { dur = player.getDuration() || 0; } catch (e) { }
               if (wanted != null) { try { player.seekTo(wanted, true); } catch (e) { } wanted = null; }
               startPoll();
+              scanCaptions(0);
               fire('loadedmetadata');
               done();
             },
             onStateChange: onState,
+            onApiChange: () => { if (!captionTracks.length) scanCaptions(0); },
             onError: ev => {
               clearTimeout(fail);
               const why = { 2: 'bad link', 5: 'player error', 100: 'video removed or private', 101: 'embedding disabled by the uploader', 150: 'embedding disabled by the uploader' };
@@ -414,18 +441,15 @@
           player.unloadModule && player.unloadModule('captions');
           return true;
         }
+        if (!captionTracks.length) return false;
         player.loadModule && player.loadModule('captions');
-        setTimeout(() => {
-          try {
-            const list = player.getOption && player.getOption('captions', 'tracklist');
-            if (!list || !list.length) return;
-            const lang = String((navigator.language || 'en').split('-')[0]).toLowerCase();
-            const track = list.find(x => String(x.languageCode || '').toLowerCase() === lang) ||
-              list.find(x => String(x.languageCode || '').toLowerCase().startsWith('en')) || list[0];
-            if (track && track.languageCode) player.setOption('captions', 'track', { languageCode: track.languageCode });
-            player.setOption && player.setOption('captions', 'reload', true);
-          } catch (e) { }
-        }, 80);
+        try {
+          const lang = String((navigator.language || 'en').split('-')[0]).toLowerCase();
+          const track = captionTracks.find(x => String(x.languageCode || '').toLowerCase() === lang) ||
+            captionTracks.find(x => String(x.languageCode || '').toLowerCase().startsWith('en')) || captionTracks[0];
+          if (track && track.languageCode) player.setOption('captions', 'track', { languageCode: track.languageCode });
+          player.setOption && player.setOption('captions', 'reload', true);
+        } catch (e) { return false; }
         return true;
       } catch (e) { return false; }
     };
