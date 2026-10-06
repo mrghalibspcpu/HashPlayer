@@ -77,20 +77,6 @@ jobs:
           fi
           ls -lh dist
 
-      - name: Mirror APK to a retrieval branch (temporary, sandbox network workaround)
-        run: |
-          git config user.email "actions@github.com"
-          git config user.name "github-actions[bot]"
-          mkdir -p /tmp/apk-mirror
-          cp dist/*.apk /tmp/apk-mirror/
-          git checkout --orphan apk-artifacts-tmp
-          git rm -rf . >/dev/null 2>&1 || true
-          mkdir -p apk
-          cp /tmp/apk-mirror/*.apk apk/
-          git add apk
-          git commit -m "APK mirror for ${{ github.sha }}"
-          git push -f origin HEAD:refs/heads/apk-artifacts-tmp
-
       - name: Summary
         run: |
           {
