@@ -336,5 +336,12 @@
     if (!on) showCues('');
   };
 
+  /** ExoPlayer detects and removes encoded silent spans without changing the
+     displayed timeline or desynchronising video frames. */
+  N.setSkipSilence = function (on) {
+    const n = bridge(); if (!n || !n.nSkipSilence) return false;
+    try { n.nSkipSilence(!!on); return true; } catch (e) { return false; }
+  };
+
   N.create = function () { return new NativeMedia(); };
 })(window);

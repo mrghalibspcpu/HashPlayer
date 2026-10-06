@@ -32,6 +32,7 @@ import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.source.MergingMediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
+import androidx.media3.exoplayer.source.SingleSampleMediaSource
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -77,6 +78,8 @@ class NativePlayback(
     private var lastWave: JSONArray? = null
     private var eqOn = false
     private var eqGains = FloatArray(10)
+    /** Decoder-level silence skipping is kept across track changes. */
+    private var skipSilence = false
 
     /** What the web app calls this track — echoed back so it can match events. */
     private var reportUri: String = ""
@@ -127,6 +130,7 @@ class NativePlayback(
             /* handleAudioFocus = */ true
         )
         p.setWakeMode(C.WAKE_MODE_LOCAL)               // keeps decoding with the screen off
+        p.skipSilenceEnabled = skipSilence
 
         p.addListener(object : Player.Listener {
             override fun onPlaybackStateChanged(state: Int) {
@@ -361,6 +365,11 @@ class NativePlayback(
                     val p = engine()
                     postMeta(r)
                     p.setMediaSource(youTubeSource(r))
+                    /* CC starts disabled and is toggled by HashPlayer's bottom
+                       control. This also suppresses any player default that
+                       would otherwise turn captions on without user input. */
+                    p.trackSelectionParameters = p.trackSelectionParameters.buildUpon()
+                        .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true).build()
                     p.prepare()
                     if (startSec > 0) p.seekTo((startSec * 1000).toLong())
                     showSurface(true)
@@ -390,19 +399,40 @@ class NativePlayback(
                 )
             )
 
-        r.hls?.let { return HlsMediaSource.Factory(http).createMediaSource(MediaItem.fromUri(it)) }
-
-        val video = r.video
-        val audio = r.audio
-        if (r.muxed != null && (video == null || audio == null)) return progressive(http, r.muxed!!)
-        if (video != null && audio != null) {
-            /* Adaptive streams are delivered separately, exactly like the YouTube
-               app does it — merging them gives 720p/1080p instead of the 360p
-               muxed fallback. */
-            return MergingMediaSource(false, true, progressive(http, video), progressive(http, audio))
+        val base: MediaSource = when {
+            r.hls != null -> HlsMediaSource.Factory(http).createMediaSource(MediaItem.fromUri(r.hls!!))
+            r.muxed != null && (r.video == null || r.audio == null) -> progressive(http, r.muxed!!)
+            r.video != null && r.audio != null -> {
+                /* Adaptive streams are delivered separately, exactly like the
+                   YouTube app does it — merge them for HD rather than dropping
+                   to a muxed 360p fallback. */
+                MergingMediaSource(false, true, progressive(http, r.video!!), progressive(http, r.audio!!))
+            }
+            r.muxed != null -> progressive(http, r.muxed!!)
+            else -> progressive(http, r.audio ?: r.video!!)
         }
-        r.muxed?.let { return progressive(http, it) }
-        return progressive(http, audio ?: video!!)
+
+        val caption = preferredCaption(r.captions) ?: return base
+        val config = MediaItem.SubtitleConfiguration.Builder(Uri.parse(caption.url))
+            .setMimeType(MimeTypes.TEXT_VTT)
+            .setLanguage(caption.language)
+            .setLabel(caption.label)
+            .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
+            .build()
+        val text = SingleSampleMediaSource.Factory(http).createMediaSource(config, C.TIME_UNSET)
+        return MergingMediaSource(false, true, base, text)
+    }
+
+    /** Prefer the phone's language, then English, then YouTube's first track.
+       Manual captions beat auto-generated captions when both exist. */
+    private fun preferredCaption(captions: List<YouTubeStream.CaptionTrack>): YouTubeStream.CaptionTrack? {
+        if (captions.isEmpty()) return null
+        val language = java.util.Locale.getDefault().language.lowercase()
+        fun choose(predicate: (YouTubeStream.CaptionTrack) -> Boolean) =
+            captions.firstOrNull { predicate(it) && !it.generated } ?: captions.firstOrNull(predicate)
+        return choose { it.language.lowercase() == language }
+            ?: choose { it.language.lowercase().startsWith("en") }
+            ?: captions.firstOrNull { !it.generated } ?: captions.first()
     }
 
     private fun progressive(http: DataSource.Factory, s: YouTubeStream.Stream): MediaSource =
@@ -433,6 +463,7 @@ class NativePlayback(
             o.put("author", r.author)
             o.put("dur", r.durationMs / 1000.0)
             o.put("live", r.isLive)
+            o.put("captions", r.captions.size)
             o.put("detail", r.client)
         } catch (e: Exception) { return }
         emit(o.toString())
@@ -454,6 +485,17 @@ class NativePlayback(
     fun rate(r: Float) = main.post { try { player?.setPlaybackSpeed(r.coerceIn(0.25f, 4f)) } catch (e: Exception) { } }
 
     fun volume(v: Float) = main.post { player?.volume = v.coerceIn(0f, 1f) }
+
+    /**
+     * Media3 performs this in the audio renderer, which is the only reliable
+     * way to skip a silent gap without guessing from a timer or drifting A/V.
+     */
+    fun setSkipSilence(on: Boolean) = main.post {
+        skipSilence = on
+        try { player?.skipSilenceEnabled = on } catch (e: Exception) {
+            Log.w(TAG, "skip silence unavailable", e)
+        }
+    }
 
     fun stop() = main.post {
         stopTick()

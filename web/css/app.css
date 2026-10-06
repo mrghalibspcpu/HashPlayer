@@ -41,6 +41,8 @@
   transition:border-color .2s,box-shadow .2s}
 .search:focus-within{border-color:var(--a1);box-shadow:0 0 0 3px color-mix(in srgb,var(--a1) 18%,transparent)}
 .search .ic{width:17px;height:17px;color:var(--dim)}
+.search-back{flex:none;color:var(--a1)}
+.search-back .ic{color:currentColor}
 .search input{flex:1;background:none;border:0;padding:0;font-size:13.5px}
 .top-actions{display:flex;align-items:center;gap:2px}
 #btn-install{color:var(--a1);animation:pulseGlow 2.6s ease-in-out infinite}
@@ -330,8 +332,13 @@ body.search-active #topbar #btn-menu,
 body.search-active #topbar .brand,
 body.search-active #topbar .top-actions{display:none}
 body.search-active #topbar .search{max-width:none;margin-inline:0}
+/* Search is a deliberately distraction-free route: the normal rail carries
+   desktop statistics too, so remove it on every form factor rather than only
+   hiding the phone's bottom navigation. */
+body.search-active #rail{display:none}
+body.search-active #views{left:0;right:0;padding-bottom:14px}
+body[dir=rtl].search-active #views{left:0;right:0}
 @media (max-width:859px){
-  body.search-active #rail{display:none}
   body.search-active #views{padding-bottom:14px}
 }
 
@@ -446,6 +453,20 @@ body.yt-mode .yt-warn{display:flex}
   .tool-right .btn{flex:1 1 auto;justify-content:center;min-width:0}
   .tool-right .btn span{white-space:nowrap}
   #btn-view-mode{flex:0 0 auto}
+
+  /* The filter-strip surface is intentionally allowed to bleed to the outer
+     library edge. The chips still retain the same 14px inset, but the dark
+     sticky backdrop no longer stops short on the right. */
+  #view-library .toolbar{
+    margin-right:-14px;
+    padding-right:14px;
+  }
+  body[dir=rtl] #view-library .toolbar{
+    margin-right:0;
+    padding-right:0;
+    margin-left:-14px;
+    padding-left:14px;
+  }
 }
 @media (max-width:380px){
   .tool-right .btn{padding:9px 10px;font-size:12.5px}

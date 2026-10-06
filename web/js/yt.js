@@ -351,7 +351,8 @@
           host: 'https://www.youtube.com',
           playerVars: {
             autoplay: autoplay ? 1 : 0, controls: 0, disablekb: 1, fs: 0, rel: 0,
-            modestbranding: 1, iv_load_policy: 3, playsinline: 1,
+            /* Captions are explicitly driven by HashPlayer's CC button. */
+            cc_load_policy: 0, modestbranding: 1, iv_load_policy: 3, playsinline: 1,
             start: Math.floor(pos) || 0, origin: location.origin
           },
           events: {
@@ -400,6 +401,35 @@
       self.mount.innerHTML = '';
       self.mount.hidden = true;
     };
+    /**
+     * Captions for the official IFrame fallback. This is YouTube's captions
+     * module, not a downloaded/uploaded sidecar. The API exposes tracks only
+     * after the module is loaded, so select the user's language on the next
+     * task after asking it to load.
+     */
+    this.setCaptions = function (on) {
+      if (!player || !ready) return false;
+      try {
+        if (!on) {
+          player.unloadModule && player.unloadModule('captions');
+          return true;
+        }
+        player.loadModule && player.loadModule('captions');
+        setTimeout(() => {
+          try {
+            const list = player.getOption && player.getOption('captions', 'tracklist');
+            if (!list || !list.length) return;
+            const lang = String((navigator.language || 'en').split('-')[0]).toLowerCase();
+            const track = list.find(x => String(x.languageCode || '').toLowerCase() === lang) ||
+              list.find(x => String(x.languageCode || '').toLowerCase().startsWith('en')) || list[0];
+            if (track && track.languageCode) player.setOption('captions', 'track', { languageCode: track.languageCode });
+            player.setOption && player.setOption('captions', 'reload', true);
+          } catch (e) { }
+        }, 80);
+        return true;
+      } catch (e) { return false; }
+    };
+
     /** Title reported by YouTube once loaded, so the library row is not just an id. */
     this.info = function () {
       try {

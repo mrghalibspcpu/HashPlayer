@@ -71,19 +71,23 @@
     E().applyAll();
   }
 
-  /** Keep the compact audio controls out of every full player/video route. */
+  /** Keep a compact controller available whenever the full player route is closed.
+     Video follows the same rule as audio: Back minimizes it, it does not stop it. */
   function syncMiniPlayer() {
     const mini = $('#minibar');
     if (!mini) return;
     const isVideo = !!(P.current && P.current.kind === 'video');
     const playerOpen = !!($('#np') && $('#np').classList.contains('on'));
-    mini.hidden = !P.current || isVideo || playerOpen;
+    mini.hidden = !P.current || playerOpen;
+    const close = $('#mini-close');
+    if (close) close.hidden = !isVideo || playerOpen;
   }
   P.syncMiniPlayer = syncMiniPlayer;
 
   /**
-   * Mount native video only while its route is visible. On route pop, pause it,
-   * detach the TextureView and return to an opaque, renderable browsing view.
+   * Mount native video only while its route is visible. On route pop we detach
+   * only the TextureView; the ExoPlayer/WebView media keeps playing so Back has
+   * the same minimize behaviour for video that it already had for audio.
    */
   P.setPlayerViewActive = function (active) {
     const video = !!(P.current && P.current.kind === 'video');
@@ -92,7 +96,6 @@
     document.body.classList.toggle('video-view-active', visible);
     if (isNat(P.active) && P.active.setViewActive) P.active.setViewActive(visible);
     if (!active && video) {
-      if (P.active && !P.active.paused) P.pause();
       document.body.classList.remove('cinema', 'ui-show');
       try {
         if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen();
@@ -176,6 +179,12 @@
       if (P.n) P.n.stop();
       P.current = t; P.active = P.y;
       document.body.classList.add('has-video');
+      /* The official embed exposes its own caption module. We optimistically
+         expose CC here; it reports a friendly unavailable toast if the video
+         has no tracks, without ever asking the user for a subtitle file. */
+      P.ccOn = false; P.ccAvailable = true;
+      setCCUI(false, true);
+      P.setSkipSilence(!!S.skipSilence, true);
       paintNowPlaying(t);
       if (HP.UI && !$('#np').classList.contains('on')) HP.UI.openNP(true);
       loadLyrics(t);
@@ -218,8 +227,14 @@
       P.n.volume = S.volume; P.n.muted = S.muted;
       await P.n.setTrack(t, pos0, !!autoplay);
       E().applyVolume();                            // one level across every engine
-      P.ccOn = true;
-      $('#v-cc').classList.toggle('on', isVideo && !ytNative);
+      /* Local/embedded subtitle tracks retain the old default-on behaviour.
+         YouTube captions start off until the bottom CC button is tapped; their
+         availability arrives with the native resolver metadata a moment later. */
+      P.ccOn = isVideo && !ytNative;
+      P.ccAvailable = isVideo && !ytNative;
+      if (ytNative) HP.NativeMedia.setSubtitles(false);
+      setCCUI(P.ccOn, P.ccAvailable);
+      P.setSkipSilence(!!S.skipSilence, true);
 
       loadLyrics(t);
       HP.Vis.Energy.load(t.id, await HP.DB.kvGet('energy:' + t.id, null));
@@ -271,7 +286,10 @@
 
     /* subtitles */
     $$('track', P.a).forEach(n => n.remove());
+    P.ccOn = false; P.ccAvailable = !!(isVideo && t.sub);
+    setCCUI(false, P.ccAvailable);
     if (isVideo && t.sub) addSubtitle(t.sub);
+    P.setSkipSilence(!!S.skipSilence, true);
     /* lyrics */
     loadLyrics(t);
     /* energy timeline */
@@ -373,6 +391,45 @@
   };
   P.stop = function () {
     P.active.pause(); try { P.active.currentTime = 0; } catch (e) { }
+  };
+
+  /** Completely release the current item. This is deliberately separate from
+     Back/minimize: the mini-player's × is the explicit "stop video" action. */
+  P.close = function () {
+    const wasVideo = !!(P.current && P.current.kind === 'video');
+    if (P.locked) P.setLock(false, true);
+    try { if (P.y) P.y.stop(); } catch (e) { }
+    try { if (P.n) P.n.stop(); } catch (e) { }
+    [P.a, P.b].forEach(m => {
+      if (!m) return;
+      try { m.pause(); m.currentTime = 0; } catch (e) { }
+    });
+    document.body.classList.remove('playing', 'has-video', 'yt-mode', 'yt-track', 'nv-mode', 'cinema', 'ui-show', 'video-view-active');
+    try {
+      if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen();
+    } catch (e) { }
+    try { window.HashNative && window.HashNative.setFullscreen && window.HashNative.setFullscreen(false); } catch (e) { }
+    P.setOrientation('auto');
+    P.current = null;
+    P.queue = []; P.order = []; P.index = -1;
+    P.ab = { a: null, b: null };
+    P.ccOn = false; P.ccAvailable = false;
+    $('#np-title').textContent = 'Nothing playing';
+    $('#np-artist').textContent = 'Add a song or video to begin';
+    $('#mini-title').textContent = 'Nothing playing';
+    $('#mini-artist').textContent = '—';
+    $('#mini-art').classList.remove('has-img', 'has-vid');
+    $('#mini-img').removeAttribute('src');
+    setCCUI(false, false);
+    setSkipSilenceUI(!!S.skipSilence);
+    updateAB();
+    syncMiniPlayer();
+    reportVideo();
+    HP.Native && HP.Native.notify && HP.Native.notify(false);
+    /* A true close should also remove the Android media notification/service,
+       unlike pause which intentionally remains resumable. */
+    try { HP.Native && HP.Native.call && HP.Native.call('stopPlayback'); } catch (e) { }
+    if (wasVideo) HP.toast('Video closed');
   };
 
   function onPlay() {
@@ -576,7 +633,10 @@
       bg.classList.remove('on');
       if (S.autoTheme) clearTint();
     }
-    mini.classList.toggle('has-vid', t.kind === 'video' && !cu);
+    /* A WebView video can supply a live thumbnail to the compact bar; a native
+       TextureView cannot be read into canvas, so leave its clear video glyph in
+       place instead of showing an empty black square. */
+    mini.classList.toggle('has-vid', t.kind === 'video' && !cu && !isNat(P.active));
     document.body.classList.toggle('video-view-active', t.kind === 'video' && $('#np').classList.contains('on'));
     syncMiniPlayer();
     updateTimes();
@@ -837,31 +897,99 @@
   /* =========================================================
      subtitles
      ========================================================= */
+  function setCCUI(on, available) {
+    P.ccOn = !!on;
+    if (available !== undefined) P.ccAvailable = !!available;
+    ['#v-cc', '#t-cc'].forEach(sel => {
+      const button = $(sel); if (!button) return;
+      button.classList.toggle('on', P.ccOn);
+      button.setAttribute('aria-pressed', P.ccOn ? 'true' : 'false');
+      /* A regular local video can still acquire a sidecar later, so only hard
+         disable the button when the native YouTube resolver confirmed no CC. */
+      button.toggleAttribute('disabled', !!(P.current && P.current.source === 'yt' && !P.ccAvailable));
+    });
+  }
+
   function addSubtitle(vtt) {
     try {
       const blob = new Blob([vtt], { type: 'text/vtt' });
       const tr = el('track', { kind: 'subtitles', label: 'Subtitles', srclang: 'en', default: 'default', src: URL.createObjectURL(blob) });
       P.a.appendChild(tr);
-      setTimeout(() => { if (P.a.textTracks[0]) P.a.textTracks[0].mode = 'showing'; }, 60);
-      $('#v-cc').classList.add('on');
+      setTimeout(() => {
+        if (P.a.textTracks[0]) {
+          P.a.textTracks[0].mode = 'showing';
+          setCCUI(true, true);
+        }
+      }, 60);
     } catch (e) { }
   }
   P.addSubtitle = addSubtitle;
+
+  /** Metadata from the native YouTube resolver tells the UI whether this
+     particular video supplies YouTube's own caption tracks. */
+  P.setNativeCaptionAvailability = function (meta) {
+    if (!P.current || P.current.source !== 'yt' || !isNat(P.active)) return;
+    const available = !!(meta && +meta.captions > 0);
+    if (!available && P.ccOn) HP.NativeMedia.setSubtitles(false);
+    setCCUI(available ? P.ccOn : false, available);
+  };
+
   P.toggleCC = function () {
-    if (isNat(P.active)) {                       // ExoPlayer owns the subtitle track
+    if (!P.current || P.current.kind !== 'video') return;
+    if (isNat(P.active)) {                         // ExoPlayer owns local + YouTube tracks
+      if (P.current.source === 'yt' && !P.ccAvailable) {
+        HP.toast('This YouTube video has no captions', 'err');
+        return;
+      }
       P.ccOn = !P.ccOn;
       HP.NativeMedia.setSubtitles(P.ccOn);
-      $('#v-cc').classList.toggle('on', P.ccOn);
-      HP.toast('Subtitles ' + (P.ccOn ? 'on' : 'off'));
+      setCCUI(P.ccOn);
+      HP.toast((P.current.source === 'yt' ? 'YouTube captions ' : 'Subtitles ') + (P.ccOn ? 'on' : 'off'));
+      return;
+    }
+    if (isYT(P.active)) {                          // official IFrame fallback
+      P.ccOn = !P.ccOn;
+      const changed = P.active.setCaptions && P.active.setCaptions(P.ccOn);
+      if (changed === false && P.ccOn) {
+        P.ccOn = false; setCCUI(false, false);
+        HP.toast('This YouTube video has no captions', 'err');
+        return;
+      }
+      setCCUI(P.ccOn, true);
+      HP.toast('YouTube captions ' + (P.ccOn ? 'on' : 'off'));
       return;
     }
     const tt = P.a.textTracks;
     if (!tt || !tt.length) { HP.toast('No subtitles loaded — add a .srt / .vtt file'); return; }
     const on = tt[0].mode === 'showing';
     for (let i = 0; i < tt.length; i++) tt[i].mode = on ? 'disabled' : 'showing';
-    $('#v-cc').classList.toggle('on', !on);
+    setCCUI(!on, true);
     HP.toast('Subtitles ' + (on ? 'off' : 'on'));
   };
+
+  function setSkipSilenceUI(on) {
+    const button = $('#t-silence');
+    if (!button) return;
+    button.classList.toggle('on', !!on);
+    button.setAttribute('aria-pressed', on ? 'true' : 'false');
+  }
+  /** ExoPlayer's silence skipper is sample-accurate and keeps A/V in sync.
+     Browsers do not expose decoded video samples, so we leave those streams
+     untouched instead of using an unreliable timer-based seek heuristic. */
+  P.setSkipSilence = function (on, quiet) {
+    on = !!on;
+    if (!isNat(P.active) || !P.n || !HP.NativeMedia || !HP.NativeMedia.setSkipSilence) {
+      setSkipSilenceUI(false);
+      if (!quiet) HP.toast('Skip silence is available for native Android video', 'err');
+      return false;
+    }
+    S.skipSilence = on; HP.save();
+    HP.NativeMedia.setSkipSilence(on);
+    setSkipSilenceUI(on);
+    if (!quiet) HP.toast(on ? 'Skip silence on' : 'Skip silence off');
+    return true;
+  };
+  P.toggleSkipSilence = function () { P.setSkipSilence(!S.skipSilence); };
 
   /* =========================================================
      Media Session + wake lock
@@ -988,6 +1116,8 @@
       else window.open(u, '_blank', 'noopener');
     });
     $('#v-cc').addEventListener('click', () => P.toggleCC());
+    $('#t-cc').addEventListener('click', () => P.toggleCC());
+    $('#t-silence').addEventListener('click', () => P.toggleSkipSilence());
     const vSpeed = $('#v-speed');
     if (vSpeed) vSpeed.addEventListener('click', () => HP.UI.sheet('sheet-speed'));
     const vLock = $('#v-lock');
@@ -1014,10 +1144,11 @@
     $('#t-mark').addEventListener('click', () => P.addBookmark());
     $('#t-queue').addEventListener('click', () => HP.UI.toggleQueue());
     $('#mini-queue').addEventListener('click', e => { e.stopPropagation(); HP.UI.toggleQueue(); });
+    $('#mini-close').addEventListener('click', e => { e.stopPropagation(); P.close(); });
     $('#t-lyrics').addEventListener('click', () => P.toggleLyrics());
     $('#lyrics').addEventListener('click', () => P.toggleLyrics(false));
 
-    syncToggles(); updateSpeedLabel();
+    syncToggles(); updateSpeedLabel(); setCCUI(false, false); setSkipSilenceUI(!!S.skipSilence);
   }
 
   /* ============================================================

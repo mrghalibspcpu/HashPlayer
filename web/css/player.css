@@ -10,9 +10,11 @@
   backdrop-filter:blur(26px) saturate(1.3);-webkit-backdrop-filter:blur(26px) saturate(1.3);
   animation:miniIn .4s var(--ease);box-shadow:0 -14px 40px rgba(0,0,0,.35);
 }
-/* It is an audio mini-player, never video chrome. Keep this CSS guard in
-   addition to the JS hidden state so route-transition frames cannot overlap. */
-body.has-video #minibar,body.np-open #minibar{display:none !important}
+/* A video can now continue from the compact player after Back. The full route
+   still owns the screen while it is open, but a minimized video is intentionally
+   allowed to use the same persistent mini-player as audio. */
+body.np-open #minibar{display:none !important}
+.mini-close{color:var(--danger)}
 @keyframes miniIn{from{transform:translateY(100%)}to{transform:none}}
 .mini-prog{position:absolute;top:0;left:0;right:0;height:2.5px;background:rgba(140,150,180,.2)}
 .mini-prog i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--a1),var(--a2));
@@ -240,6 +242,10 @@ body.playing .play-btn{animation:playGlow 3.4s ease-in-out infinite}
 .tool.on{color:var(--a1);border-color:color-mix(in srgb,var(--a1) 55%,transparent);
   background:color-mix(in srgb,var(--a1) 12%,transparent)}
 .tool.on b{color:var(--a1)}
+/* These live in the bottom control panel, not the video side palette. */
+.video-tool{display:none}
+body.has-video .video-tool{display:flex}
+.tool[disabled]{opacity:.45;cursor:not-allowed;filter:saturate(.25)}
 
 /* desktop split layout */
 @media (min-width:1000px) and (orientation:landscape){
@@ -342,7 +348,10 @@ body.yt-mode .vtools{opacity:1}
     transition:opacity .28s,transform .28s var(--ease)}
 
   body.has-video #np .np-ctrl{
-    position:absolute;z-index:8;left:0;right:0;bottom:0;width:100%;max-width:none;margin:0;
+    /* #np has safe-area padding. Centre a viewport-wide overlay rather than
+       sizing it to that padded content box, otherwise landscape leaves a dark
+       sliver at the right edge on gesture-navigation phones. */
+    position:absolute;z-index:8;left:50%;right:auto;bottom:0;width:100vw;max-width:none;margin:0 0 0 -50vw;
     box-sizing:border-box;
     padding:26px max(14px,env(safe-area-inset-right)) max(8px,env(safe-area-inset-bottom)) max(14px,env(safe-area-inset-left));
     gap:2px;
@@ -352,7 +361,13 @@ body.yt-mode .vtools{opacity:1}
   body.has-video #np .np-meta{margin:0 0 2px}
   body.has-video #np .np-titles h2{font-size:14.5px}
   body.has-video #np .np-titles p{font-size:11.5px}
-  body.has-video #np .np-tools{display:none}
+  /* Keep the requested video actions in the bottom overlay even on short
+     landscape screens; all non-video tools stay tucked away to save height. */
+  body.has-video #np .np-tools{display:flex;min-height:0;padding:2px 0 0;gap:6px}
+  body.has-video #np .np-tools .tool:not(.video-tool){display:none}
+  body.has-video #np .np-tools .video-tool{display:flex;flex-direction:row;min-width:0;padding:6px 10px;font-size:9px}
+  body.has-video #np .np-tools .video-tool .ic{width:16px;height:16px}
+  body.has-video #np .np-tools .video-tool span{white-space:nowrap}
   body.has-video #np .times{font-size:10.5px;margin-top:-2px}
   body.has-video #np .transport{gap:2px;margin-top:0}
   body.has-video #np .play-btn{width:50px;height:50px;margin:0 4px}

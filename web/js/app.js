@@ -6,7 +6,7 @@
   'use strict';
   const HP = w.HP, S = HP.S, $ = HP.$, $$ = HP.$$, el = HP.el, icon = HP.icon, clamp = HP.clamp;
   const L = HP.Lib, P = HP.Player, E = HP.Engine, UI = {};
-  const APP_VERSION = '2.3.0';
+  const APP_VERSION = '2.3.1';
 
   /* =========================================================
      views & navigation
@@ -44,6 +44,22 @@
     const active = !!(libraryish && (searchFocused || query.trim() !== ''));
     UI.isSearchActive = active;
     document.body.classList.toggle('search-active', active);
+    const back = $('#search-back');
+    if (back) back.hidden = !active;
+  };
+  /** Exit is intentionally stronger than the × clear affordance: it clears the
+     query, dismisses the keyboard and returns directly to the main Library. */
+  UI.exitSearch = function () {
+    const input = $('#search');
+    if (input) input.value = '';
+    L.search = '';
+    searchFocused = false;
+    if (input) input.blur();
+    $('#search-clear').hidden = true;
+    L.ytSearch('');
+    UI.nav('library');
+    L.render();
+    UI.updateSearchActive();
   };
 
   /* =========================================================
@@ -797,6 +813,7 @@
     onRotate(landscape) { UI.autoLandscape(!!landscape); },
     onBack() {
       if (P.locked) { P.setLock(false); return true; }   // one back press = unlock
+      if (UI.isSearchActive) { UI.exitSearch(); return true; }
       if (!$('#ctx').hidden) { $('#ctx').hidden = true; $('#scrim').classList.remove('on'); return true; }
       if (openSheetId) { UI.closeAll(); return true; }
       if ($('#queue-panel').classList.contains('on')) { UI.toggleQueue(false); return true; }
@@ -943,6 +960,7 @@
       search.value = ''; L.search = ''; $('#search-clear').hidden = true;
       L.render(); L.ytSearch(''); search.focus(); UI.updateSearchActive();
     });
+    $('#search-back').addEventListener('click', () => UI.exitSearch());
     const ytHide = $('#yt-hide');
     if (ytHide) ytHide.addEventListener('click', () => { L.yt.rows = []; L.yt.error = ''; L.renderYt(); });
     w.addEventListener('online', () => { if (L.search) L.ytSearch(L.search); });
@@ -1093,6 +1111,7 @@
       if (HP.NativeMedia) HP.NativeMedia.onMeta = m => {
         if (!m || !m.uri || String(m.uri).indexOf('hpyt:') !== 0) return;
         L.updateYt(String(m.uri).slice(5), m);
+        if (P.setNativeCaptionAvailability) P.setNativeCaptionAvailability(m);
       };
       const scanBtn = $('#btn-scan');
       if (scanBtn) { scanBtn.hidden = false; scanBtn.querySelector('span').textContent = 'Rescan device'; }

@@ -185,7 +185,7 @@ class MainActivity : AppCompatActivity() {
             cacheMode = WebSettings.LOAD_DEFAULT
             mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
             textZoom = 100
-            userAgentString = "$userAgentString HashPlayer/2.3.0"
+            userAgentString = "$userAgentString HashPlayer/2.3.1"
         }
 
         web.webViewClient = object : WebViewClient() {
@@ -548,6 +548,10 @@ class MainActivity : AppCompatActivity() {
         @android.webkit.JavascriptInterface
         fun exitApp() = runOnUiThread { PlaybackService.stop(this@MainActivity); finishAffinity() }
 
+        /** Explicit mini-player ×: unlike pause, discard the media notification too. */
+        @android.webkit.JavascriptInterface
+        fun stopPlayback() = runOnUiThread { PlaybackService.stop(this@MainActivity) }
+
         @android.webkit.JavascriptInterface
         fun toastMsg(msg: String) = runOnUiThread { toast(msg) }
 
@@ -614,6 +618,10 @@ class MainActivity : AppCompatActivity() {
 
         @android.webkit.JavascriptInterface
         fun nVolume(v: Float) = nativePlayer.volume(v)
+
+        /** ExoPlayer's decoder-level silence skipper, controlled from the video panel. */
+        @android.webkit.JavascriptInterface
+        fun nSkipSilence(on: Boolean) = nativePlayer.setSkipSilence(on)
 
         @android.webkit.JavascriptInterface
         fun nStop() {

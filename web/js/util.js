@@ -63,7 +63,7 @@
     filter: 'all', eqOn: false, eqGains: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0], eqPreset: 'flat',
     preamp: 0, bass: 0, treble: 0, reverb: 0, width: 100, balance: 0, boost: 100, crossfade: 0,
     mono: false, normalize: false, fade: true, pitch: true, lastId: null, lastPos: 0, lyricsOn: false,
-    perf: null, autoPip: true, autoScan: true, autoLandscape: true, ytSearch: true
+    perf: null, autoPip: true, autoScan: true, autoLandscape: true, ytSearch: true, skipSilence: false
   };
   /* ---------- how much eye-candy can this device actually afford? ---------- */
   const ua = navigator.userAgent || '';
@@ -134,7 +134,7 @@
       export: 'ایکسپورٹ', import: 'امپورٹ', clear: 'صاف کریں', persistStorage: 'لائبریری کو محفوظ رکھیں',
       about: 'تعارف', aboutText: 'ایک نجی، آف لائن آڈیو اور ویڈیو پلیئر۔ آپ کی فائلیں کہیں اپ لوڈ نہیں ہوتیں۔',
       shortcuts: 'شارٹ کٹس', install: 'ایپ انسٹال کریں', nowPlaying: 'اب چل رہا ہے', speed: 'رفتار',
-      loop: 'لوپ', equalizer: 'ایکولائزر', lyrics: 'بول', sleep: 'سلیپ', bookmark: 'بک مارک', queue: 'قطار',
+      loop: 'لوپ', equalizer: 'ایکولائزر', lyrics: 'بول', skipSilence: 'خاموشی چھوڑیں', captions: 'کیپشن', sleep: 'سلیپ', bookmark: 'بک مارک', queue: 'قطار',
       close: 'بند کریں', sleepTimer: 'سلیپ ٹائمر', sleepSub: 'آواز دھیرے دھیرے بند ہو جائے گی۔',
       endOfTrack: 'ٹریک کے اختتام پر', off: 'بند', addUrlTitle: 'میڈیا لنک کھولیں',
       addUrlSub: 'یوٹیوب لنک، یا آڈیو/ویڈیو فائل کا براہِ راست لنک۔', cancel: 'منسوخ', add: 'شامل کریں', save: 'محفوظ',

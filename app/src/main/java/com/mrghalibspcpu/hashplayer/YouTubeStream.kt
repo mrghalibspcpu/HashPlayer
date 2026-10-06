@@ -49,6 +49,14 @@ object YouTubeStream {
         val contentLength: Long
     )
 
+    /** A YouTube-provided caption feed. `url` asks timedtext for WebVTT. */
+    data class CaptionTrack(
+        val url: String,
+        val language: String,
+        val label: String,
+        val generated: Boolean
+    )
+
     /** Everything the player needs to start a YouTube video natively. */
     data class Result(
         val videoId: String,
@@ -60,6 +68,7 @@ object YouTubeStream {
         val audio: Stream?,
         val hls: String?,
         val isLive: Boolean,
+        val captions: List<CaptionTrack>,
         val userAgent: String,
         val client: String
     ) {
@@ -190,6 +199,7 @@ object YouTubeStream {
                 muxed = muxed, video = video, audio = audio,
                 hls = if (live) hls else null,
                 isLive = live,
+                captions = captionTracks(json),
                 userAgent = client.ua,
                 client = client.name
             )
@@ -210,6 +220,29 @@ object YouTubeStream {
         }
         Log.w(TAG, "could not resolve $videoId${if (lastReason.isBlank()) "" else " — $lastReason"}")
         return null
+    }
+
+    /**
+     * The player response lists YouTube's first-party timed-text feeds. They
+     * are streams, not downloaded files; adding fmt=vtt lets Media3 decode the
+     * feed directly when the user turns on the in-player CC control.
+     */
+    private fun captionTracks(player: JSONObject): List<CaptionTrack> {
+        val rows = player.optJSONObject("captions")
+            ?.optJSONObject("playerCaptionsTracklistRenderer")
+            ?.optJSONArray("captionTracks") ?: return emptyList()
+        val out = ArrayList<CaptionTrack>()
+        for (i in 0 until rows.length()) {
+            val row = rows.optJSONObject(i) ?: continue
+            val base = row.optString("baseUrl", "")
+            if (base.isBlank()) continue
+            val url = if (base.contains(Regex("[?&]fmt="))) base else
+                base + if (base.contains('?')) "&fmt=vtt" else "?fmt=vtt"
+            val language = row.optString("languageCode", "und").ifBlank { "und" }
+            val label = text(row.opt("name")).ifBlank { language }
+            out.add(CaptionTrack(url, language, label, row.optString("kind") == "asr"))
+        }
+        return out
     }
 
     /* ------------------------------------------------------------ format picking */
