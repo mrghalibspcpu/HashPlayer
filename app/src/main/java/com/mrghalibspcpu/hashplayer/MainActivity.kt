@@ -112,9 +112,19 @@ class MainActivity : AppCompatActivity() {
             cb?.onReceiveValue(WebChromeClient.FileChooserParams.parseResult(res.resultCode, res.data))
         }
 
+    /* Guards the unified startup permission flow: the native onPageFinished auto-scan
+       and the web app's own "scanMedia" fallback (used on in-page reloads) can both
+       fire within a few hundred milliseconds of a fresh install. Without this guard
+       the second call re-launches the system permission flow while the first is
+       still pending, which truncates it to a single permission instead of the full,
+       batched set — leaving audio or video unreadable until the app is restarted. */
+    private var permissionRequestInFlight = false
+    private var pendingScanSilent = true
+
     private val permissions =
         registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { grants ->
-            if (grants.values.any { it }) scanDevice(false)
+            permissionRequestInFlight = false
+            if (grants.values.any { it }) scanDevice(pendingScanSilent)
             else toast(getString(R.string.need_permission))
         }
 
@@ -397,7 +407,7 @@ class MainActivity : AppCompatActivity() {
 
     inner class Bridge {
         @android.webkit.JavascriptInterface
-        fun scanMedia() = runOnUiThread { requestMediaPermission(false) }
+        fun scanMedia() = runOnUiThread { ensureMediaAccess(false) }
 
         @android.webkit.JavascriptInterface
         fun setPlaybackState(playing: Boolean, title: String?, artist: String?) = runOnUiThread {
@@ -743,7 +753,7 @@ class MainActivity : AppCompatActivity() {
         if (hasMediaPermission()) { scanDevice(true); return }
         if (prefs.getBoolean(KEY_ASKED, false)) return          // user said no — don't nag every launch
         prefs.edit().putBoolean(KEY_ASKED, true).apply()
-        requestMediaPermission(true)
+        ensureMediaAccess(true)
     }
 
     private fun neededPermissions(): Array<String> =
@@ -755,11 +765,25 @@ class MainActivity : AppCompatActivity() {
         ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED
     }
 
-    private fun requestMediaPermission(silent: Boolean) {
+    /**
+     * Single, unified entry point for the whole "do we have media access yet" flow.
+     * Every caller — the automatic post-launch scan *and* the web app's manual/
+     * fallback "scanMedia" bridge call — goes through here so that on a fresh
+     * install all of [neededPermissions] are requested together in one batched
+     * system dialog, and the local scanner only starts once that dialog resolves.
+     * The in-flight guard stops a second, near-simultaneous call (e.g. a WebView
+     * reload racing the native onPageFinished hook) from interrupting the first
+     * request and leaving it truncated to a single permission.
+     */
+    private fun ensureMediaAccess(silent: Boolean) {
+        if (permissionRequestInFlight) return
         val missing = neededPermissions().filter {
             ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
         }
-        if (missing.isEmpty()) scanDevice(silent) else permissions.launch(missing.toTypedArray())
+        if (missing.isEmpty()) { scanDevice(silent); return }
+        permissionRequestInFlight = true
+        pendingScanSilent = silent
+        permissions.launch(missing.toTypedArray())
     }
 
     private fun scanDevice(silent: Boolean) {

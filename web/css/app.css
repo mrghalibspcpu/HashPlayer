@@ -315,6 +315,26 @@ body[dir=rtl] .ctx button{text-align:right}
   .eq-rack{height:160px}
 }
 
+/* ---------- focused search mode ----------
+   While the search bar is focused or holds a query, the library header
+   (title/stats/Add files/warning banners) and the extra toolbar controls
+   get out of the way so the keyboard never fights the results for space.
+   Only the search bar, the filter tabs and the results list stay on screen. */
+body.search-active .view-head,
+body.search-active #relink-bar,
+body.search-active .tool-right{display:none !important}
+body.search-active .toolbar{margin-bottom:10px;padding-top:4px}
+/* only the search field itself stays in the top bar — brand, hamburger and
+   the install/lang/add shortcuts all make way for it */
+body.search-active #topbar #btn-menu,
+body.search-active #topbar .brand,
+body.search-active #topbar .top-actions{display:none}
+body.search-active #topbar .search{max-width:none;margin-inline:0}
+@media (max-width:859px){
+  body.search-active #rail{display:none}
+  body.search-active #views{padding-bottom:14px}
+}
+
 /* simple mode hides pro controls */
 body.mode-simple [data-pro]{display:none !important}
 

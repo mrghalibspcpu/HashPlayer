@@ -27,6 +27,23 @@
     if (target === 'playlists') { closePlaylistDetail(); L.renderPlaylists(); }
     if (target === 'eq') drawCurve();
     if (target === 'settings') refreshStorage();
+    UI.updateSearchActive();
+  };
+
+  /* =========================================================
+     focused search mode — while the search bar is focused or holds a
+     query, the library header/toolbar extras and the bottom nav get out
+     of the way so the results list has the full screen above the keyboard
+     ========================================================= */
+  let searchFocused = false;
+  UI.isSearchActive = false;
+  UI.updateSearchActive = function () {
+    const input = $('#search');
+    const query = input ? input.value || '' : '';
+    const libraryish = document.body.dataset.view === 'library' || document.body.dataset.view === 'favorites';
+    const active = !!(libraryish && (searchFocused || query.trim() !== ''));
+    UI.isSearchActive = active;
+    document.body.classList.toggle('search-active', active);
   };
 
   /* =========================================================
@@ -696,7 +713,7 @@
     fi.addEventListener('change', async () => { await L.addFiles(fi.files); fi.value = ''; L.render(); });
     di.addEventListener('change', async () => { await L.addFiles(di.files); di.value = ''; L.render(); });
     ['#btn-add-files', '#btn-empty-files', '#btn-add-top'].forEach(s => $(s) && $(s).addEventListener('click', addFiles));
-    ['#btn-add-folder', '#btn-empty-folder'].forEach(s => $(s) && $(s).addEventListener('click', addFolder));
+    ['#btn-empty-folder'].forEach(s => $(s) && $(s).addEventListener('click', addFolder));
     $('#btn-add-url').addEventListener('click', () => { $('#url-input').value = ''; UI.sheet('sheet-url'); setTimeout(() => $('#url-input').focus(), 320); });
     $('#url-add').addEventListener('click', async () => {
       const t = await L.addUrl($('#url-input').value);
@@ -910,6 +927,9 @@
       });
     });
     const search = $('#search');
+    search.addEventListener('input', () => UI.updateSearchActive());
+    search.addEventListener('focus', () => { searchFocused = true; UI.updateSearchActive(); });
+    search.addEventListener('blur', () => { searchFocused = false; UI.updateSearchActive(); });
     search.addEventListener('input', HP.debounce(() => {
       L.search = search.value;
       $('#search-clear').hidden = !search.value;
@@ -921,7 +941,7 @@
     search.addEventListener('keydown', e => { if (e.key === 'Enter') L.ytSearch(search.value); });
     $('#search-clear').addEventListener('click', () => {
       search.value = ''; L.search = ''; $('#search-clear').hidden = true;
-      L.render(); L.ytSearch(''); search.focus();
+      L.render(); L.ytSearch(''); search.focus(); UI.updateSearchActive();
     });
     const ytHide = $('#yt-hide');
     if (ytHide) ytHide.addEventListener('click', () => { L.yt.rows = []; L.yt.error = ''; L.renderYt(); });

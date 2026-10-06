@@ -342,8 +342,10 @@ body.yt-mode .vtools{opacity:1}
     transition:opacity .28s,transform .28s var(--ease)}
 
   body.has-video #np .np-ctrl{
-    position:absolute;z-index:8;left:0;right:0;bottom:0;width:auto;margin:0;
-    padding:26px 14px max(8px,env(safe-area-inset-bottom));gap:2px;
+    position:absolute;z-index:8;left:0;right:0;bottom:0;width:100%;max-width:none;margin:0;
+    box-sizing:border-box;
+    padding:26px max(14px,env(safe-area-inset-right)) max(8px,env(safe-area-inset-bottom)) max(14px,env(safe-area-inset-left));
+    gap:2px;
     background:linear-gradient(0deg,rgba(2,3,8,.88),rgba(2,3,8,.45) 55%,transparent);
     transition:opacity .28s,transform .28s var(--ease)}
 
