@@ -6,7 +6,7 @@
   'use strict';
   const HP = w.HP, S = HP.S, $ = HP.$, $$ = HP.$$, el = HP.el, icon = HP.icon, clamp = HP.clamp;
   const L = HP.Lib, P = HP.Player, E = HP.Engine, UI = {};
-  const APP_VERSION = '2.3.2';
+  const APP_VERSION = '2.3.3';
 
   /* =========================================================
      views & navigation

@@ -341,6 +341,13 @@ body.yt-mode #v-yt,body.yt-track #v-yt{display:grid;color:#ff4d4d}
 body.yt-track #v-cc{display:none}
 body.yt-mode .vtools{opacity:1}
 
+/* Skip Silence applies to audio listening; do not show its lower-panel action
+   while any video is playing in landscape. Other video controls, including
+   CC after a confirmed track scan, stay available. */
+@media (orientation:landscape){
+  body.has-video #np .np-tools #t-silence{display:none !important}
+}
+
 /* ============================================================
    Phone landscape — the video takes the whole screen and the
    controls float on top of it instead of stealing its height.
