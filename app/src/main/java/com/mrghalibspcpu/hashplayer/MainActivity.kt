@@ -325,7 +325,7 @@ class MainActivity : AppCompatActivity() {
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
                 if (customView != null) { web.webChromeClient?.onHideCustomView(); return }
-                if (gSheet?.isShowing() == true) { gSheet?.hide(); rememberSheetDismissed(); return }
+                if (gSheet?.isShowing() == true) { gSheet?.hide(); return }   // back only closes the card
                 if (ytLayer != null) {
                     val wv = ytWeb
                     if (wv != null && wv.canGoBack()) wv.goBack() else closeYouTubeBrowser()

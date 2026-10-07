@@ -42,7 +42,7 @@ class GoogleSignInSheet(
 
     var onSignOut: (() -> Unit)? = null
 
-    /** "Not now" / a tap outside the card — remembered so we never nag again. */
+    /** "Not now" — remembered, so the card never nags again. */
     var onDismiss: (() -> Unit)? = null
 
     private var view: View? = null
@@ -64,7 +64,7 @@ class GoogleSignInSheet(
         val scrim = FrameLayout(act).apply {
             setBackgroundColor(Color.parseColor("#B304060C"))
             isClickable = true                       // swallow taps meant for the player
-            setOnClickListener { dismiss() }
+            setOnClickListener { hide() }            // tapping outside only closes the card
         }
 
         val card = LinearLayout(act).apply {
