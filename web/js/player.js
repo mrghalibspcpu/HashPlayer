@@ -471,6 +471,7 @@
     $('#mini-artist').textContent = '—';
     $('#mini-art').classList.remove('has-img', 'has-vid');
     $('#mini-img').removeAttribute('src');
+    try { P.a.style.filter = ''; const ym = $('#yt-mount'); if (ym) ym.style.filter = ''; } catch (e) { }
     setCCUI(false, false);
     setSkipSilenceUI(!!S.skipSilence);
     updateAB();
@@ -655,6 +656,18 @@
         ]), rm
       ]);
       row.addEventListener('click', () => { P.index = qi; load(t, true); });
+      /* long-tap / right-click: the same full track menu (Play next, Add to
+         playlist, favourites…) the library grid offers */
+      row.addEventListener('contextmenu', e => { e.preventDefault(); if (HP.UI && HP.UI.trackMenu) HP.UI.trackMenu(t, e.clientX, e.clientY); });
+      let lpT;
+      row.addEventListener('touchstart', e => {
+        lpT = setTimeout(() => {
+          if (navigator.vibrate) navigator.vibrate(12);
+          const x = e.touches[0].clientX, y = e.touches[0].clientY;
+          if (HP.UI && HP.UI.trackMenu) HP.UI.trackMenu(t, x, y);
+        }, 520);
+      }, { passive: true });
+      ['touchend', 'touchmove', 'touchcancel'].forEach(ev => row.addEventListener(ev, () => clearTimeout(lpT), { passive: true }));
       dragRow(row, box);
       box.appendChild(row);
     });
@@ -710,6 +723,7 @@
        place instead of showing an empty black square. */
     mini.classList.toggle('has-vid', t.kind === 'video' && !cu && !isNat(P.active));
     document.body.classList.toggle('video-view-active', t.kind === 'video' && $('#np').classList.contains('on'));
+    applyVideoFilter();                        // re-apply brightness + Enhancer per track
     syncMiniPlayer();
     updateTimes();
     setMediaSession(t, cu);
@@ -892,8 +906,12 @@
       P.pause(); P.cancelSleep(); HP.toast('Sleep timer — good night 🌙');
       return;
     }
-    if (left < 15000 && E().ready) {                 // gentle fade in the last 15s
-      E().master.gain.value = (S.muted ? 0 : S.volume * (S.boost / 100)) * (left / 15000);
+    if (left < 15000) {                              // gentle fade in the last 15s
+      const f = (S.muted ? 0 : S.volume * ((S.boost || 100) / 100)) * (left / 15000);
+      if (E().ready && !isNat(P.active)) E().master.gain.value = f;   // Web Audio path
+      /* The native ExoPlayer never goes through the Web Audio master, so the
+         fade has to ride its own volume instead. */
+      if (isNat(P.active) && P.n) { try { P.n.volume = clamp(f, 0, 1); } catch (e) { } }
     }
     updateSleepUI(left);
   }
@@ -1201,6 +1219,8 @@
     $('#v-cc').addEventListener('click', () => P.toggleCC());
     $('#t-cc').addEventListener('click', () => P.toggleCC());
     $('#t-silence').addEventListener('click', () => P.toggleSkipSilence());
+    $('#t-anc').addEventListener('click', () => P.toggleAnc());
+    $('#t-enhance').addEventListener('click', () => P.toggleEnhance());
     const vSpeed = $('#v-speed');
     if (vSpeed) vSpeed.addEventListener('click', () => HP.UI.sheet('sheet-speed'));
     const vLock = $('#v-lock');
@@ -1242,6 +1262,13 @@
 
     document.body.classList.toggle('can-pitch', !!(window.HashNative && window.HashNative.nPitch));
     syncToggles(); updateSpeedLabel(); updatePitchLabel(); setCCUI(false, false); setSkipSilenceUI(!!S.skipSilence);
+    /* restore persistent ANC / Enhancer state without toasts */
+    $('#t-anc').classList.toggle('on', !!S.anc);
+    $('#t-anc').setAttribute('aria-pressed', S.anc ? 'true' : 'false');
+    $('#t-enhance').classList.toggle('on', !!S.enhance);
+    $('#t-enhance').setAttribute('aria-pressed', S.enhance ? 'true' : 'false');
+    document.body.classList.toggle('enhanced', !!S.enhance);
+    if (S.anc && E().ready) E().applyAll();
   }
 
   /* ============================================================
@@ -1596,12 +1623,52 @@
       n.classList.remove('flash'); void n.offsetWidth; n.classList.add('flash');
     }
   }
-  function applyBrightness() {
-    const f = P.brightness === 1 ? '' : 'brightness(' + P.brightness + ')';
-    P.a.style.filter = f;
-    $('#art-disc').style.filter = f;
-    const ym = $('#yt-mount'); if (ym) ym.style.filter = f;   // dim the embed too
+  /* ------------------------------------------------------------
+     Video Enhancer — a restrained, professional colour grade:
+     a gentle S-curve contrast darkens the blacks, saturation is
+     lifted just enough to feel vibrant without neon skin tones,
+     and the contrast bump doubles as perceived sharpness.
+     ------------------------------------------------------------ */
+  const ENHANCE_FILTER = 'contrast(1.12) saturate(1.2) brightness(1.02)';
+
+  function videoFilter() {
+    const b = P.brightness === 1 ? '' : 'brightness(' + P.brightness + ') ';
+    return (b + (S.enhance && document.body.classList.contains('has-video') ? ENHANCE_FILTER : '')).trim();
   }
+  function applyVideoFilter() {
+    const f = videoFilter();
+    P.a.style.filter = f;
+    const ym = $('#yt-mount'); if (ym) ym.style.filter = f;   // grade the embed too
+    $('#art-disc').style.filter = P.brightness === 1 ? '' : 'brightness(' + P.brightness + ')';
+  }
+  function applyBrightness() { applyVideoFilter(); }
+
+  P.setEnhance = function (on, quiet) {
+    S.enhance = !!on; HP.save();
+    document.body.classList.toggle('enhanced', S.enhance);
+    applyVideoFilter();
+    if (isNat(P.active) || (P.n && P.current && P.current.kind === 'video')) HP.NativeMedia.setEnhance(S.enhance);
+    const btn = $('#t-enhance');
+    if (btn) { btn.classList.toggle('on', S.enhance); btn.setAttribute('aria-pressed', S.enhance ? 'true' : 'false'); }
+    if (!quiet) HP.toast(S.enhance ? 'Enhancer on — pro colour grade' : 'Enhancer off');
+  };
+  P.toggleEnhance = function () { P.setEnhance(!S.enhance); };
+
+  /* ------------------------------------------------------------
+     ANC — one-tap noise cleanup for the Web Audio path. The actual
+     filtering lives in the engine (rumble / mud / hiss cut + vocal
+     presence lift + compressor); here we just drive it and mirror
+     the state onto the native ExoPlayer engine.
+     ------------------------------------------------------------ */
+  P.setAnc = function (on, quiet) {
+    S.anc = !!on; HP.save();
+    if (E().ready) E().applyAll();
+    else ensureAudio().then(() => E().applyAll()).catch(() => { E().pushNative && E().pushNative(); });
+    const btn = $('#t-anc');
+    if (btn) { btn.classList.toggle('on', S.anc); btn.setAttribute('aria-pressed', S.anc ? 'true' : 'false'); }
+    if (!quiet) HP.toast(S.anc ? 'ANC on — noise down, voices clear' : 'ANC off');
+  };
+  P.toggleAnc = function () { P.setAnc(!S.anc); };
   let uiTimer;
   function toggleVideoUI() {
     const v = $('#vtools');

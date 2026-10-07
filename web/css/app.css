@@ -79,6 +79,7 @@
 @media (max-width:480px){
   .yt-thumb{width:88px;height:50px}
   .yt-title{font-size:13px;-webkit-line-clamp:2}
+}
 
 .top-actions{display:flex;align-items:center;gap:2px}
 #btn-install{color:var(--a1);animation:pulseGlow 2.6s ease-in-out infinite}

@@ -11,8 +11,8 @@ android {
         applicationId "com.mrghalibspcpu.hashplayer"
         minSdk 23
         targetSdk 34
-        versionCode 10
-        versionName "2.3.3"
+        versionCode 11
+        versionName "2.7.0"
         resourceConfigurations += ["en", "ur"]
     }
 

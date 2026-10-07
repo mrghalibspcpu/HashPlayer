@@ -56,6 +56,17 @@
     E.bass = c.createBiquadFilter(); E.bass.type = 'lowshelf'; E.bass.frequency.value = 90; E.bass.gain.value = 0;
     E.treble = c.createBiquadFilter(); E.treble.type = 'highshelf'; E.treble.frequency.value = 7000; E.treble.gain.value = 0;
 
+    /* ANC chain — four extra filters that are always in the circuit but stay
+       completely neutral until the ANC button is switched on:
+       hp  kills low rumble / hum below the voice floor
+       mud cuts the 240 Hz muddiness that masks speech
+       pres lifts the 2.8 kHz presence region so vocals & dialogue sit forward
+       hiss trims the top end where tape/encoder hiss lives */
+    E.ancHp = c.createBiquadFilter(); E.ancHp.type = 'highpass'; E.ancHp.frequency.value = 10; E.ancHp.Q.value = .71;
+    E.ancMud = c.createBiquadFilter(); E.ancMud.type = 'peaking'; E.ancMud.frequency.value = 240; E.ancMud.Q.value = 1; E.ancMud.gain.value = 0;
+    E.ancPres = c.createBiquadFilter(); E.ancPres.type = 'peaking'; E.ancPres.frequency.value = 2800; E.ancPres.Q.value = .9; E.ancPres.gain.value = 0;
+    E.ancHiss = c.createBiquadFilter(); E.ancHiss.type = 'highshelf'; E.ancHiss.frequency.value = 9000; E.ancHiss.gain.value = 0;
+
     E.comp = c.createDynamicsCompressor();
     E.comp.threshold.value = -26; E.comp.knee.value = 28; E.comp.ratio.value = 7;
     E.comp.attack.value = .005; E.comp.release.value = .22;
@@ -85,8 +96,9 @@
     let node = E.preamp;
     E.bands.forEach(b => { node.connect(b); node = b; });
     node.connect(E.bass); E.bass.connect(E.treble);
-    E.treble.connect(E.comp); E.comp.connect(E.compWet); E.compWet.connect(E.dynOut);
-    E.treble.connect(E.compDry); E.compDry.connect(E.dynOut);
+    E.treble.connect(E.ancHp); E.ancHp.connect(E.ancMud); E.ancMud.connect(E.ancPres); E.ancPres.connect(E.ancHiss);
+    E.ancHiss.connect(E.comp); E.comp.connect(E.compWet); E.compWet.connect(E.dynOut);
+    E.ancHiss.connect(E.compDry); E.compDry.connect(E.dynOut);
 
     E.dynOut.connect(E.split);
     E.split.connect(E.midL, 0); E.split.connect(E.midR, 1);
@@ -167,7 +179,9 @@
   };
   function pushNative() {
     try { HP.NativeMedia && HP.NativeMedia.pushEq && HP.NativeMedia.pushEq(); } catch (e) { }
+    try { HP.NativeMedia && HP.NativeMedia.pushFx && HP.NativeMedia.pushFx(); } catch (e) { }
   }
+  E.pushNative = pushNative;
 
   E.applyEQ = function () {
     pushNative();
@@ -226,9 +240,19 @@
     ramp(E.wet.gain, (S.reverb || 0) / 140, 120);
     ramp(E.sideW.gain, S.mono ? 0 : (S.width || 100) / 100, 90);
     if (E.pan) ramp(E.pan.pan, clamp((S.balance || 0) / 100, -1, 1), 90);
-    ramp(E.compWet.gain, S.normalize ? 1 : 0, 150);
-    ramp(E.compDry.gain, S.normalize ? 0 : 1, 150);
+    /* ANC: rumble filter + mud cut + presence lift + hiss trim. While it is
+       on, the compressor rides along so dialogue stays level and forward;
+       switching it off restores whatever Night mode the user had chosen. */
+    const anc = !!S.anc;
+    ramp(E.ancHp.frequency, anc ? 130 : 10, 140);
+    ramp(E.ancMud.gain, anc ? -4.5 : 0, 140);
+    ramp(E.ancPres.gain, anc ? 5 : 0, 140);
+    ramp(E.ancHiss.gain, anc ? -2.5 : 0, 140);
+    const compOn = S.normalize || anc;
+    ramp(E.compWet.gain, compOn ? 1 : 0, 150);
+    ramp(E.compDry.gain, compOn ? 0 : 1, 150);
     E.applyVolume();
+    pushNative();                        // mirror every knob onto ExoPlayer too
   }
 
   /* fade a single element's gain (crossfade / pause fade) */

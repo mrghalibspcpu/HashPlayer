@@ -63,7 +63,8 @@
     filter: 'all', eqOn: false, eqGains: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0], eqPreset: 'flat',
     preamp: 0, bass: 0, treble: 0, reverb: 0, width: 100, balance: 0, boost: 100, crossfade: 0,
     mono: false, normalize: false, fade: true, pitch: true, pitchShift: 0, lastId: null, lastPos: 0, lyricsOn: false,
-    perf: null, autoPip: true, autoScan: true, autoLandscape: true, ytSearch: true, skipSilence: false
+    perf: null, autoPip: true, autoScan: true, autoLandscape: true, ytSearch: true, skipSilence: false,
+    anc: false, enhance: false
   };
   /* ---------- how much eye-candy can this device actually afford? ---------- */
   const ua = navigator.userAgent || '';
@@ -115,7 +116,8 @@
       pitchSub: 'Shifts the key up or down in semitones. The speed stays exactly where you left it.',
       ytSearching: 'Searching YouTube for',
       ytOffline: 'YouTube search is not reachable right now',
-      ttDownload: 'Save for offline'
+      ttDownload: 'Save for offline',
+      anc: 'ANC', enhance: 'Enhance'
     },
     ur: {
       search: 'تلاش کریں…', library: 'لائبریری', playlists: 'پلے لسٹ', favorites: 'پسندیدہ', sound: 'آواز',
@@ -158,7 +160,8 @@
       ttAspect: 'تناسب / زوم', ttRotate: 'گھمائیں', ttMirror: 'آئینہ', ttShot: 'اسکرین شاٹ',
       ttSubs: 'سب ٹائٹل', ttSpeed: 'چلنے کی رفتار', ttLock: 'اسکرین لاک', ttPip: 'چھوٹی ونڈو',
       ttYt: 'یوٹیوب میں کھولیں', ttFull: 'پوری اسکرین',
-      ttDownload: 'آف لائن کے لیے محفوظ کریں'
+      ttDownload: 'آف لائن کے لیے محفوظ کریں',
+      anc: 'اے این سی', enhance: 'اینہانس'
     }
   };
   HP.t = k => (STR[S.lang] && STR[S.lang][k]) || STR.en[k] || k;

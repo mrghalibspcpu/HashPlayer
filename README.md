@@ -17,6 +17,21 @@ Install it as an app on your phone or desktop, or build a real Android APK — s
 
 ---
 
+## 🆕 Naya kya hai — 2.7
+
+| Masla / feature | Ab kya hota hai |
+|---|---|
+| **Landscape three-dots menu** | Landscape video me teen dots ka menu (aur saare sheets/toasts) ab dikhte hain — ek CSS block band hona bhool gaya tha jis se landscape me context menu style hi nahi hota tha. |
+| **Landscape video par blur tint** | Native video ab ambient aurora blobs / grain / scanlines ke neeche nahi dabti — landscape me video ke colors par jo blurry rang chadh jata tha, wo hat gaya. |
+| **Har sound setting native par** | Pre-amp, Treble, Bass, Reverb, Volume boost aur EQ ab Android (ExoPlayer) engine par bhi asli device effects se lagte hain — LoudnessEnhancer, PresetReverb, BassBoost aur 10-band EQ. |
+| **ANC button** | Bottom panel me naya **ANC** button (audio + video dono): rumble/hiss cut, mud kam, vocals aur dialogue clear aur boosted — web par Web Audio chain, Android par vocal-focused EQ + loudness. |
+| **Video Enhancer** | Bottom panel me naya **Enhance** button (sirf video): pro colour grade — vibrant colors, darker blacks, behtar sharpness, bina over-saturation ke. WebView video par CSS grade, native video par TextureView colour matrix. |
+| **Add to playlist — har jagah** | Library cards ke ilawa ab queue aur playlist detail ki har file par long-tap se poora menu khulta hai, jis me **Add to playlist** bhi hai. |
+| **Side panel spacing** | Video side control panel ke icons ki spacing thodi kam kar di gayi. Lyrics ab album art ke andar hi rehte hain, stage par nahi phailte. |
+| **YouTube bar neeche** | In-app YouTube browser ki bar (close, Sign in with Google pill, Play in HashPlayer) ab top ki jagah **bottom** par hai — thumb ki pahunch me. |
+
+---
+
 ## 🆕 Naya kya hai — 2.6
 
 | Masla / feature | Ab kya hota hai |

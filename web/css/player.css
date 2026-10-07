@@ -134,6 +134,15 @@ body.vis-off #vis,body.has-video #vis{display:none}
   font-weight:800}
 .lrc-line.near{color:rgba(255,255,255,.6)}
 .lrc-empty{color:var(--dim);font-size:14px;padding-top:30%}
+/* Audio view: lyrics stay inside the album-art square instead of covering
+   the whole stage. The box mirrors the .art-disc size exactly. */
+body:not(.has-video) .lyrics{
+  inset:auto;left:50%;top:50%;transform:translate(-50%,-50%);
+  width:min(88%,62vh,420px);aspect-ratio:1;border-radius:28px;padding:7% 6%}
+body:not(.has-video) .lyrics-scroll{padding:24% 0;mask-image:linear-gradient(transparent,#000 18%,#000 82%,transparent)}
+body:not(.has-video) .lrc-line{font-size:15px;padding:8px 2px}
+body:not(.has-video) .lrc-line.active{transform:scale(1.06)}
+body:not(.has-video) .lrc-empty{padding-top:38%}
 
 /* gesture feedback */
 .gfx{position:absolute;z-index:6;top:50%;left:50%;transform:translate(-50%,-50%) scale(.8);
@@ -162,7 +171,7 @@ body.vis-off #vis,body.has-video #vis{display:none}
 
 /* video tools */
 .vtools{position:absolute;z-index:5;right:10px;top:50%;transform:translateY(-50%);
-  display:none;flex-direction:column;gap:4px;padding:6px;border-radius:19px;
+  display:none;flex-direction:column;gap:2px;padding:5px;border-radius:19px;
   background:rgba(4,6,12,.5);backdrop-filter:blur(14px);border:1px solid rgba(255,255,255,.1);
   opacity:0;transition:opacity .3s}
 body.has-video .vtools{display:flex}
@@ -390,9 +399,10 @@ body.yt-mode .vtools{opacity:1}
   body.has-video #np .np-titles h2{font-size:14.5px}
   body.has-video #np .np-titles p{font-size:11.5px}
   /* Keep the requested video actions in the bottom overlay even on short
-     landscape screens; all non-video tools stay tucked away to save height. */
+     landscape screens; all non-video tools stay tucked away to save height.
+     ANC stays — it is the one audio tool you want while watching a video. */
   body.has-video #np .np-tools{display:flex;min-height:0;padding:2px 0 0;gap:6px}
-  body.has-video #np .np-tools .tool:not(.video-tool),
+  body.has-video #np .np-tools .tool:not(.video-tool):not(.anc-tool),
   body.has-video #np .np-tools #t-silence,
   body.has-video #np .np-tools #t-cc{display:none !important}
   body.has-video #np .np-tools .video-tool{display:flex;flex-direction:row;min-width:0;padding:6px 10px;font-size:9px}
@@ -454,6 +464,11 @@ body.nv-mode .stage{background:transparent !important}
    the video surface, so they step aside while a native video is on screen */
 body.nv-mode #np{backdrop-filter:none !important;-webkit-backdrop-filter:none !important}
 body.nv-mode .np-bg{display:none !important}
+/* the ambient aurora blobs, film grain and scanlines are translucent page
+   layers — over a transparent WebView they sit straight on top of the native
+   video surface and tint its colours (most visible in landscape, when the
+   picture fills the screen). Kill every decorative layer while video shows. */
+body.nv-mode .aurora,body.nv-mode .grain,body.nv-mode .scanline{display:none !important}
 body.nv-mode.np-open #views,body.nv-mode.np-open #rail,
 body.nv-mode.np-open #topbar,body.nv-mode.np-open #minibar{visibility:hidden}
 body.nv-mode #np::before,

@@ -6,7 +6,7 @@
   'use strict';
   const HP = w.HP, S = HP.S, $ = HP.$, $$ = HP.$$, el = HP.el, icon = HP.icon, clamp = HP.clamp;
   const L = HP.Lib, P = HP.Player, E = HP.Engine, UI = {};
-  const APP_VERSION = '2.3.3';
+  const APP_VERSION = '2.7.0';
 
   /* =========================================================
      views & navigation
@@ -231,6 +231,17 @@
       });
       row.appendChild(el('div', { class: 'list-right' }, [rm]));
       row.addEventListener('click', () => { P.context = p.name; P.playTrack(id, ids); });
+      /* long-tap / right-click → the full track menu (incl. Add to playlist) */
+      row.addEventListener('contextmenu', e => { e.preventDefault(); UI.trackMenu(t, e.clientX, e.clientY); });
+      let lpT;
+      row.addEventListener('touchstart', e => {
+        lpT = setTimeout(() => {
+          if (navigator.vibrate) navigator.vibrate(12);
+          const x = e.touches[0].clientX, y = e.touches[0].clientY;
+          UI.trackMenu(t, x, y);
+        }, 520);
+      }, { passive: true });
+      ['touchend', 'touchmove', 'touchcancel'].forEach(ev => row.addEventListener(ev, () => clearTimeout(lpT), { passive: true }));
       box.appendChild(row);
     });
     box.classList.add('list');

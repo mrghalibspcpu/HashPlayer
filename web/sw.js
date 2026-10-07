@@ -1,7 +1,7 @@
 /* ============================================================
    HashPlayer · service worker — offline shell
    ============================================================ */
-const VERSION = 'hashplayer-v2.3.3';
+const VERSION = 'hashplayer-v2.7.0';
 const SHELL = [
   './', './index.html', './manifest.webmanifest',
   './css/base.css', './css/app.css', './css/player.css',

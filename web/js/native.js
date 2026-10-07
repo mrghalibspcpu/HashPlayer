@@ -220,6 +220,8 @@
         bridge().nVolume(muted ? 0 : vol);
       } catch (e) { }
       N.pushEq();
+      N.pushFx();
+      N.setEnhance(!!(HP.S && HP.S.enhance));
       N.pushVis();
       watchRect(viewActive);
       return Promise.resolve(self);
@@ -334,6 +336,33 @@
     const n = bridge(); if (!n || !n.nEq) return;
     const S = HP.S || {};
     try { n.nEq(!!S.eqOn, JSON.stringify(S.eqGains || [])); } catch (e) { }
+  };
+
+  /**
+   * Mirror the rest of the Sound Lab onto ExoPlayer. The web graph cannot
+   * touch native audio, so every knob is re-created with device effects:
+   * preamp + volume-boost → LoudnessEnhancer, treble → top EQ bands,
+   * reverb → PresetReverb, ANC → a vocal-focused EQ shape + loudness.
+   */
+  N.pushFx = function () {
+    const n = bridge(); if (!n || !n.nFx) return;
+    const S = HP.S || {};
+    try {
+      n.nFx(JSON.stringify({
+        preamp: +(S.preamp || 0),
+        treble: +(S.treble || 0),
+        bass: +(S.bass || 0),
+        reverb: +(S.reverb || 0),
+        boost: +(S.boost == null ? 100 : S.boost),
+        anc: !!S.anc
+      }));
+    } catch (e) { }
+  };
+
+  /** Professional colour grade for the native video surface. */
+  N.setEnhance = function (on) {
+    const n = bridge(); if (!n || !n.nEnhance) return;
+    try { n.nEnhance(!!on); } catch (e) { }
   };
 
   /** Ask for the spectrum only while a visualiser mode is actually on screen. */

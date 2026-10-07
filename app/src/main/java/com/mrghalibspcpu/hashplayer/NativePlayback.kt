@@ -3,13 +3,18 @@ package com.mrghalibspcpu.hashplayer
 import android.app.Activity
 import android.content.Context
 import android.graphics.Color
+import android.graphics.ColorMatrix
+import android.graphics.ColorMatrixColorFilter
 import android.graphics.Matrix
+import android.graphics.Paint
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.media.audiofx.BassBoost
 import android.media.audiofx.Equalizer
+import android.media.audiofx.LoudnessEnhancer
+import android.media.audiofx.PresetReverb
 import android.media.audiofx.Visualizer
 import android.view.Gravity
 import android.view.TextureView
@@ -94,11 +99,28 @@ class NativePlayback(
     private var surface: TextureView? = null
     private var eq: Equalizer? = null
     private var bass: BassBoost? = null
+    private var loudness: LoudnessEnhancer? = null
+    private var reverbFx: PresetReverb? = null
     private var vis: Visualizer? = null
     private var visWanted = false
     private var lastWave: JSONArray? = null
     private var eqOn = false
     private var eqGains = FloatArray(10)
+
+    /* Sound Lab FX mirrored from the web layer (see setFx). They are applied
+       with real device effects so every sound setting works on the native
+       engine too, not just on <audio> elements. */
+    private var fxPreamp = 0f
+    private var fxTreble = 0f
+    private var fxBass = 0f
+    private var fxReverb = 0f
+    private var fxBoost = 100f
+    private var fxAnc = false
+    private var baseVolume = 1f
+
+    /** Professional colour grade for the video surface (see setEnhance). */
+    private var enhanceOn = false
+
     /** Decoder-level silence skipping is kept across track changes. */
     private var skipSilence = false
 
@@ -163,6 +185,8 @@ class NativePlayback(
                     Player.STATE_READY -> {
                         retried = false
                         applyEq()
+                        applyFx()
+                        applyVolume()
                         if (visWanted) attachVisualiser()
                         post("ready")
                     }
@@ -343,6 +367,7 @@ class NativePlayback(
             sv.visibility = android.view.View.VISIBLE
             player?.setVideoTextureView(sv)
             applyVideoTransform()
+            applyEnhance()                       // re-arm the colour grade per track
         } else {
             player?.clearVideoSurface()
             surface?.visibility = android.view.View.GONE
@@ -558,7 +583,21 @@ class NativePlayback(
     /** 1.0 = original. 2^(semitones/12) comes from the web layer. */
     fun pitch(p: Float) = main.post { pitch = if (p.isFinite() && p > 0f) p else 1f; applyParams() }
 
-    fun volume(v: Float) = main.post { player?.volume = v.coerceIn(0f, 1f) }
+    fun volume(v: Float) = main.post { baseVolume = v.coerceIn(0f, 1f); applyVolume() }
+
+    /**
+     * The web slider / gesture volume, multiplied by an attenuation for a
+     * negative pre-amp (device effects can only boost, never cut).
+     */
+    private fun applyVolume() {
+        try { player?.volume = baseVolume * fxAtten() } catch (e: Exception) { }
+    }
+    private fun fxAtten(): Float {
+        val db = fxPreamp + boostDb()
+        return if (db < 0f) Math.pow(10.0, (db / 20.0).toDouble()).toFloat().coerceIn(0f, 1f) else 1f
+    }
+    private fun boostDb(): Float =
+        if (fxBoost > 0f) (20.0 * Math.log10((fxBoost / 100.0).toDouble())).toFloat() else 0f
 
     /**
      * Media3 performs this in the audio renderer, which is the only reliable
@@ -584,7 +623,9 @@ class NativePlayback(
         stopTick()
         try { vis?.enabled = false; vis?.release() } catch (e: Throwable) { }
         try { eq?.release(); bass?.release() } catch (e: Throwable) { }
-        vis = null; eq = null; bass = null
+        try { loudness?.release() } catch (e: Throwable) { }
+        try { reverbFx?.release() } catch (e: Throwable) { }
+        vis = null; eq = null; bass = null; loudness = null; reverbFx = null
         player?.release()
         player = null
         surface?.let { root.removeView(it) }
@@ -649,7 +690,49 @@ class NativePlayback(
         applyEq()
     }
 
+    /**
+     * Every other Sound-Lab setting, mirrored onto device audio effects:
+     * preamp + volume boost → LoudnessEnhancer (and player attenuation when
+     * negative), reverb → PresetReverb, treble/bass → folded into the EQ,
+     * ANC → a vocal-focused EQ shape plus a loudness lift.
+     */
+    fun setFx(preamp: Float, treble: Float, bassDb: Float, reverb: Float, boost: Float, anc: Boolean) = main.post {
+        fxPreamp = if (preamp.isFinite()) preamp.coerceIn(-12f, 12f) else 0f
+        fxTreble = if (treble.isFinite()) treble.coerceIn(-6f, 12f) else 0f
+        fxBass = if (bassDb.isFinite()) bassDb.coerceIn(0f, 18f) else 0f
+        fxReverb = if (reverb.isFinite()) reverb.coerceIn(0f, 100f) else 0f
+        fxBoost = if (boost.isFinite()) boost.coerceIn(100f, 300f) else 100f
+        fxAnc = anc
+        applyEq()
+        applyFx()
+        applyVolume()
+    }
+
     private val webFreqs = intArrayOf(31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000)
+
+    /**
+     * The ten effective band gains: the EQ sliders (when the EQ is on), plus
+     * the standalone treble / bass knobs, plus the ANC voice-focus curve —
+     * rumble and mud cut, the speech presence region lifted.
+     */
+    private fun effGains(): FloatArray {
+        val g = FloatArray(10)
+        for (i in 0 until 10) {
+            var v = if (eqOn) eqGains[i] else 0f
+            if (i >= 7) v += fxTreble * 0.8f
+            if (i <= 1) v += fxBass * 0.6f
+            if (fxAnc) {
+                when (webFreqs[i]) {
+                    31, 62, 125 -> v -= 5f
+                    250 -> v -= 3f
+                    2000, 4000 -> v += 3.5f
+                    else -> Unit
+                }
+            }
+            g[i] = v
+        }
+        return g
+    }
 
     private fun applyEq() {
         val p = player ?: return
@@ -659,9 +742,13 @@ class NativePlayback(
                 bass = try { BassBoost(0, p.audioSessionId) } catch (e: Throwable) { null }
             }
             val e = eq ?: return
-            e.enabled = eqOn
-            bass?.enabled = eqOn && eqGains[0] > 0.5f
-            if (!eqOn) return
+            val gains = effGains()
+            /* The equaliser stays up whenever any tonal control needs it,
+               even with the master EQ switch off. */
+            val active = eqOn || fxAnc || fxTreble != 0f || fxBass != 0f
+            e.enabled = active
+            bass?.enabled = active && (gains[0] > 0.5f || gains[1] > 0.5f)
+            if (!active) return
             val range = e.bandLevelRange              // millibel
             val lo = range[0].toInt(); val hi = range[1].toInt()
             for (band in 0 until e.numberOfBands) {
@@ -670,16 +757,94 @@ class NativePlayback(
                 var best = 0
                 for (i in webFreqs.indices)
                     if (Math.abs(webFreqs[i] - centerHz) < Math.abs(webFreqs[best] - centerHz)) best = i
-                val mb = (eqGains[best] * 100).toInt().coerceIn(lo, hi)
+                val mb = (gains[best] * 100).toInt().coerceIn(lo, hi)
                 try { e.setBandLevel(band.toShort(), mb.toShort()) } catch (ex: Exception) { }
             }
             bass?.let { bb ->
                 if (bb.strengthSupported) {
-                    val amount = ((eqGains[0] + eqGains[1]) / 2f).coerceIn(0f, 12f) / 12f
+                    val amount = ((gains[0] + gains[1]) / 2f).coerceIn(0f, 12f) / 12f
                     try { bb.setStrength((amount * 900).toInt().toShort()) } catch (ex: Exception) { }
                 }
             }
         } catch (e: Throwable) { Log.w(TAG, "equaliser unavailable", e) }
+    }
+
+    private fun applyFx() {
+        val p = player ?: return
+        /* loudness: pre-amp + volume boost + the ANC clarity lift */
+        try {
+            val gainDb = fxPreamp + boostDb() + if (fxAnc) 2.5f else 0f
+            if (gainDb > 0.05f) {
+                if (loudness == null)
+                    loudness = try { LoudnessEnhancer(p.audioSessionId) } catch (e: Throwable) { null }
+                loudness?.let {
+                    try {
+                        it.setTargetGain((gainDb.coerceAtMost(12f) * 100f).toInt())
+                        it.enabled = true
+                    } catch (ex: Throwable) { Log.w(TAG, "loudness", ex) }
+                }
+            } else {
+                try { loudness?.enabled = false } catch (ex: Throwable) { }
+            }
+        } catch (e: Throwable) { Log.w(TAG, "loudness unavailable", e) }
+
+        /* room / space — a hardware preset reverb on the same session */
+        try {
+            val preset: Int = when {
+                fxReverb <= 0f -> -1
+                fxReverb < 20f -> PresetReverb.PRESET_SMALLROOM.toInt()
+                fxReverb < 40f -> PresetReverb.PRESET_MEDIUMROOM.toInt()
+                fxReverb < 60f -> PresetReverb.PRESET_LARGEROOM.toInt()
+                fxReverb < 80f -> PresetReverb.PRESET_MEDIUMHALL.toInt()
+                else -> PresetReverb.PRESET_LARGEHALL.toInt()
+            }
+            if (preset < 0) {
+                try { reverbFx?.enabled = false } catch (ex: Throwable) { }
+            } else {
+                if (reverbFx == null)
+                    reverbFx = try { PresetReverb(0, p.audioSessionId) } catch (e: Throwable) { null }
+                reverbFx?.let {
+                    try { it.preset = preset.toShort(); it.enabled = true } catch (ex: Throwable) { }
+                }
+            }
+        } catch (e: Throwable) { Log.w(TAG, "reverb unavailable", e) }
+    }
+
+    /* ------------------------------------------------------------ video grade */
+
+    /**
+     * Video Enhancer — a restrained, professional grade drawn straight onto
+     * the TextureView layer: a gentle contrast S-curve darkens the blacks,
+     * saturation is lifted just enough to feel vibrant without neon skin
+     * tones, and the contrast bump reads as extra sharpness.
+     */
+    fun setEnhance(on: Boolean) = main.post {
+        enhanceOn = on
+        applyEnhance()
+    }
+
+    private fun applyEnhance() {
+        val sv = surface ?: return
+        try {
+            if (!enhanceOn) {
+                sv.setLayerType(android.view.View.LAYER_TYPE_NONE, null)
+                return
+            }
+            val sat = ColorMatrix().apply { setSaturation(1.16f) }
+            val c = 1.10f
+            val o = (1f - c) * 90f          // ≈ -9/255 — blacks sink, mids hold
+            val contrast = ColorMatrix(
+                floatArrayOf(
+                    c, 0f, 0f, 0f, o,
+                    0f, c, 0f, 0f, o,
+                    0f, 0f, c, 0f, o,
+                    0f, 0f, 0f, 1f, 0f
+                )
+            )
+            val m = ColorMatrix().apply { setConcat(contrast, sat) }
+            val paint = Paint().apply { colorFilter = ColorMatrixColorFilter(m) }
+            sv.setLayerType(android.view.View.LAYER_TYPE_HARDWARE, paint)
+        } catch (e: Throwable) { Log.w(TAG, "enhance unavailable", e) }
     }
 
     /* ------------------------------------------------------------ visualiser */

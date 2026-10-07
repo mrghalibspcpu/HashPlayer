@@ -196,7 +196,7 @@ class MainActivity : AppCompatActivity() {
             cacheMode = WebSettings.LOAD_DEFAULT
             mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
             textZoom = 100
-            userAgentString = "$userAgentString HashPlayer/2.3.3"
+            userAgentString = "$userAgentString HashPlayer/2.7.0"
         }
 
         web.webViewClient = object : WebViewClient() {
@@ -608,7 +608,7 @@ class MainActivity : AppCompatActivity() {
         fun toastMsg(msg: String) = runOnUiThread { toast(msg) }
 
         @android.webkit.JavascriptInterface
-        fun version(): String = "2.3.3"
+        fun version(): String = "2.7.0"
 
         /* ---------------- native ExoPlayer engine ---------------- */
 
@@ -636,6 +636,28 @@ class MainActivity : AppCompatActivity() {
             } catch (e: Exception) { }
             nativePlayer.setEq(on, g)
         }
+
+        /**
+         * Every other Sound-Lab knob, mirrored onto device audio effects so
+         * the settings actually work on the native engine too:
+         * {preamp, treble, bass, reverb, boost, anc}
+         */
+        @android.webkit.JavascriptInterface
+        fun nFx(json: String?) {
+            val o = try { JSONObject(json ?: "{}") } catch (e: Exception) { return }
+            nativePlayer.setFx(
+                o.optDouble("preamp", 0.0).toFloat(),
+                o.optDouble("treble", 0.0).toFloat(),
+                o.optDouble("bass", 0.0).toFloat(),
+                o.optDouble("reverb", 0.0).toFloat(),
+                o.optDouble("boost", 100.0).toFloat(),
+                o.optBoolean("anc", false)
+            )
+        }
+
+        /** Professional colour grade on/off for the native video surface. */
+        @android.webkit.JavascriptInterface
+        fun nEnhance(on: Boolean) = nativePlayer.setEnhance(on)
 
         /**
          * The visualiser taps the audio session, which Android only allows with
@@ -785,7 +807,9 @@ class MainActivity : AppCompatActivity() {
          suggestions and ranking. Sign in once (the Sign in button in the bar)
          and the cookies stick, so it behaves like the YouTube app from then
          on. Tapping a video never plays it in the page: we take the id and
-         play it in HashPlayer.
+         play it in HashPlayer. The whole bar — close, hints, Play here and
+         the Google sign-in pill — lives at the BOTTOM of the screen, thumb
+         reach, and never covers the top of the page being browsed.
 
        • Any other site (TikTok, Facebook, Instagram, X, news sites…) — the
          page is shown normally and every request it makes is watched. As soon
@@ -940,8 +964,10 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        column.addView(bar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        /* Page on top, control bar underneath — the sign-in pill and friends
+           sit at the bottom edge where the thumb already is. */
         column.addView(wv, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+        column.addView(bar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         root.addView(
             column,
             FrameLayout.LayoutParams(
