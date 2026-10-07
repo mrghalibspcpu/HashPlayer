@@ -37,7 +37,12 @@ import android.webkit.WebSettings
 import android.webkit.WebViewClient
 import android.webkit.WebView
 import android.widget.FrameLayout
+import android.widget.ImageButton
+import android.widget.LinearLayout
+import android.widget.TextView
 import android.widget.Toast
+import android.view.Gravity
+import android.webkit.CookieManager
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -96,6 +101,12 @@ class MainActivity : AppCompatActivity() {
     private var customView: View? = null
     private var customCallback: WebChromeClient.CustomViewCallback? = null
     private lateinit var nativePlayer: NativePlayback
+
+    /* The in-app YouTube browser: the real youtube.com in its own WebView on
+       top of the player, used purely for browsing and searching. */
+    private var ytLayer: View? = null
+    private var ytWeb: WebView? = null
+    private var ytPicked = ""
 
     /* The volume slider and the vertical swipe move the *device* media volume,
        the same thing the hardware keys do — so the UI has to follow the keys too. */
@@ -301,6 +312,11 @@ class MainActivity : AppCompatActivity() {
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
                 if (customView != null) { web.webChromeClient?.onHideCustomView(); return }
+                if (ytLayer != null) {
+                    val wv = ytWeb
+                    if (wv != null && wv.canGoBack()) wv.goBack() else closeYouTubeBrowser()
+                    return
+                }
                 web.evaluateJavascript("window.HashBridge ? window.HashBridge.onBack() : false") { r ->
                     if (r != "true") {
                         val now = System.currentTimeMillis()
@@ -510,23 +526,12 @@ class MainActivity : AppCompatActivity() {
         @android.webkit.JavascriptInterface
         fun ytEngine(): Boolean = true
 
-        /** Online search for the library search bar. Answers on HashBridge.onYtSearch. */
+        /**
+         * Open YouTube itself, inside the app. Tapping any video there hands the
+         * id back to the player instead of playing it in the page.
+         */
         @android.webkit.JavascriptInterface
-        fun ytSearch(query: String?, reqId: String?) {
-            val q = query.orEmpty()
-            val id = reqId.orEmpty()
-            thread {
-                val list = try { YouTubeStream.search(q) } catch (e: Throwable) {
-                    Log.w(TAG, "yt search", e); JSONArray()
-                }
-                runOnUiThread {
-                    web.evaluateJavascript(
-                        "window.HashBridge && window.HashBridge.onYtSearch(" +
-                            JSONObject.quote(id) + "," + JSONObject.quote(list.toString()) + ");", null
-                    )
-                }
-            }
-        }
+        fun openYouTube(query: String?) = runOnUiThread { openYouTubeBrowser(query.orEmpty()) }
 
         @android.webkit.JavascriptInterface
         fun share(text: String) = runOnUiThread {
@@ -715,6 +720,146 @@ class MainActivity : AppCompatActivity() {
             out.compress(Bitmap.CompressFormat.JPEG, 82, bos)
             "data:image/jpeg;base64," + Base64.encodeToString(bos.toByteArray(), Base64.NO_WRAP)
         } catch (e: Throwable) { null }
+    }
+
+    /* ============================================================
+       In-app YouTube browser
+
+       Searching through a private API could never match what the YouTube app
+       shows. So we simply show YouTube: the mobile site runs in its own
+       WebView above the player, with its real home feed, suggestions, filters
+       and ranking. Nothing is ever played in that page — the moment a video
+       url appears (a tap, a pushState inside their single-page app, or a
+       youtu.be/shorts link) we grab the id, close the browser and play it in
+       HashPlayer with all of its own controls.
+       ============================================================ */
+
+    @SuppressLint("SetJavaScriptEnabled")
+    private fun openYouTubeBrowser(query: String) {
+        val url =
+            if (query.isBlank()) "https://m.youtube.com/"
+            else "https://m.youtube.com/results?search_query=" +
+                java.net.URLEncoder.encode(query, "UTF-8")
+
+        ytWeb?.let { it.loadUrl(url); return }
+        ytPicked = ""
+
+        val column = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(Color.parseColor("#0b0c10"))
+            fitsSystemWindows = true
+            isClickable = true                       // never leak taps to the player
+        }
+
+        val d = resources.displayMetrics.density
+        val bar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding((6 * d).toInt(), (6 * d).toInt(), (6 * d).toInt(), (6 * d).toInt())
+            setBackgroundColor(Color.parseColor("#12141c"))
+        }
+        val close = ImageButton(this).apply {
+            setImageResource(android.R.drawable.ic_menu_close_clear_cancel)
+            setColorFilter(Color.WHITE)
+            background = null
+            contentDescription = getString(R.string.yt_close)
+            setOnClickListener { closeYouTubeBrowser() }
+        }
+        val label = TextView(this).apply {
+            text = getString(R.string.yt_browse_hint)
+            setTextColor(Color.parseColor("#c9ccd6"))
+            textSize = 13f
+            setPadding((10 * d).toInt(), 0, 0, 0)
+        }
+        bar.addView(close, LinearLayout.LayoutParams((40 * d).toInt(), (40 * d).toInt()))
+        bar.addView(label, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+
+        val wv = WebView(this)
+        wv.settings.apply {
+            javaScriptEnabled = true
+            domStorageEnabled = true
+            databaseEnabled = true
+            loadWithOverviewMode = true
+            useWideViewPort = true
+            mediaPlaybackRequiresUserGesture = true   // nothing starts playing in here
+            cacheMode = WebSettings.LOAD_DEFAULT
+        }
+        CookieManager.getInstance().setAcceptCookie(true)
+        CookieManager.getInstance().setAcceptThirdPartyCookies(wv, true)
+
+        wv.webChromeClient = WebChromeClient()
+        wv.webViewClient = object : WebViewClient() {
+            override fun shouldOverrideUrlLoading(view: WebView, req: WebResourceRequest): Boolean {
+                val u = req.url?.toString().orEmpty()
+                if (!u.startsWith("http")) return true          // no intent:// hand-offs
+                return takeVideo(u)
+            }
+
+            /* YouTube is a single-page app: most taps never load a url, they
+               only push a new history entry. This is where we see them. */
+            override fun doUpdateVisitedHistory(view: WebView, url: String?, isReload: Boolean) {
+                if (takeVideo(url.orEmpty())) return
+                super.doUpdateVisitedHistory(view, url, isReload)
+            }
+        }
+
+        column.addView(bar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        column.addView(wv, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+        root.addView(
+            column,
+            FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
+            )
+        )
+        ytLayer = column
+        ytWeb = wv
+        nativePlayer.setVideoVisible(false)           // the player's picture stays out of the way
+        wv.loadUrl(url)
+    }
+
+    /** `true` when this url was a video and has been handed to the player. */
+    private fun takeVideo(url: String): Boolean {
+        val id = videoIdOf(url) ?: return false
+        if (id == ytPicked) return true
+        ytPicked = id
+        closeYouTubeBrowser()
+        val js = "window.HashBridge && window.HashBridge.onYtPick(" + JSONObject.quote(id) + ");"
+        web.evaluateJavascript(js, null)
+        return true
+    }
+
+    private fun videoIdOf(url: String): String? {
+        if (url.isBlank()) return null
+        val u = try { Uri.parse(url) } catch (e: Exception) { return null }
+        val host = u.host.orEmpty().lowercase()
+        if (!host.contains("youtube.com") && !host.contains("youtu.be")) return null
+        val path = u.path.orEmpty()
+        val id = when {
+            host.contains("youtu.be") -> path.trim('/').substringBefore('/')
+            path.startsWith("/watch") -> u.getQueryParameter("v").orEmpty()
+            path.startsWith("/shorts/") -> path.removePrefix("/shorts/").substringBefore('/')
+            path.startsWith("/embed/") -> path.removePrefix("/embed/").substringBefore('/')
+            path.startsWith("/live/") -> path.removePrefix("/live/").substringBefore('/')
+            else -> ""
+        }
+        return if (id.length in 8..20 && id.all { it.isLetterOrDigit() || it == '-' || it == '_' }) id else null
+    }
+
+    private fun closeYouTubeBrowser() {
+        val layer = ytLayer ?: return
+        val wv = ytWeb
+        ytLayer = null
+        ytWeb = null
+        try {
+            wv?.stopLoading()
+            wv?.loadUrl("about:blank")
+            (wv?.parent as? ViewGroup)?.removeView(wv)
+            wv?.destroy()
+        } catch (e: Exception) { Log.w(TAG, "yt browser teardown", e) }
+        root.removeView(layer)
+        // Let the web layer decide whether the picture comes back (it knows
+        // which route is on screen); never force the surface over the library.
+        web.evaluateJavascript("window.HashBridge && window.HashBridge.onYtBrowser(false);", null)
     }
 
     private fun toast(s: String) = Toast.makeText(this, s, Toast.LENGTH_SHORT).show()

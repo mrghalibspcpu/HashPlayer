@@ -63,7 +63,7 @@
     filter: 'all', eqOn: false, eqGains: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0], eqPreset: 'flat',
     preamp: 0, bass: 0, treble: 0, reverb: 0, width: 100, balance: 0, boost: 100, crossfade: 0,
     mono: false, normalize: false, fade: true, pitch: true, lastId: null, lastPos: 0, lyricsOn: false,
-    perf: null, autoPip: true, autoScan: true, autoLandscape: true, ytSearch: true, skipSilence: false
+    perf: null, autoPip: true, autoScan: true, autoLandscape: true, skipSilence: false
   };
   /* ---------- how much eye-candy can this device actually afford? ---------- */
   const ua = navigator.userAgent || '';
@@ -110,8 +110,7 @@
     /* English is harvested from the markup on first paint; only strings that
        never appear as markup need to be seeded here. */
     en: {
-      ytSearching: 'Searching YouTube for',
-      ytOffline: 'YouTube search is not reachable right now'
+      ytOpen: 'Open YouTube'
     },
     ur: {
       search: 'تلاش کریں…', library: 'لائبریری', playlists: 'پلے لسٹ', favorites: 'پسندیدہ', sound: 'آواز',
@@ -146,8 +145,7 @@
       autoScan: 'ڈیوائس کی آڈیو/ویڈیو خودکار تلاش کریں',
       findLyrics: 'آن لائن بول تلاش کریں', scan: 'ڈیوائس اسکین کریں',
       addUrlSub2: 'یوٹیوب لنک یا آڈیو/ویڈیو فائل کا براہِ راست لنک۔',
-      ytResults: 'یوٹیوب سے', ytSearch: 'تلاش کے ساتھ یوٹیوب بھی تلاش کریں (انٹرنیٹ درکار)',
-      ytSearching: 'یوٹیوب پر تلاش جاری ہے', ytOffline: 'یوٹیوب تلاش فی الحال دستیاب نہیں',
+      ytOpen: 'یوٹیوب کھولیں',
       tapToUnlock: 'ان لاک کرنے کے لیے ٹیپ کریں',
       ttAspect: 'تناسب / زوم', ttRotate: 'گھمائیں', ttMirror: 'آئینہ', ttShot: 'اسکرین شاٹ',
       ttSubs: 'سب ٹائٹل', ttSpeed: 'چلنے کی رفتار', ttLock: 'اسکرین لاک', ttPip: 'چھوٹی ونڈو',

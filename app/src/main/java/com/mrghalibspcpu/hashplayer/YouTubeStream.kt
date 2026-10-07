@@ -35,7 +35,6 @@ object YouTubeStream {
 
     private const val TAG = "HashPlayerYT"
     private const val PLAYER_URL = "https://www.youtube.com/youtubei/v1/player?prettyPrint=false"
-    private const val SEARCH_URL = "https://www.youtube.com/youtubei/v1/search?prettyPrint=false"
     private const val WEB_UA =
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) " +
             "Chrome/127.0.0.0 Safari/537.36"
@@ -318,116 +317,9 @@ object YouTubeStream {
         return best
     }
 
-    /* ------------------------------------------------------------ search */
-
-    /**
-     * Online search, used by the library search bar. Returns a JSON array of
-     * `{id,title,author,duration,views,published,thumb,live}` — blocking.
-     */
-    fun search(query: String, limit: Int = 24): JSONArray {
-        val out = JSONArray()
-        val q = query.trim()
-        if (q.isEmpty()) return out
-        val client = Client("WEB", "2.20260708.00.00", 1, WEB_UA)
-        val body = JSONObject().apply {
-            put("context", context(client))
-            put("query", q)
-            put("params", "EgIQAQ==")          // filter: videos only
-        }
-        val json = try { post(SEARCH_URL, body, client) } catch (e: Exception) {
-            Log.w(TAG, "search failed", e); null
-        } ?: return out
-
-        val found = ArrayList<JSONObject>()
-        // Keep YouTube's own ranking: walk the primary result list in order
-        // first, and only fall back to a generic tree walk if the layout
-        // changed (a tree walk cannot preserve order — JSON object keys are
-        // unordered on Android).
-        collectOrdered(json, found, limit)
-        if (found.isEmpty()) collectRenderers(json, found, limit)
-        for (v in found) {
-            val id = v.optString("videoId", "")
-            if (id.isBlank()) continue
-            val o = JSONObject()
-            o.put("id", id)
-            o.put("title", text(v.opt("title")))
-            o.put("author", text(v.opt("ownerText")).ifBlank { text(v.opt("longBylineText")) }
-                .ifBlank { text(v.opt("shortBylineText")) })
-            val length = text(v.opt("lengthText"))
-            // Live cards carry a LIVE badge/overlay and never a duration.
-            val live = length.isBlank() &&
-                (v.optJSONArray("badges")?.toString()?.contains("LIVE", true) == true ||
-                    v.optJSONArray("thumbnailOverlays")?.toString()?.contains("LIVE", true) == true)
-            o.put("duration", length)
-            o.put("views", text(v.opt("shortViewCountText")).ifBlank { text(v.opt("viewCountText")) })
-            o.put("published", text(v.opt("publishedTimeText")))
-            o.put("thumb", thumbOf(v, id))
-            o.put("live", live)
-            out.put(o)
-            if (out.length() >= limit) break
-        }
-        return out
-    }
-
-    /**
-     * The real search page order: `contents → twoColumnSearchResultsRenderer →
-     * primaryContents → sectionListRenderer → contents[] → itemSectionRenderer →
-     * contents[]`. Every step here is a JSON *array*, so the rows come back in
-     * exactly the sequence youtube.com would show them. Shelves ("People also
-     * watched", Shorts, ads, channels) are skipped rather than mixed in.
-     */
-    private fun collectOrdered(json: JSONObject, out: MutableList<JSONObject>, limit: Int) {
-        val sections = json
-            .optJSONObject("contents")
-            ?.optJSONObject("twoColumnSearchResultsRenderer")
-            ?.optJSONObject("primaryContents")
-            ?.optJSONObject("sectionListRenderer")
-            ?.optJSONArray("contents") ?: return
-
-        for (i in 0 until sections.length()) {
-            val items = sections.optJSONObject(i)
-                ?.optJSONObject("itemSectionRenderer")
-                ?.optJSONArray("contents") ?: continue
-            for (j in 0 until items.length()) {
-                val item = items.optJSONObject(j) ?: continue
-                if (item.has("adSlotRenderer") || item.has("promotedVideoRenderer") ||
-                    item.has("searchPyvRenderer")
-                ) continue
-                val v = item.optJSONObject("videoRenderer")
-                    ?: item.optJSONObject("videoWithContextRenderer")
-                    ?: continue
-                if (v.optString("videoId", "").isBlank()) continue
-                out.add(v)
-                if (out.size >= limit) return
-            }
-        }
-    }
-
-    /** YouTube ships several result layouts; just walk the tree for video cards. */
-    private fun collectRenderers(node: Any?, out: MutableList<JSONObject>, limit: Int) {
-        if (out.size >= limit) return
-        when (node) {
-            is JSONObject -> {
-                val keys = node.keys()
-                while (keys.hasNext()) {
-                    val k = keys.next()
-                    val child = node.opt(k)
-                    if ((k == "videoRenderer" || k == "compactVideoRenderer" ||
-                            k == "videoWithContextRenderer") && child is JSONObject
-                    ) {
-                        if (child.optString("videoId", "").isNotBlank()) out.add(child)
-                        if (out.size >= limit) return
-                    } else collectRenderers(child, out, limit)
-                }
-            }
-            is JSONArray -> {
-                for (i in 0 until node.length()) {
-                    collectRenderers(node.opt(i), out, limit)
-                    if (out.size >= limit) return
-                }
-            }
-        }
-    }
+    /* Search used to go through InnerTube from here. It now happens on the real
+       youtube.com page inside the app (see MainActivity.openYouTubeBrowser), so
+       the home feed, suggestions and result order are YouTube's own. */
 
     /** InnerTube text nodes are either `{simpleText}` or `{runs:[{text}]}`. */
     private fun text(node: Any?): String = when (node) {
@@ -449,15 +341,6 @@ object YouTubeStream {
             sb.toString()
         }
         else -> ""
-    }
-
-    private fun thumbOf(v: JSONObject, id: String): String {
-        val list = v.optJSONObject("thumbnail")?.optJSONArray("thumbnails")
-        if (list != null && list.length() > 0) {
-            val last = list.optJSONObject(list.length() - 1)?.optString("url").orEmpty()
-            if (last.isNotBlank()) return last
-        }
-        return "https://i.ytimg.com/vi/$id/hqdefault.jpg"
     }
 
     /* ------------------------------------------------------------ http */

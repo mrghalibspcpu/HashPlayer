@@ -56,7 +56,6 @@
     searchFocused = false;
     if (input) input.blur();
     $('#search-clear').hidden = true;
-    L.ytSearch('');
     UI.nav('library');
     L.render();
     UI.updateSearchActive();
@@ -538,8 +537,7 @@
     const sw = [['#set-autotheme', 'autoTheme'], ['#set-motion', 'motion'], ['#set-simple', 'simple'],
     ['#set-perf', 'perf'], ['#set-gestures', 'gestures'], ['#set-resume', 'resume'],
     ['#set-autoplay', 'autoplayNext'], ['#set-keepawake', 'keepAwake'],
-    ['#set-autoland', 'autoLandscape'], ['#set-autopip', 'autoPip'], ['#set-autoscan', 'autoScan'],
-    ['#set-ytsearch', 'ytSearch']];
+    ['#set-autoland', 'autoLandscape'], ['#set-autopip', 'autoPip'], ['#set-autoscan', 'autoScan']];
     sw.forEach(([sel, key]) => {
       const c = $(sel); if (!c) return;
       c.checked = !!S[key];
@@ -549,7 +547,6 @@
         if (key === 'motion' || key === 'simple' || key === 'perf') applyTheme();
         if (key === 'perf') { HP.Vis.retune && HP.Vis.retune(); HP.toast(c.checked ? 'Smooth mode on — fewer effects, steadier playback' : 'Full effects on', 'ok'); }
         if (key === 'autoTheme') { if (!c.checked) P.clearTint(); else if (P.current) HP.emit('track-changed', P.current); }
-        if (key === 'ytSearch') L.ytSearch(c.checked ? L.search : '');
       });
     });
     const ss = $('#set-seekstep');
@@ -882,9 +879,16 @@
       HP.Engine.setVolume(v, { fromDevice: true });
     },
 
-    /** Rows for one YouTube search, answered on the id we asked with. */
-    onYtSearch(reqId, json) {
-      if (HP.YT && HP.YT.deliver) HP.YT.deliver(reqId, json);
+    /** The in-app YouTube browser opened/closed — re-sync the native picture. */
+    onYtBrowser(open) {
+      const onPlayer = $('#np') && $('#np').classList.contains('on');
+      P.setPlayerViewActive(!open && !!onPlayer);
+    },
+
+    /** A video was tapped in the in-app YouTube browser — play it here. */
+    onYtPick(id, title, author) {
+      if (!id) return;
+      L.pickYt(String(id), title || '', author || '').catch(() => { });
     }
   };
 
@@ -952,18 +956,15 @@
       $('#search-clear').hidden = !search.value;
       L.render();
     }, 160));
-    /* The same box also looks online — on a longer delay, so it waits for you
-       to stop typing instead of firing a request per keystroke. */
-    search.addEventListener('input', HP.debounce(() => L.ytSearch(search.value), 420));
-    search.addEventListener('keydown', e => { if (e.key === 'Enter') L.ytSearch(search.value); });
     $('#search-clear').addEventListener('click', () => {
       search.value = ''; L.search = ''; $('#search-clear').hidden = true;
-      L.render(); L.ytSearch(''); search.focus(); UI.updateSearchActive();
+      L.render(); search.focus(); UI.updateSearchActive();
     });
     $('#search-back').addEventListener('click', () => UI.exitSearch());
-    const ytHide = $('#yt-hide');
-    if (ytHide) ytHide.addEventListener('click', () => { L.yt.rows = []; L.yt.error = ''; L.renderYt(); });
-    w.addEventListener('online', () => { if (L.search) L.ytSearch(L.search); });
+    /* The YouTube icon in the search bar opens YouTube itself — the real home
+       feed and the real search, so the results are exactly the app's. */
+    const ytOpen = $('#yt-open');
+    if (ytOpen) ytOpen.addEventListener('click', () => L.openYouTube(search.value));
     $('#btn-play-all').addEventListener('click', () => { P.context = 'Library'; P.playList(L.contextIds()); UI.openNP(true); });
     $('#btn-shuffle-all').addEventListener('click', () => { P.context = 'Shuffle'; P.playList(L.contextIds(), true); UI.openNP(true); });
     $('#btn-scan').addEventListener('click', () => Native.scan());

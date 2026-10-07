@@ -17,6 +17,16 @@ Install it as an app on your phone or desktop, or build a real Android APK — s
 
 ---
 
+## 🆕 Naya kya hai — 2.4
+
+| Masla / feature | Ab kya hota hai |
+|---|---|
+| **YouTube search ke results app jaisay nahi thay** | App ke andar ki “From YouTube” list hata di gayi. Ab search bar me **YouTube ka icon** hai — tap karte hi **asli youtube.com app ke andar hi khul jata hai**: wahi home feed, wahi suggestions, wahi search aur bilkul wahi tarteeb jo YouTube app me hoti hai. Kisi bhi video par tap karein — page me chalne ke bajaye wo **HashPlayer me** chalti hai, apne gestures, speed, PiP aur queue ke saath. |
+| **Zoom** | Pinch se **1× se 8×** tak zoom, zoom ke baad ungli se pan/drag, screen par live “2.4×” badge. Android par native ExoPlayer picture par bhi chalta hai aur rotate/mirror ke saath tootta nahi. |
+| **Landscape me caption button** | Landscape me neeche ke control panel se **Captions** button bhi chhup jata hai (Skip Silence ki tarah) — video ke side palette wala CC waise hi maujood hai. |
+
+---
+
 ## 🆕 Naya kya hai — 2.3
 
 | Masla / feature | Ab kya hota hai |

@@ -213,30 +213,31 @@
     return t;
   };
 
-  /* ---------------- YouTube search results ----------------
-     The same search box, extended online. Results are shown in their own
-     section under the library and only become real tracks once you play one. */
-  const YTS = L.yt = { query: '', rows: [], loading: false, error: '', seq: 0 };
+  /* ---------------- YouTube ----------------
+     The in-app search bar searches *your* library only. YouTube itself is one
+     tap away behind the little play icon in the search bar: it opens the real
+     youtube.com inside the app, so the home feed, the suggestions and the
+     result order are exactly what the YouTube app shows. Tap any video there
+     and it comes back here and plays with HashPlayer's own controls. */
 
-  L.ytSearch = function (query) {
+  /** Open the YouTube browser (Android shell) or youtube.com in a new tab. */
+  L.openYouTube = function (query) {
     const q = String(query || '').trim();
-    YTS.query = q;
-    const mine = ++YTS.seq;
-    const can = S.ytSearch !== false && q.length >= 2 &&
-      navigator.onLine !== false && HP.YT && HP.YT.canSearch();
-    if (!can) { YTS.rows = []; YTS.loading = false; YTS.error = ''; L.renderYt(); return; }
+    const n = window.HashNative;
+    if (n && n.openYouTube) {
+      try { n.openYouTube(q); return true; } catch (e) { /* fall through */ }
+    }
+    const url = q
+      ? 'https://m.youtube.com/results?search_query=' + encodeURIComponent(q)
+      : 'https://m.youtube.com/';
+    try { window.open(url, '_blank', 'noopener'); } catch (e) { location.href = url; }
+    return false;
+  };
 
-    YTS.loading = true; YTS.error = ''; L.renderYt();
-    HP.YT.search(q).then(rows => {
-      if (mine !== YTS.seq) return;                 // a newer keystroke won
-      YTS.rows = rows || []; YTS.loading = false; YTS.error = '';
-      L.renderYt();
-    }).catch(() => {
-      if (mine !== YTS.seq) return;
-      YTS.rows = []; YTS.loading = false;
-      YTS.error = HP.t ? HP.t('ytOffline') : 'YouTube search is not reachable right now';
-      L.renderYt();
-    });
+  /** A video was tapped inside that browser — play it here. */
+  L.pickYt = async function (id, title, author) {
+    if (!id) return;
+    await L.playYt({ id: String(id), title: title || '', author: author || '', thumb: '' });
   };
 
   /** Turn a search result into a library track (or reuse the one we already have). */
@@ -287,49 +288,6 @@
     if (!t) return;
     L.render();                                   // it is a library track now
     HP.Player.playTrack(t.id, [t.id]);
-  };
-
-  function ytRow(r) {
-    const thumb = el('div', { class: 'yt-thumb' }, [
-      el('img', { src: r.thumb, alt: '', loading: 'lazy', referrerpolicy: 'no-referrer' }),
-      el('span', { class: 'dur' + (r.live ? ' live' : ''), text: r.live ? 'LIVE' : (r.duration || '—') })
-    ]);
-    const sub = [r.author, r.views, r.published].filter(Boolean).join(' · ');
-    const node = el('div', { class: 'yt-row', tabindex: '0', role: 'button' }, [
-      thumb,
-      el('div', { class: 'yt-info' }, [
-        el('div', { class: 'yt-title', text: r.title }),
-        el('div', { class: 'yt-sub', text: sub })
-      ]),
-      el('div', { class: 'yt-go' }, [icon('play')])
-    ]);
-    const go = () => L.playYt(r);
-    node.addEventListener('click', go);
-    node.addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
-    return node;
-  }
-
-  L.renderYt = function () {
-    const box = $('#yt-results'), list = $('#yt-list'), count = $('#yt-count');
-    if (!box || !list) return;
-    const show = !!YTS.query && (YTS.loading || YTS.rows.length > 0 || !!YTS.error);
-    box.hidden = !show;
-    if (!show) { list.innerHTML = ''; if (count) count.textContent = ''; return; }
-
-    list.innerHTML = '';
-    if (YTS.loading) {
-      list.appendChild(el('div', { class: 'yt-state' }, [
-        el('i', { class: 'yt-spin' }),
-        el('span', { text: (HP.t ? HP.t('ytSearching') : 'Searching YouTube') + ' “' + YTS.query + '”…' })
-      ]));
-    } else if (YTS.error) {
-      list.appendChild(el('div', { class: 'yt-state' }, [el('span', { text: YTS.error })]));
-    } else {
-      const frag = document.createDocumentFragment();
-      YTS.rows.forEach(r => frag.appendChild(ytRow(r)));
-      list.appendChild(frag);
-    }
-    if (count) count.textContent = YTS.loading || YTS.error ? '' : YTS.rows.length + '';
   };
 
   /* Android native scan (MediaStore via the APK bridge) */
@@ -637,13 +595,15 @@
     empty.classList.toggle('show', none && !L.search);
     grid.hidden = none && !L.search;
     if (none && L.search) {
-      const online = YTS.rows.length > 0 || YTS.loading;
+      const q = L.search;
+      const ytBtn = el('button', { class: 'btn small primary yt-btn' }, [
+        icon('yt'), el('span', { text: 'Search “' + q + '” on YouTube' })
+      ]);
+      ytBtn.addEventListener('click', () => L.openYouTube(q));
       grid.appendChild(el('div', { class: 'no-results' }, [
-        el('b', { text: 'Nothing in your library matched “' + L.search + '”' }),
-        el('span', {
-          text: online ? 'Have a look at the YouTube results below.'
-            : 'Try a different word, or clear the search to see everything.'
-        })
+        el('b', { text: 'Nothing in your library matched “' + q + '”' }),
+        el('span', { text: 'Try a different word, or look for it on YouTube.' }),
+        ytBtn
       ]));
     }
     const st = L.stats();

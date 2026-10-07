@@ -111,6 +111,7 @@
     <svg class="ic"><use href="#i-search"/></svg>
     <input id="search" type="search" placeholder="Search tracks, artists, albums…" data-i18n-ph="search" autocomplete="off" spellcheck="false">
     <button class="icon-btn tiny" id="search-clear" hidden aria-label="Clear"><svg class="ic"><use href="#i-x"/></svg></button>
+    <button class="icon-btn tiny yt-open" id="yt-open" aria-label="Open YouTube" title="Open YouTube" data-i18n-t="ytOpen"><svg class="ic"><use href="#i-yt"/></svg></button>
   </div>
   <div class="top-actions">
     <button class="icon-btn" id="btn-install" hidden title="Install app" data-i18n-t="install"><svg class="ic"><use href="#i-install"/></svg></button>
@@ -184,18 +185,6 @@
     </div>
 
     <div id="grid" class="grid"></div>
-
-    <!-- online results for the same search box — only while you are typing -->
-    <section id="yt-results" class="yt-results" hidden>
-      <div class="yt-head">
-        <svg class="ic yt-mark"><use href="#i-yt"/></svg>
-        <h3 data-i18n="ytResults">From YouTube</h3>
-        <span class="yt-count" id="yt-count"></span>
-        <div class="spacer"></div>
-        <button class="icon-btn tiny" id="yt-hide" title="Hide YouTube results"><svg class="ic"><use href="#i-x"/></svg></button>
-      </div>
-      <div id="yt-list" class="yt-list"></div>
-    </section>
 
     <div id="empty" class="empty">
       <div class="empty-art"><img src="icons/icon-192.png" alt=""></div>
@@ -358,7 +347,6 @@
       <label class="switch row"><input type="checkbox" id="set-autoland" checked><i></i><span data-i18n="autoLandscape">Rotate to landscape → full-screen video</span></label>
       <label class="switch row"><input type="checkbox" id="set-autopip" checked><i></i><span data-i18n="autoPip">Keep playing in a floating window when I leave the app</span></label>
       <label class="switch row"><input type="checkbox" id="set-autoscan" checked><i></i><span data-i18n="autoScan">Scan this device for media automatically</span></label>
-      <label class="switch row"><input type="checkbox" id="set-ytsearch" checked><i></i><span data-i18n="ytSearch">Also search YouTube when I search (needs internet)</span></label>
       <div class="set-row">
         <div><b data-i18n="seekStep">Double-tap seek</b><small data-i18n="seekStepSub">Seconds jumped by a double tap / arrow key.</small></div>
         <label class="select"><select id="set-seekstep"><option>5</option><option selected>10</option><option>15</option><option>30</option></select></label>
