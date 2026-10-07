@@ -958,6 +958,43 @@ class MainActivity : AppCompatActivity() {
         return true
     }
 
+    private fun videoIdOf(url: String): String? {
+        if (url.isBlank()) return null
+        val u = try { Uri.parse(url) } catch (e: Exception) { return null }
+        val host = u.host.orEmpty().lowercase()
+        if (!host.contains("youtube.com") && !host.contains("youtu.be")) return null
+        val path = u.path.orEmpty()
+        val id = when {
+            host.contains("youtu.be") -> path.trim('/').substringBefore('/')
+            path.startsWith("/watch") -> u.getQueryParameter("v").orEmpty()
+            path.startsWith("/shorts/") -> path.removePrefix("/shorts/").substringBefore('/')
+            path.startsWith("/embed/") -> path.removePrefix("/embed/").substringBefore('/')
+            path.startsWith("/live/") -> path.removePrefix("/live/").substringBefore('/')
+            else -> ""
+        }
+        return if (id.length in 8..20 && id.all { it.isLetterOrDigit() || it == '-' || it == '_' }) id else null
+    }
+
+    private fun closeYouTubeBrowser() {
+        val layer = ytLayer ?: return
+        val wv = ytWeb
+        ytLayer = null
+        ytWeb = null
+        playBtn = null
+        sniffUrl = null
+        try { CookieManager.getInstance().flush() } catch (e: Exception) { }
+        try {
+            wv?.stopLoading()
+            wv?.loadUrl("about:blank")
+            (wv?.parent as? ViewGroup)?.removeView(wv)
+            wv?.destroy()
+        } catch (e: Exception) { Log.w(TAG, "yt browser teardown", e) }
+        root.removeView(layer)
+        // Let the web layer decide whether the picture comes back (it knows
+        // which route is on screen); never force the surface over the library.
+        web.evaluateJavascript("window.HashBridge && window.HashBridge.onYtBrowser(false);", null)
+    }
+
     private fun toast(s: String) = Toast.makeText(this, s, Toast.LENGTH_SHORT).show()
 
     private fun js(code: String) = runOnUiThread {
