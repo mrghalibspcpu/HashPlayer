@@ -17,6 +17,16 @@ Install it as an app on your phone or desktop, or build a real Android APK — s
 
 ---
 
+## 🆕 Naya kya hai — 2.6
+
+| Masla / feature | Ab kya hota hai |
+|---|---|
+| **Sign in with Google** | YouTube browser ki bar me ab doosri apps jaisa safed **“G Sign in with Google”** pill hai — tap karein aur Google ka apna account chooser usi WebView me khulta hai, ek baar sign in, cookies yaad. Sign in hone par pill **“✓ Signed in”** ban jata hai; **long-press** karein to sign out. |
+| **Search ka shortcut** | Library ki search bar ab phir se **YouTube ke results neeche hi dikhati hai** (“From YouTube” section) — bina browser khole seedha tap kar ke play. Poora YouTube chahiye to wahi laal icon maujood hai. Settings → Playback me ye inline results band bhi kiye ja sakte hain. |
+| **Pitch** | Bottom control panel me naya **Pitch** button (sirf portrait me, audio aur video dono ke liye): −12 se +12 semitone. Ye ExoPlayer ke sonic stretcher se chalta hai — **Pitch se raftar nahi badalti aur Speed se pitch nahi badalti**, dono bilkul alag knobs hain. |
+
+---
+
 ## 🆕 Naya kya hai — 2.5
 
 | Masla / feature | Ab kya hota hai |
