@@ -216,6 +216,8 @@
        object-fit both start at contain for every newly loaded video. */
     if (isVideo) P.setVideoFit('contain', false);
     P.resetZoom();
+    /* the pitch control only exists where the engine can stretch audio */
+    document.body.classList.toggle('can-pitch', !!(window.HashNative && window.HashNative.nPitch));
 
     if (yt && !ytNative && !P.y) { HP.toast('YouTube playback is unavailable here', 'err'); return; }
     if ((!yt || ytNative) && P.y) P.y.stop();       // leaving the embed → tear it down
@@ -272,6 +274,7 @@
       const pos0 = startAt != null ? startAt
         : (S.resume && t.pos > 3 && (!t.duration || t.pos < t.duration - 8) ? t.pos : 0);
       P.n.playbackRate = S.speed;
+      if (P.n.setPitch) P.n.setPitch(Math.pow(2, (S.pitchShift || 0) / 12));
       P.n.volume = S.volume; P.n.muted = S.muted;
       await P.n.setTrack(t, pos0, !!autoplay);
       E().applyVolume();                            // one level across every engine
@@ -551,6 +554,27 @@
     });
     updateSpeedLabel();
   };
+  /* ---- pitch: semitones, independent of the speed control ---- */
+  P.canPitch = function () {
+    try { return !!(window.HashNative && window.HashNative.nPitch && isNat(P.active || P.n)); }
+    catch (e) { return false; }
+  };
+  P.setPitch = function (st, quiet) {
+    S.pitchShift = clamp(Math.round(+st || 0), -12, 12); HP.save();
+    const factor = Math.pow(2, S.pitchShift / 12);
+    if (P.n && P.n.setPitch) P.n.setPitch(factor);
+    updatePitchLabel();
+    if (!quiet && S.pitchShift !== 0) HP.toast('Pitch ' + (S.pitchShift > 0 ? '+' : '') + S.pitchShift + ' semitones');
+  };
+  function updatePitchLabel() {
+    const v = S.pitchShift || 0;
+    const l = $('#pitch-label'); if (l) l.textContent = (v > 0 ? '+' : '') + v;
+    const t = $('#t-pitch'); if (t) t.classList.toggle('on', v !== 0);
+    const r = $('#pitch-range'); if (r) { r.value = v; rangeFill(r); }
+    $$('#pitch-chips .chip').forEach(c => c.classList.toggle('active', +c.dataset.st === v));
+  }
+  P.updatePitchLabel = updatePitchLabel;
+
   const speedText = r => (r % 1 === 0 ? r.toFixed(1) : String(+r.toFixed(2))) + '×';
   function updateSpeedLabel() {
     const l = $('#speed-label'); if (l) l.textContent = speedText(S.speed);
@@ -1206,6 +1230,8 @@
       HP.Lib.downloadYt(P.current);
     });
 
+    $('#t-pitch').addEventListener('click', () => HP.UI.sheet('sheet-pitch'));
+
     $('#t-ab').addEventListener('click', () => P.markAB());
     $('#t-mark').addEventListener('click', () => P.addBookmark());
     $('#t-queue').addEventListener('click', () => HP.UI.toggleQueue());
@@ -1214,7 +1240,8 @@
     $('#t-lyrics').addEventListener('click', () => P.toggleLyrics());
     $('#lyrics').addEventListener('click', () => P.toggleLyrics(false));
 
-    syncToggles(); updateSpeedLabel(); setCCUI(false, false); setSkipSilenceUI(!!S.skipSilence);
+    document.body.classList.toggle('can-pitch', !!(window.HashNative && window.HashNative.nPitch));
+    syncToggles(); updateSpeedLabel(); updatePitchLabel(); setCCUI(false, false); setSkipSilenceUI(!!S.skipSilence);
   }
 
   /* ============================================================

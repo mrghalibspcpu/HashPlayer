@@ -21,6 +21,7 @@ import androidx.media3.common.MimeTypes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
+import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.VideoSize
 import androidx.media3.datasource.DataSource
@@ -538,7 +539,24 @@ class NativePlayback(
         post("seeked")
     }
 
-    fun rate(r: Float) = main.post { try { player?.setPlaybackSpeed(r.coerceIn(0.25f, 4f)) } catch (e: Exception) { } }
+    /* Speed and pitch are two different knobs: ExoPlayer's sonic stretcher can
+       change one without touching the other, so the Speed control never shifts
+       the pitch and the Pitch control never changes the tempo. */
+    private var speed = 1f
+    private var pitch = 1f
+
+    private fun applyParams() {
+        try {
+            player?.playbackParameters = PlaybackParameters(
+                speed.coerceIn(0.25f, 4f), pitch.coerceIn(0.5f, 2f)
+            )
+        } catch (e: Exception) { }
+    }
+
+    fun rate(r: Float) = main.post { speed = if (r.isFinite()) r else 1f; applyParams() }
+
+    /** 1.0 = original. 2^(semitones/12) comes from the web layer. */
+    fun pitch(p: Float) = main.post { pitch = if (p.isFinite() && p > 0f) p else 1f; applyParams() }
 
     fun volume(v: Float) = main.post { player?.volume = v.coerceIn(0f, 1f) }
 

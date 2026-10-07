@@ -186,6 +186,18 @@
 
     <div id="grid" class="grid"></div>
 
+    <!-- online results for the same search box — only while you are typing -->
+    <section id="yt-results" class="yt-results" hidden>
+      <div class="yt-head">
+        <svg class="ic yt-mark"><use href="#i-yt"/></svg>
+        <h3 data-i18n="ytResults">From YouTube</h3>
+        <span class="yt-count" id="yt-count"></span>
+        <div class="spacer"></div>
+        <button class="icon-btn tiny" id="yt-hide" title="Hide YouTube results"><svg class="ic"><use href="#i-x"/></svg></button>
+      </div>
+      <div id="yt-list" class="yt-list"></div>
+    </section>
+
     <div id="empty" class="empty">
       <div class="empty-art"><img src="icons/icon-192.png" alt=""></div>
       <h2 data-i18n="emptyTitle">Drop your media here</h2>
@@ -347,6 +359,7 @@
       <label class="switch row"><input type="checkbox" id="set-autoland" checked><i></i><span data-i18n="autoLandscape">Rotate to landscape → full-screen video</span></label>
       <label class="switch row"><input type="checkbox" id="set-autopip" checked><i></i><span data-i18n="autoPip">Keep playing in a floating window when I leave the app</span></label>
       <label class="switch row"><input type="checkbox" id="set-autoscan" checked><i></i><span data-i18n="autoScan">Scan this device for media automatically</span></label>
+      <label class="switch row"><input type="checkbox" id="set-ytsearch" checked><i></i><span data-i18n="ytSearch">Show YouTube results in search too (needs internet)</span></label>
       <div class="set-row">
         <div><b data-i18n="seekStep">Double-tap seek</b><small data-i18n="seekStepSub">Seconds jumped by a double tap / arrow key.</small></div>
         <label class="select"><select id="set-seekstep"><option>5</option><option selected>10</option><option>15</option><option>30</option></select></label>
@@ -491,6 +504,7 @@
         <button class="tool" id="t-lyrics"><svg class="ic"><use href="#i-lyrics"/></svg><span data-i18n="lyrics">Lyrics</span></button>
         <button class="tool video-tool" id="t-silence" aria-pressed="false"><svg class="ic"><use href="#i-silence"/></svg><span data-i18n="skipSilence">Skip silence</span></button>
         <button class="tool video-tool" id="t-cc" aria-pressed="false" hidden><svg class="ic"><use href="#i-cc"/></svg><span data-i18n="captions">Captions</span></button>
+        <button class="tool portrait-tool" id="t-pitch" data-pro><b id="pitch-label">0</b><span data-i18n="pitch2">Pitch</span></button>
         <button class="tool" id="t-sleep"><svg class="ic"><use href="#i-timer"/></svg><span data-i18n="sleep">Sleep</span></button>
         <button class="tool" id="t-mark" data-pro><svg class="ic"><use href="#i-mark"/></svg><span data-i18n="bookmark">Bookmark</span></button>
         <button class="tool" id="t-vis" data-pro><svg class="ic"><use href="#i-wave"/></svg><span data-i18n="visualizer">Visualizer</span></button>
@@ -526,6 +540,24 @@
   <h3 data-i18n="speed">Playback speed</h3>
   <div class="chips wrap" id="speed-chips"></div>
   <input type="range" id="speed-range" min="25" max="300" step="5" value="100">
+  <div class="sheet-foot"><button class="btn ghost" data-close data-i18n="close">Close</button></div>
+</div>
+
+<div class="sheet" id="sheet-pitch" hidden>
+  <h3 data-i18n="pitchTitle">Pitch</h3>
+  <p class="muted" data-i18n="pitchSub">Shifts the key up or down in semitones. The speed stays exactly where you left it.</p>
+  <div class="chips wrap" id="pitch-chips">
+    <button class="chip" data-st="-12">-12</button>
+    <button class="chip" data-st="-5">-5</button>
+    <button class="chip" data-st="-2">-2</button>
+    <button class="chip" data-st="-1">-1</button>
+    <button class="chip" data-st="0" data-i18n="original">Original</button>
+    <button class="chip" data-st="1">+1</button>
+    <button class="chip" data-st="2">+2</button>
+    <button class="chip" data-st="5">+5</button>
+    <button class="chip" data-st="12">+12</button>
+  </div>
+  <input type="range" id="pitch-range" min="-12" max="12" step="1" value="0">
   <div class="sheet-foot"><button class="btn ghost" data-close data-i18n="close">Close</button></div>
 </div>
 

@@ -56,6 +56,7 @@
     searchFocused = false;
     if (input) input.blur();
     $('#search-clear').hidden = true;
+    L.ytSearch('');
     UI.nav('library');
     L.render();
     UI.updateSearchActive();
@@ -537,7 +538,8 @@
     const sw = [['#set-autotheme', 'autoTheme'], ['#set-motion', 'motion'], ['#set-simple', 'simple'],
     ['#set-perf', 'perf'], ['#set-gestures', 'gestures'], ['#set-resume', 'resume'],
     ['#set-autoplay', 'autoplayNext'], ['#set-keepawake', 'keepAwake'],
-    ['#set-autoland', 'autoLandscape'], ['#set-autopip', 'autoPip'], ['#set-autoscan', 'autoScan']];
+    ['#set-autoland', 'autoLandscape'], ['#set-autopip', 'autoPip'], ['#set-autoscan', 'autoScan'],
+    ['#set-ytsearch', 'ytSearch']];
     sw.forEach(([sel, key]) => {
       const c = $(sel); if (!c) return;
       c.checked = !!S[key];
@@ -546,6 +548,7 @@
         HP.emit('setting', { k: key, v: c.checked });
         if (key === 'motion' || key === 'simple' || key === 'perf') applyTheme();
         if (key === 'perf') { HP.Vis.retune && HP.Vis.retune(); HP.toast(c.checked ? 'Smooth mode on — fewer effects, steadier playback' : 'Full effects on', 'ok'); }
+        if (key === 'ytSearch') L.ytSearch(c.checked ? L.search : '');
         if (key === 'autoTheme') { if (!c.checked) P.clearTint(); else if (P.current) HP.emit('track-changed', P.current); }
       });
     });
@@ -886,6 +889,11 @@
       HP.Engine.setVolume(v, { fromDevice: true });
     },
 
+    /** Rows for one YouTube search, answered on the id we asked with. */
+    onYtSearch(reqId, json) {
+      if (HP.YT && HP.YT.deliver) HP.YT.deliver(reqId, json);
+    },
+
     /** The in-app browser found the video on a page — play it here. */
     onOpenStream(json) {
       (async () => {
@@ -1000,10 +1008,17 @@
       $('#search-clear').hidden = !search.value;
       L.render();
     }, 160));
+    /* The same box also looks on YouTube — on a longer delay, so it waits for
+       you to stop typing instead of firing a request per keystroke. */
+    search.addEventListener('input', HP.debounce(() => L.ytSearch(search.value), 420));
+    search.addEventListener('keydown', e => { if (e.key === 'Enter') L.ytSearch(search.value); });
     $('#search-clear').addEventListener('click', () => {
       search.value = ''; L.search = ''; $('#search-clear').hidden = true;
-      L.render(); search.focus(); UI.updateSearchActive();
+      L.render(); L.ytSearch(''); search.focus(); UI.updateSearchActive();
     });
+    const ytHide = $('#yt-hide');
+    if (ytHide) ytHide.addEventListener('click', () => { L.yt.rows = []; L.yt.error = ''; L.renderYt(); });
+    w.addEventListener('online', () => { if (L.search) L.ytSearch(L.search); });
     $('#search-back').addEventListener('click', () => UI.exitSearch());
     /* The YouTube icon in the search bar opens YouTube itself — the real home
        feed and the real search, so the results are exactly the app's. */
@@ -1069,6 +1084,13 @@
     });
     const sr = $('#speed-range');
     sr.addEventListener('input', () => P.setSpeed(sr.value / 100));
+
+    /* pitch — a separate control: it never touches the speed, and the speed
+       control never touches it */
+    $$('#pitch-chips .chip').forEach(c =>
+      c.addEventListener('click', () => P.setPitch(+c.dataset.st, true)));
+    const pr = $('#pitch-range');
+    if (pr) pr.addEventListener('input', () => P.setPitch(+pr.value, true));
 
     /* lyrics tool from the np toolbar (long press opens editor) */
     let lt;

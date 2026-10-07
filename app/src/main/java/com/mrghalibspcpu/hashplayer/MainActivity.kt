@@ -530,6 +530,28 @@ class MainActivity : AppCompatActivity() {
          * Open YouTube itself, inside the app. Tapping any video there hands the
          * id back to the player instead of playing it in the page.
          */
+        /**
+         * Quick inline results for the library search bar (InnerTube, no key and
+         * no account). The full YouTube experience is one tap further, in the
+         * in-app browser.
+         */
+        @android.webkit.JavascriptInterface
+        fun ytSearch(query: String?, reqId: String?) {
+            val q = query.orEmpty()
+            val id = reqId.orEmpty()
+            thread {
+                val list = try { YouTubeStream.search(q) } catch (e: Throwable) {
+                    Log.w(TAG, "yt search", e); JSONArray()
+                }
+                runOnUiThread {
+                    web.evaluateJavascript(
+                        "window.HashBridge && window.HashBridge.onYtSearch(" +
+                            JSONObject.quote(id) + "," + JSONObject.quote(list.toString()) + ");", null
+                    )
+                }
+            }
+        }
+
         @android.webkit.JavascriptInterface
         fun openYouTube(query: String?) = runOnUiThread { openYouTubeBrowser(query.orEmpty()) }
 
@@ -645,6 +667,13 @@ class MainActivity : AppCompatActivity() {
 
         @android.webkit.JavascriptInterface
         fun nRate(r: Float) = nativePlayer.rate(r)
+
+        /** Independent pitch (1.0 = original); speed is left alone. */
+        @android.webkit.JavascriptInterface
+        fun nPitch(p: Float) = nativePlayer.pitch(p)
+
+        @android.webkit.JavascriptInterface
+        fun pitchControl(): Boolean = true
 
         @android.webkit.JavascriptInterface
         fun nVolume(v: Float) = nativePlayer.volume(v)
@@ -775,6 +804,7 @@ class MainActivity : AppCompatActivity() {
     private var sniffUrl: String? = null
     private var sniffTitle = ""
     private var playBtn: TextView? = null
+    private var signInBtn: TextView? = null
 
     @SuppressLint("SetJavaScriptEnabled")
     private fun openYouTubeBrowser(query: String) {
@@ -838,20 +868,28 @@ class MainActivity : AppCompatActivity() {
         bar.addView(play, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
 
         if (youtube) {
+            /* A real "Sign in with Google" pill, like other apps show: white
+               background, the blue/red/yellow/green G, and it goes straight to
+               Google's own account chooser inside this same WebView so the
+               session cookie lands where YouTube will read it. */
             val signIn = TextView(this).apply {
-                text = getString(R.string.yt_sign_in)
-                setTextColor(Color.parseColor("#7ad7ff"))
                 textSize = 12.5f
                 typeface = android.graphics.Typeface.DEFAULT_BOLD
-                setPadding((10 * d).toInt(), (8 * d).toInt(), (6 * d).toInt(), (8 * d).toInt())
-                setOnClickListener {
-                    ytWeb?.loadUrl(
-                        "https://accounts.google.com/ServiceLogin?service=youtube" +
-                            "&continue=https%3A%2F%2Fm.youtube.com%2F"
-                    )
+                setPadding((12 * d).toInt(), (7 * d).toInt(), (12 * d).toInt(), (7 * d).toInt())
+                background = android.graphics.drawable.GradientDrawable().apply {
+                    cornerRadius = 18 * d
+                    setColor(Color.WHITE)
                 }
+                setOnClickListener { googleSignIn() }
+                setOnLongClickListener { googleSignOut(); true }
             }
-            bar.addView(signIn, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            signInBtn = signIn
+            paintSignIn()
+            bar.addView(
+                signIn,
+                LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+                    .apply { leftMargin = (6 * d).toInt() }
+            )
         }
 
         val wv = WebView(this)
@@ -898,6 +936,7 @@ class MainActivity : AppCompatActivity() {
 
             override fun onPageFinished(view: WebView, url: String?) {
                 CookieManager.getInstance().flush()   // keep the sign-in across restarts
+                paintSignIn()
             }
         }
 
@@ -913,6 +952,39 @@ class MainActivity : AppCompatActivity() {
         ytWeb = wv
         nativePlayer.setVideoVisible(false)           // the player's picture stays out of the way
         wv.loadUrl(startUrl)
+    }
+
+    /** Is there a Google session in this WebView's cookie jar? */
+    private fun signedIn(): Boolean = try {
+        val c = CookieManager.getInstance().getCookie("https://m.youtube.com").orEmpty()
+        c.contains("SAPISID=") || c.contains("__Secure-3PAPISID=") || c.contains("LOGIN_INFO=")
+    } catch (e: Exception) { false }
+
+    private fun paintSignIn() {
+        val b = signInBtn ?: return
+        val inNow = signedIn()
+        b.text = if (inNow) getString(R.string.yt_signed_in) else getString(R.string.yt_sign_in_google)
+        b.setTextColor(Color.parseColor(if (inNow) "#1a7f37" else "#1f1f1f"))
+    }
+
+    /** Google's own account chooser, in this very WebView. */
+    private fun googleSignIn() {
+        ytWeb?.loadUrl(
+            "https://accounts.google.com/AccountChooser?service=youtube" +
+                "&continue=https%3A%2F%2Fm.youtube.com%2F%3Fpersist_app%3D1"
+        )
+        toast(getString(R.string.yt_sign_in_hint))
+    }
+
+    /** Long-press the pill: forget the account on this device. */
+    private fun googleSignOut() {
+        try {
+            CookieManager.getInstance().removeAllCookies(null)
+            CookieManager.getInstance().flush()
+        } catch (e: Exception) { }
+        ytWeb?.loadUrl("https://m.youtube.com/")
+        paintSignIn()
+        toast(getString(R.string.yt_signed_out))
     }
 
     /** A request that looks like the page's actual media file. */
@@ -981,6 +1053,7 @@ class MainActivity : AppCompatActivity() {
         ytLayer = null
         ytWeb = null
         playBtn = null
+        signInBtn = null
         sniffUrl = null
         try { CookieManager.getInstance().flush() } catch (e: Exception) { }
         try {

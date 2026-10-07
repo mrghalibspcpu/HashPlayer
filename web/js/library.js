@@ -280,6 +280,32 @@
     await L.playYt({ id: String(id), title: title || '', author: author || '', thumb: '' });
   };
 
+  /* ---------------- YouTube search results ----------------
+     The same search box, extended online. Results are shown in their own
+     section under the library and only become real tracks once you play one. */
+  const YTS = L.yt = { query: '', rows: [], loading: false, error: '', seq: 0 };
+
+  L.ytSearch = function (query) {
+    const q = String(query || '').trim();
+    YTS.query = q;
+    const mine = ++YTS.seq;
+    const can = S.ytSearch !== false && q.length >= 2 &&
+      navigator.onLine !== false && HP.YT && HP.YT.canSearch();
+    if (!can) { YTS.rows = []; YTS.loading = false; YTS.error = ''; L.renderYt(); return; }
+
+    YTS.loading = true; YTS.error = ''; L.renderYt();
+    HP.YT.search(q).then(rows => {
+      if (mine !== YTS.seq) return;                 // a newer keystroke won
+      YTS.rows = rows || []; YTS.loading = false; YTS.error = '';
+      L.renderYt();
+    }).catch(() => {
+      if (mine !== YTS.seq) return;
+      YTS.rows = []; YTS.loading = false;
+      YTS.error = HP.t ? HP.t('ytOffline') : 'YouTube search is not reachable right now';
+      L.renderYt();
+    });
+  };
+
   /** Turn a search result into a library track (or reuse the one we already have). */
   L.addYt = async function (row) {
     if (!row || !row.id) return null;
@@ -328,6 +354,49 @@
     if (!t) return;
     L.render();                                   // it is a library track now
     HP.Player.playTrack(t.id, [t.id]);
+  };
+
+  function ytRow(r) {
+    const thumb = el('div', { class: 'yt-thumb' }, [
+      el('img', { src: r.thumb, alt: '', loading: 'lazy', referrerpolicy: 'no-referrer' }),
+      el('span', { class: 'dur' + (r.live ? ' live' : ''), text: r.live ? 'LIVE' : (r.duration || '—') })
+    ]);
+    const sub = [r.author, r.views, r.published].filter(Boolean).join(' · ');
+    const node = el('div', { class: 'yt-row', tabindex: '0', role: 'button' }, [
+      thumb,
+      el('div', { class: 'yt-info' }, [
+        el('div', { class: 'yt-title', text: r.title }),
+        el('div', { class: 'yt-sub', text: sub })
+      ]),
+      el('div', { class: 'yt-go' }, [icon('play')])
+    ]);
+    const go = () => L.playYt(r);
+    node.addEventListener('click', go);
+    node.addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
+    return node;
+  }
+
+  L.renderYt = function () {
+    const box = $('#yt-results'), list = $('#yt-list'), count = $('#yt-count');
+    if (!box || !list) return;
+    const show = !!YTS.query && (YTS.loading || YTS.rows.length > 0 || !!YTS.error);
+    box.hidden = !show;
+    if (!show) { list.innerHTML = ''; if (count) count.textContent = ''; return; }
+
+    list.innerHTML = '';
+    if (YTS.loading) {
+      list.appendChild(el('div', { class: 'yt-state' }, [
+        el('i', { class: 'yt-spin' }),
+        el('span', { text: (HP.t ? HP.t('ytSearching') : 'Searching YouTube') + ' “' + YTS.query + '”…' })
+      ]));
+    } else if (YTS.error) {
+      list.appendChild(el('div', { class: 'yt-state' }, [el('span', { text: YTS.error })]));
+    } else {
+      const frag = document.createDocumentFragment();
+      YTS.rows.forEach(r => frag.appendChild(ytRow(r)));
+      list.appendChild(frag);
+    }
+    if (count) count.textContent = YTS.loading || YTS.error ? '' : YTS.rows.length + '';
   };
 
   /* Android native scan (MediaStore via the APK bridge) */

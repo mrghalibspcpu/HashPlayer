@@ -250,6 +250,10 @@ body.playing .play-btn{animation:playGlow 3.4s ease-in-out infinite}
 .tool.on{color:var(--a1);border-color:color-mix(in srgb,var(--a1) 55%,transparent);
   background:color-mix(in srgb,var(--a1) 12%,transparent)}
 .tool.on b{color:var(--a1)}
+/* Pitch is a portrait-only control and only exists where the engine can
+   actually stretch audio without changing tempo (the Android app). */
+.portrait-tool{display:none}
+body.can-pitch .portrait-tool{display:flex}
 /* These live in the bottom control panel, not the video side palette. */
 .video-tool{display:none}
 body.has-video .video-tool{display:flex}
@@ -351,6 +355,11 @@ body.yt-mode .vtools{opacity:1}
 @media (orientation:landscape){
   body.has-video #np .np-tools #t-silence,
   body.has-video #np .np-tools #t-cc{display:none !important}
+}
+/* Pitch belongs to portrait only — in landscape it never shows, for audio
+   or video, so the bottom overlay stays a playback bar. */
+@media (orientation:landscape){
+  #np .np-tools .portrait-tool{display:none !important}
 }
 
 /* ============================================================

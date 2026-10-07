@@ -62,8 +62,8 @@
     volume: 1, muted: false, repeat: 'off', shuffle: false, speed: 1, viewMode: 'grid', sort: 'added',
     filter: 'all', eqOn: false, eqGains: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0], eqPreset: 'flat',
     preamp: 0, bass: 0, treble: 0, reverb: 0, width: 100, balance: 0, boost: 100, crossfade: 0,
-    mono: false, normalize: false, fade: true, pitch: true, lastId: null, lastPos: 0, lyricsOn: false,
-    perf: null, autoPip: true, autoScan: true, autoLandscape: true, skipSilence: false
+    mono: false, normalize: false, fade: true, pitch: true, pitchShift: 0, lastId: null, lastPos: 0, lyricsOn: false,
+    perf: null, autoPip: true, autoScan: true, autoLandscape: true, ytSearch: true, skipSilence: false
   };
   /* ---------- how much eye-candy can this device actually afford? ---------- */
   const ua = navigator.userAgent || '';
@@ -111,6 +111,10 @@
        never appear as markup need to be seeded here. */
     en: {
       ytOpen: 'Open YouTube',
+      pitch2: 'Pitch', pitchTitle: 'Pitch', original: 'Original',
+      pitchSub: 'Shifts the key up or down in semitones. The speed stays exactly where you left it.',
+      ytSearching: 'Searching YouTube for',
+      ytOffline: 'YouTube search is not reachable right now',
       ttDownload: 'Save for offline'
     },
     ur: {
@@ -146,7 +150,10 @@
       autoScan: 'ڈیوائس کی آڈیو/ویڈیو خودکار تلاش کریں',
       findLyrics: 'آن لائن بول تلاش کریں', scan: 'ڈیوائس اسکین کریں',
       addUrlSub2: 'یوٹیوب لنک یا آڈیو/ویڈیو فائل کا براہِ راست لنک۔',
-      ytOpen: 'یوٹیوب کھولیں',
+      ytOpen: 'یوٹیوب کھولیں', pitch2: 'پچ', pitchTitle: 'پچ', original: 'اصل',
+      pitchSub: 'آواز کی پچ سیمی ٹون میں اوپر نیچے کریں۔ رفتار جہاں ہے وہیں رہے گی۔', ytResults: 'یوٹیوب سے',
+      ytSearch: 'تلاش میں یوٹیوب کے نتائج بھی دکھائیں (انٹرنیٹ درکار)',
+      ytSearching: 'یوٹیوب پر تلاش جاری ہے', ytOffline: 'یوٹیوب تلاش فی الحال دستیاب نہیں',
       tapToUnlock: 'ان لاک کرنے کے لیے ٹیپ کریں',
       ttAspect: 'تناسب / زوم', ttRotate: 'گھمائیں', ttMirror: 'آئینہ', ttShot: 'اسکرین شاٹ',
       ttSubs: 'سب ٹائٹل', ttSpeed: 'چلنے کی رفتار', ttLock: 'اسکرین لاک', ttPip: 'چھوٹی ونڈو',

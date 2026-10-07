@@ -94,7 +94,7 @@
 
     let uri = '', isVideo = false, viewActive = false;
     let pos = 0, dur = 0, buffered = 0, paused = true, ended = false;
-    let rate = 1, vol = 1, muted = false, ready = false, failed = null;
+    let rate = 1, pitch = 1, vol = 1, muted = false, ready = false, failed = null;
     let resizeMode = 'contain', rectTimer = 0, playResolve = null;
 
     this.__native = true;
@@ -183,6 +183,12 @@
       if (viewActive) requestAnimationFrame(pushRect);
     };
 
+    /** Independent pitch shift — ExoPlayer stretches without changing tempo. */
+    this.setPitch = function (v) {
+      pitch = +v || 1;
+      try { bridge().nPitch(pitch); } catch (e) { }
+    };
+
     /** Pinch zoom/pan for the native picture. Pan is a fraction of the stage. */
     this.setZoom = function (z, px, py) {
       try { bridge().nZoom(+z || 1, +px || 0, +py || 0); } catch (e) { }
@@ -210,6 +216,7 @@
       try {
         bridge().nResizeMode(resizeMode);
         bridge().nRate(rate);
+        bridge().nPitch(pitch);
         bridge().nVolume(muted ? 0 : vol);
       } catch (e) { }
       N.pushEq();
