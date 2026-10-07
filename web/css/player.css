@@ -335,6 +335,9 @@ body.yt-mode .stage{background:#000}
 /* the embed owns its own pixels — our video-only tools cannot touch them */
 body.yt-mode #v-shot,body.yt-mode #v-mirror,body.yt-mode #v-rotate,
 body.yt-mode #v-aspect,body.yt-mode #v-cc{display:none}
+#v-dl{display:none}
+body.yt-track #v-dl{display:grid}
+#v-dl.busy{color:var(--a1)}
 #v-yt{display:none}
 body.yt-mode #v-yt,body.yt-track #v-yt{display:grid;color:#ff4d4d}
 /* YouTube streamed by our own engine: no screenshot of a protected surface and

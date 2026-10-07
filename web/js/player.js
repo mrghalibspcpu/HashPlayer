@@ -1199,6 +1199,13 @@
       HP.toast('Rotated ' + rot + '°');
     });
 
+    const vDl = $('#v-dl');
+    if (vDl && !(window.HashNative && window.HashNative.ytDownload)) vDl.hidden = true;
+    if (vDl) vDl.addEventListener('click', () => {
+      if (vDl.classList.contains('busy')) { HP.toast('Already saving this video'); return; }
+      HP.Lib.downloadYt(P.current);
+    });
+
     $('#t-ab').addEventListener('click', () => P.markAB());
     $('#t-mark').addEventListener('click', () => P.addBookmark());
     $('#t-queue').addEventListener('click', () => HP.UI.toggleQueue());
@@ -1380,6 +1387,16 @@
     clearTimeout(zoomTimer);
     zoomTimer = setTimeout(() => g.classList.remove('on'), 500);
   }
+
+  /** Offline-download progress, shown on the little save button. */
+  P.showDownload = function (d) {
+    const btn = $('#v-dl'), badge = $('#v-dl-badge');
+    if (!btn || !badge) return;
+    const busy = d.state === 'start' || d.state === 'progress';
+    btn.classList.toggle('busy', busy);
+    badge.hidden = !busy;
+    if (busy) badge.textContent = (d.pct || 0) + '%';
+  };
 
   function showBar(ic, val, pct) {
     const b = $('#gbar');

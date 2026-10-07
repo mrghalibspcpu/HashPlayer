@@ -234,6 +234,46 @@
     return false;
   };
 
+  /** Open any other page (TikTok, Facebook, Instagram, X…) in the in-app
+     browser, which watches it for the real video file. */
+  L.openWeb = function (url) {
+    const n = window.HashNative;
+    if (n && n.openWeb) { try { n.openWeb(String(url)); return true; } catch (e) { } }
+    try { window.open(url, '_blank', 'noopener'); } catch (e) { location.href = url; }
+    return false;
+  };
+
+  /** A stream the in-app browser found on a page — add it and play it. */
+  L.addStream = async function (info) {
+    if (!info || !info.url) return null;
+    const url = String(info.url);
+    const site = String(info.site || '').replace(/^www\./, '');
+    const title = String(info.title || site || 'Web video').slice(0, 140);
+    const known = [...L.tracks.values()].find(t => t.url === url);
+    if (known) return known;
+    const t = {
+      id: HP.uid(), key: url, name: title, title, artist: site || 'Web',
+      album: '', genre: '', year: '', trackNo: '', duration: 0, size: 0, mime: '',
+      kind: 'video', source: 'url', file: null, handle: null, nativeUri: url,
+      url, cover: null, folder: '', added: Date.now(), plays: 0, lastPlayed: 0,
+      fav: false, pos: 0, lrc: null, sub: null, bookmarks: [], tagged: true
+    };
+    L.tracks.set(t.id, t);
+    await saveTrack(t);
+    HP.emit('library');
+    return t;
+  };
+
+  /** Save a YouTube video to the device so it plays with no internet. */
+  L.downloadYt = function (track) {
+    const n = window.HashNative;
+    const t = track || (HP.Player && HP.Player.current);
+    if (!t || t.source !== 'yt' || !t.ytId) { HP.toast('Only YouTube videos can be saved', 'err'); return false; }
+    if (!(n && n.ytDownload)) { HP.toast('Downloads need the Android app', 'err'); return false; }
+    try { n.ytDownload(t.ytId, t.title || t.name || ''); return true; }
+    catch (e) { HP.toast('Could not start the download', 'err'); return false; }
+  };
+
   /** A video was tapped inside that browser — play it here. */
   L.pickYt = async function (id, title, author) {
     if (!id) return;

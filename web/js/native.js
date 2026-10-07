@@ -197,7 +197,7 @@
     /* ---------- commands ---------- */
     this.setTrack = function (t, startAt, autoplay) {
       const sub = (t.kind === 'video' && t.sub) ? String(t.sub) : '';
-      uri = t.source === 'yt' ? N.ytUri(t.ytId) : t.nativeUri;
+      uri = t.source === 'yt' ? N.ytUri(t.ytId) : (t.nativeUri || t.url);
       isVideo = t.kind === 'video';
       pos = startAt || 0; dur = t.duration || 0;
       buffered = 0; ended = false; ready = false; failed = null;

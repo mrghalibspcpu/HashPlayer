@@ -66,6 +66,26 @@ class NativePlayback(
         private const val TAG = "HashPlayerNative"
         /** Pseudo-scheme the web app uses for "play this YouTube id natively". */
         const val YT_SCHEME = "hpyt:"
+
+        /**
+         * Streams sniffed out of a web page (TikTok, Facebook, Instagram, X…)
+         * usually only answer requests that carry the page's own cookies,
+         * referer and user agent. The browser records them here before asking
+         * the player to open the url.
+         */
+        private val webHeaders = HashMap<String, Map<String, String>>()
+
+        @Synchronized
+        fun rememberHeaders(url: String, json: JSONObject) {
+            val map = HashMap<String, String>()
+            val keys = json.keys()
+            while (keys.hasNext()) { val k = keys.next(); map[k] = json.optString(k) }
+            if (webHeaders.size > 16) webHeaders.clear()
+            webHeaders[url] = map
+        }
+
+        @Synchronized
+        fun headersFor(url: String): Map<String, String>? = webHeaders[url]
     }
 
     private val main = Handler(Looper.getMainLooper())
@@ -347,7 +367,10 @@ class NativePlayback(
 
             val b = MediaItem.Builder().setUri(Uri.parse(uri))
             subtitleItem(subtitle)?.let { b.setSubtitleConfigurations(listOf(it)) }
-            p.setMediaItem(b.build())
+            val item = b.build()
+            val headers = headersFor(uri)
+            if (headers != null) p.setMediaSource(webSource(item, uri, headers))
+            else p.setMediaItem(item)
             p.prepare()
             if (startSec > 0) p.seekTo((startSec * 1000).toLong())
             showSurface(video)
@@ -358,6 +381,20 @@ class NativePlayback(
             Log.w(TAG, "load failed", e)
             post("error", "OPEN_FAILED")
         }
+    }
+
+    /** A stream lifted from a web page: replay that page's headers with it. */
+    private fun webSource(item: MediaItem, uri: String, headers: Map<String, String>): MediaSource {
+        val http = DefaultHttpDataSource.Factory()
+            .setUserAgent(headers["User-Agent"] ?: "Mozilla/5.0")
+            .setAllowCrossProtocolRedirects(true)
+            .setConnectTimeoutMs(15_000)
+            .setReadTimeoutMs(20_000)
+            .setDefaultRequestProperties(headers.filterKeys { it != "User-Agent" })
+        val path = Uri.parse(uri).path.orEmpty().lowercase()
+        return if (path.endsWith(".m3u8"))
+            HlsMediaSource.Factory(http).createMediaSource(item)
+        else ProgressiveMediaSource.Factory(http).createMediaSource(item)
     }
 
     /* ------------------------------------------------------------ YouTube */

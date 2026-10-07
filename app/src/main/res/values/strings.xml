@@ -11,4 +11,7 @@
     <string name="vis_needs_mic">The visualiser needs audio access — playback keeps working without it</string>
     <string name="yt_close">Close YouTube</string>
     <string name="yt_browse_hint">YouTube — tap any video to play it in HashPlayer</string>
+    <string name="yt_sign_in">Sign in</string>
+    <string name="web_browse_hint">Play the video on the page, then tap Play in HashPlayer</string>
+    <string name="web_play_here">▶ Play in HashPlayer</string>
 </resources>

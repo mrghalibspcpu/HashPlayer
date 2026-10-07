@@ -116,6 +116,30 @@
                 <data android:scheme="http" android:host="youtu.be" />
             </intent-filter>
 
+            <!-- Any other video site: TikTok, Facebook, Instagram, X, Reddit…
+                 HashPlayer opens the page in its own browser, finds the real
+                 video file in it and plays that with its own controls. -->
+            <intent-filter android:label="@string/play_in_hashplayer">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="www.tiktok.com" />
+                <data android:scheme="https" android:host="vm.tiktok.com" />
+                <data android:scheme="https" android:host="vt.tiktok.com" />
+                <data android:scheme="https" android:host="m.tiktok.com" />
+                <data android:scheme="https" android:host="www.facebook.com" />
+                <data android:scheme="https" android:host="m.facebook.com" />
+                <data android:scheme="https" android:host="fb.watch" />
+                <data android:scheme="https" android:host="www.instagram.com" />
+                <data android:scheme="https" android:host="instagram.com" />
+                <data android:scheme="https" android:host="twitter.com" />
+                <data android:scheme="https" android:host="x.com" />
+                <data android:scheme="https" android:host="www.dailymotion.com" />
+                <data android:scheme="https" android:host="dai.ly" />
+                <data android:scheme="https" android:host="vimeo.com" />
+                <data android:scheme="https" android:host="www.reddit.com" />
+            </intent-filter>
+
             <!-- Share sheet: YouTube "Share → HashPlayer", or share an audio/video file -->
             <intent-filter android:label="@string/play_in_hashplayer">
                 <action android:name="android.intent.action.SEND" />

@@ -110,7 +110,8 @@
     /* English is harvested from the markup on first paint; only strings that
        never appear as markup need to be seeded here. */
     en: {
-      ytOpen: 'Open YouTube'
+      ytOpen: 'Open YouTube',
+      ttDownload: 'Save for offline'
     },
     ur: {
       search: 'تلاش کریں…', library: 'لائبریری', playlists: 'پلے لسٹ', favorites: 'پسندیدہ', sound: 'آواز',
@@ -149,7 +150,8 @@
       tapToUnlock: 'ان لاک کرنے کے لیے ٹیپ کریں',
       ttAspect: 'تناسب / زوم', ttRotate: 'گھمائیں', ttMirror: 'آئینہ', ttShot: 'اسکرین شاٹ',
       ttSubs: 'سب ٹائٹل', ttSpeed: 'چلنے کی رفتار', ttLock: 'اسکرین لاک', ttPip: 'چھوٹی ونڈو',
-      ttYt: 'یوٹیوب میں کھولیں', ttFull: 'پوری اسکرین'
+      ttYt: 'یوٹیوب میں کھولیں', ttFull: 'پوری اسکرین',
+      ttDownload: 'آف لائن کے لیے محفوظ کریں'
     }
   };
   HP.t = k => (STR[S.lang] && STR[S.lang][k]) || STR.en[k] || k;

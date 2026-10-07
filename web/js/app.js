@@ -790,7 +790,14 @@
     onOpenLink(url) {
       (async () => {
         try {
-          const t = await L.addUrl(url);
+          /* A YouTube link or a direct media file plays straight away. Anything
+             else (TikTok, Facebook, Instagram, X, a blog…) is a *page*: open it
+             in the in-app browser, which finds the real video inside it. */
+          const u = String(url || '');
+          const yt = HP.YT && HP.YT.parse ? HP.YT.parse(u) : null;
+          const direct = /\.(mp3|m4a|aac|flac|wav|ogg|opus|mp4|m4v|webm|mkv|mov|m3u8|mpd)(\?|#|$)/i.test(u);
+          if (!(yt && yt.id) && !direct) { L.openWeb(u); return; }
+          const t = await L.addUrl(u);
           if (!t) return;
           L.render();
           P.context = 'Shared link';
@@ -877,6 +884,43 @@
       if (Math.abs((S.volume || 0) - v) < .005 && !S.muted) return;
       S.muted = false;
       HP.Engine.setVolume(v, { fromDevice: true });
+    },
+
+    /** The in-app browser found the video on a page — play it here. */
+    onOpenStream(json) {
+      (async () => {
+        try {
+          const info = JSON.parse(json);
+          const t = await L.addStream(info);
+          if (!t) return;
+          L.render();
+          P.context = info.site || 'Web';
+          await P.playTrack(t.id, [t.id]);
+          UI.openNP(true);
+        } catch (e) { HP.toast('Could not play that video', 'err'); }
+      })();
+    },
+
+    /** Offline download progress from the Android shell. */
+    onDownload(json) {
+      let d = null;
+      try { d = JSON.parse(json); } catch (e) { return; }
+      if (!d) return;
+      P.showDownload(d);
+      if (d.state === 'done') {
+        L.addNative([{
+          uri: d.uri, name: d.name, title: d.title || '', artist: d.artist || '',
+          album: '', size: d.size || 0, mime: d.mime || '', duration: d.duration || 0,
+          kind: d.kind || 'video', folder: 'HashPlayer'
+        }], { quiet: true }).then(() => {
+          L.render();
+          HP.toast('Saved for offline — it is in your library now', 'ok');
+        });
+      } else if (d.state === 'error') {
+        HP.toast('Download failed: ' + (d.error || 'unknown'), 'err');
+      } else if (d.state === 'start') {
+        HP.toast('Downloading…', 'ok');
+      }
     },
 
     /** The in-app YouTube browser opened/closed — re-sync the native picture. */
