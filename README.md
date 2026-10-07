@@ -17,6 +17,16 @@ Install it as an app on your phone or desktop, or build a real Android APK — s
 
 ---
 
+## 🆕 Naya kya hai — 2.5
+
+| Masla / feature | Ab kya hota hai |
+|---|---|
+| **YouTube sign in** | In-app YouTube browser ki upar wali bar me **Sign in** button. Ek baar Google se sign in karein — cookies mehfooz rehti hain, is liye agli dafa aapka apna home feed, subscriptions, history aur suggestions aate hain, bilkul YouTube app ki tarah. (WebView ko asli Chrome user-agent diya gaya hai, warna Google sign-in block kar deta hai.) |
+| **Har site ki video** | TikTok, Facebook, Instagram, X, Dailymotion, Vimeo, Reddit ya koi bhi page — link share karein, "Open with" me HashPlayer chunein, ya URL sheet me paste karein. Page app ke andar khulta hai, HashPlayer uski asli video file khud dhoond leta hai aur **▶ Play in HashPlayer** button laal ho jata hai — tap karein aur video page ke apne cookies/referer ke saath hamare engine me chalti hai. |
+| **Offline download** | YouTube video chalte waqt side panel me naya **save** button. Tap karein — video seedha phone ke `Movies/HashPlayer` folder me save hoti hai (progress % button par), aur khatam hote hi library me aa jati hai, bina internet ke chalne ke liye. (Ek hi file wali progressive stream save hoti hai, kyunki app me transcoder nahi hai.) |
+
+---
+
 ## 🆕 Naya kya hai — 2.4
 
 | Masla / feature | Ab kya hota hai |
