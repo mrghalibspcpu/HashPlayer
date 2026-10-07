@@ -91,6 +91,14 @@
 <symbol id="i-unlock" viewBox="0 0 24 24"><rect x="4" y="10.5" width="16" height="10" rx="2.5"/><path d="M8 10.5V7.5a4 4 0 0 1 7.7-1.5"/><path d="M12 14.5v2.5"/></symbol>
 <symbol id="i-yt" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="4.5"/><path d="M10 9.2 15 12l-5 2.8z"/></symbol>
 <symbol id="i-anc" viewBox="0 0 24 24"><rect x="9.2" y="3" width="5.6" height="10.5" rx="2.8"/><path d="M6 10.5a6 6 0 0 0 12 0"/><path d="M12 16.5V20M9 20h6"/><path d="M3.2 6.2 5.6 8.6M20.8 6.2l-2.4 2.4"/></symbol>
+<!-- the four-colour Google G: always painted with its own brand colours -->
+<symbol id="i-google" viewBox="0 0 24 24">
+  <path stroke="none" fill="#4285F4" d="M23.5 12.27c0-.85-.08-1.67-.22-2.45H12v4.64h6.45a5.52 5.52 0 0 1-2.4 3.63v3h3.88c2.27-2.09 3.57-5.17 3.57-8.82z"/>
+  <path stroke="none" fill="#34A853" d="M12 24c3.24 0 5.96-1.08 7.93-2.91l-3.88-3.02c-1.08.72-2.45 1.15-4.05 1.15-3.12 0-5.76-2.11-6.7-4.94H1.29v3.12A12 12 0 0 0 12 24z"/>
+  <path stroke="none" fill="#FBBC05" d="M5.3 14.28a7.2 7.2 0 0 1 0-4.56V6.6H1.29a12 12 0 0 0 0 10.8l4.01-3.12z"/>
+  <path stroke="none" fill="#EA4335" d="M12 4.77c1.76 0 3.34.6 4.58 1.79l3.44-3.44A11.98 11.98 0 0 0 12 0 12 12 0 0 0 1.29 6.6l4.01 3.12C6.24 6.88 8.88 4.77 12 4.77z"/>
+</symbol>
+<symbol id="i-widget" viewBox="0 0 24 24"><rect x="2.5" y="4.5" width="19" height="15" rx="3"/><path d="M6 9h7M6 12.5h12M6 16h4"/><circle cx="17.4" cy="8.9" r="1.5"/></symbol>
 </defs></svg>
 
 <!-- ════ boot splash ════ -->
@@ -176,6 +184,16 @@
         <button class="btn ghost" id="btn-play-all"><svg class="ic"><use href="#i-play"/></svg><span data-i18n="playAll">Play all</span></button>
         <button class="btn ghost" id="btn-shuffle-all"><svg class="ic"><use href="#i-shuffle"/></svg><span data-i18n="shuffle">Shuffle</span></button>
       </div>
+    </div>
+
+    <div id="g-card" class="g-card" hidden>
+      <span class="g-mark"><svg class="ic"><use href="#i-google"/></svg></span>
+      <span class="g-txt">
+        <b data-i18n="gCardTitle">Continue with Google</b>
+        <small data-i18n="gCardSub">One tap and your own YouTube home feed, subscriptions and history open inside HashPlayer. Your library never leaves this phone.</small>
+      </span>
+      <button class="g-btn" id="btn-google"><svg class="ic"><use href="#i-google"/></svg><span data-i18n="gContinue">Continue with Google</span></button>
+      <button class="icon-btn tiny" id="g-card-hide" aria-label="Hide" title="Hide"><svg class="ic"><use href="#i-x"/></svg></button>
     </div>
 
     <div id="relink-bar" class="notice" hidden>
@@ -367,6 +385,27 @@
       </div>
     </div>
 
+    <div class="panel" id="panel-google" hidden>
+      <div class="panel-title"><svg class="ic"><use href="#i-google"/></svg><span data-i18n="gPanel">Google &amp; YouTube</span></div>
+      <div class="set-row">
+        <div>
+          <b id="g-status" data-i18n="gStatusOut">Not signed in</b>
+          <small data-i18n="gStatusSub">Signing in opens your own YouTube feed, subscriptions and history inside HashPlayer. Nothing else is shared and your files stay on this phone.</small>
+        </div>
+        <div class="head-actions">
+          <button class="btn primary small" id="btn-google2"><svg class="ic"><use href="#i-google"/></svg><span data-i18n="gContinue">Continue with Google</span></button>
+          <button class="btn ghost small danger" id="btn-google-out" hidden><svg class="ic"><use href="#i-x"/></svg><span data-i18n="gSignOut">Sign out</span></button>
+        </div>
+      </div>
+      <div class="set-row">
+        <div>
+          <b data-i18n="widgetTitle">Home-screen widget</b>
+          <small data-i18n="widgetSub">Long-press the HashPlayer icon → Widgets → drag the small HashPlayer widget onto your home screen. It carries a search bar (YouTube too), a playlist shortcut and the file you played last.</small>
+        </div>
+        <svg class="ic widget-hint"><use href="#i-widget"/></svg>
+      </div>
+    </div>
+
     <div class="panel">
       <div class="panel-title"><svg class="ic"><use href="#i-save"/></svg><span data-i18n="data">Library &amp; data</span></div>
       <div class="set-row">
@@ -463,9 +502,15 @@
         <button class="icon-btn" id="v-lock" title="Lock screen" data-i18n-t="ttLock"><svg class="ic"><use href="#i-lock"/></svg></button>
         <button class="icon-btn" id="v-pip" title="Picture in picture" data-i18n-t="ttPip"><svg class="ic"><use href="#i-pip"/></svg></button>
         <button class="icon-btn" id="v-dl" title="Save for offline" data-i18n-t="ttDownload"><svg class="ic"><use href="#i-install"/></svg><span class="v-badge" id="v-dl-badge" hidden>0%</span></button>
-        <button class="icon-btn" id="v-yt" title="Open in YouTube" data-i18n-t="ttYt"><svg class="ic"><use href="#i-link"/></svg></button>
+        <button class="icon-btn" id="v-yt" title="Open in YouTube" data-i18n-t="ttYt"><svg class="ic"><use href="#i-link"/></svg><span class="l-label" data-i18n="ytLink">YouTube</span></button>
         <button class="icon-btn" id="v-full" title="Fullscreen" data-i18n-t="ttFull"><svg class="ic"><use href="#i-expand"/></svg></button>
       </div>
+
+      <!-- landscape left panel — a mirror of the right palette. player.js moves
+           Enhancer, ANC, Skip silence, Pitch and the YouTube 🔗 button in here
+           while a video fills the screen; it appears on a tap and hides itself
+           again after five seconds. -->
+      <div class="ltools" id="ltools" aria-hidden="true"></div>
     </div>
 
     <!-- meta + controls -->

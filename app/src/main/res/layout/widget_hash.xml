@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ══════════════════════════════════════════════════════════════
+     HashPlayer's home-screen widget — the small one.
+
+     Row 1: the search bar (tap = search your library, the red ▶ inside it
+            opens YouTube right away) and a playlist shortcut.
+     Row 2: the file that played last — art, title, artist — with a play
+            button that resumes it exactly where it stopped.
+
+     Only plain system views are allowed in a RemoteViews layout, so every
+     colour and corner radius lives in the drawables.
+     ══════════════════════════════════════════════════════════════ -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/w_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@drawable/widget_bg"
+    android:padding="10dp">
+
+    <!-- ── search + playlists ── -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
+
+        <LinearLayout
+            android:id="@+id/w_search"
+            android:layout_width="0dp"
+            android:layout_height="34dp"
+            android:layout_weight="1"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:background="@drawable/widget_pill"
+            android:paddingStart="11dp"
+            android:paddingEnd="5dp"
+            android:contentDescription="@string/widget_search">
+
+            <ImageView
+                android:layout_width="15dp"
+                android:layout_height="15dp"
+                android:src="@drawable/ic_w_search"
+                android:importantForAccessibility="no" />
+
+            <TextView
+                android:id="@+id/w_hint"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="7dp"
+                android:text="@string/widget_search_hint"
+                android:textColor="#98A0B8"
+                android:textSize="11.5sp"
+                android:maxLines="1"
+                android:ellipsize="end" />
+
+            <ImageView
+                android:id="@+id/w_yt"
+                android:layout_width="26dp"
+                android:layout_height="24dp"
+                android:padding="3dp"
+                android:src="@drawable/ic_w_yt"
+                android:contentDescription="@string/widget_youtube" />
+        </LinearLayout>
+
+        <ImageButton
+            android:id="@+id/w_playlists"
+            android:layout_width="34dp"
+            android:layout_height="34dp"
+            android:layout_marginStart="7dp"
+            android:padding="7dp"
+            android:background="@drawable/widget_icon"
+            android:src="@drawable/ic_w_list"
+            android:contentDescription="@string/widget_playlists" />
+    </LinearLayout>
+
+    <!-- ── last played ── -->
+    <LinearLayout
+        android:id="@+id/w_now"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:contentDescription="@string/widget_resume">
+
+        <ImageView
+            android:id="@+id/w_art"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="@drawable/widget_art_bg"
+            android:scaleType="centerCrop"
+            android:src="@drawable/widget_art_ph"
+            android:importantForAccessibility="no" />
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="9dp"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/w_title"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/widget_idle_title"
+                android:textColor="#F2F4FA"
+                android:textSize="12.5sp"
+                android:textStyle="bold"
+                android:maxLines="1"
+                android:ellipsize="end" />
+
+            <TextView
+                android:id="@+id/w_sub"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="1dp"
+                android:text="@string/widget_idle_sub"
+                android:textColor="#8E95AB"
+                android:textSize="10.5sp"
+                android:maxLines="1"
+                android:ellipsize="end" />
+        </LinearLayout>
+
+        <ImageButton
+            android:id="@+id/w_play"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:layout_marginStart="7dp"
+            android:padding="8dp"
+            android:background="@drawable/widget_play"
+            android:src="@drawable/ic_w_play"
+            android:contentDescription="@string/widget_play" />
+    </LinearLayout>
+</LinearLayout>

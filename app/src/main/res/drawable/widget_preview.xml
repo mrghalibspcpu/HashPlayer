@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Shown in the launcher's widget picker: a tiny picture of the widget itself. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="180dp" android:height="110dp" android:viewportWidth="180" android:viewportHeight="110">
+    <path android:fillColor="#12151F" android:pathData="M10,4h160a8,8 0 0,1 8,8v86a8,8 0 0,1 -8,8h-160a8,8 0 0,1 -8,-8v-86a8,8 0 0,1 8,-8z" />
+    <path android:fillColor="#1C2132" android:pathData="M18,18h120a13,13 0 0,1 0,26h-120a13,13 0 0,1 0,-26z" />
+    <path android:strokeColor="#8E95AB" android:strokeWidth="2" android:strokeLineCap="round"
+        android:pathData="M32,26a5,5 0 1,0 0,10a5,5 0 1,0 0,-10zM35.8,35.8L39.5,39.5" />
+    <path android:fillColor="#FF0000" android:pathData="M148,22h14a4,4 0 0,1 4,4v10a4,4 0 0,1 -4,4h-14a4,4 0 0,1 -4,-4v-10a4,4 0 0,1 4,-4z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M152,27l7,4l-7,4z" />
+    <path android:fillColor="#242A40" android:pathData="M20,56h34a6,6 0 0,1 6,6v26a6,6 0 0,1 -6,6h-34a6,6 0 0,1 -6,-6v-26a6,6 0 0,1 6,-6z" />
+    <path android:fillColor="#39415E" android:pathData="M32,84V66l12,-2v18" />
+    <path android:fillColor="#5A6488" android:pathData="M68,66h72a4,4 0 0,1 0,8h-72a4,4 0 0,1 0,-8zM68,80h48a4,4 0 0,1 0,8h-48a4,4 0 0,1 0,-8z" />
+    <path android:fillColor="#00E5FF" android:pathData="M150,66m-12,0a12,12 0 1,0 24,0a12,12 0 1,0 -24,0" />
+    <path android:fillColor="#0B0D14" android:pathData="M146,60l9,6l-9,6z" />
+</vector>

@@ -12,10 +12,35 @@
     <string name="yt_close">Close YouTube</string>
     <string name="yt_browse_hint">YouTube — tap any video to play it in HashPlayer</string>
     <string name="yt_sign_in">Sign in</string>
-    <string name="yt_sign_in_google">G  Sign in with Google</string>
+    <string name="yt_sign_in_google">Sign in with Google</string>
     <string name="yt_signed_in">✓ Signed in</string>
     <string name="yt_signed_out">Signed out of YouTube</string>
     <string name="yt_sign_in_hint">Sign in once — HashPlayer remembers your YouTube account</string>
     <string name="web_browse_hint">Play the video on the page, then tap Play in HashPlayer</string>
     <string name="web_play_here">▶ Play in HashPlayer</string>
+
+    <!-- ── Continue with Google ── -->
+    <string name="g_sheet_title">Continue with Google</string>
+    <string name="g_sheet_body">Sign in once and HashPlayer opens your own YouTube home feed, subscriptions and history — just like the YouTube app. Your music and videos stay on this phone; nothing is uploaded.</string>
+    <string name="g_continue">Continue with Google</string>
+    <string name="g_open_feed">Open my YouTube</string>
+    <string name="g_not_now">Not now</string>
+    <string name="g_sign_out">Sign out</string>
+    <string name="g_signed_in">✓ Signed in to YouTube</string>
+    <string name="g_switch">Switch account</string>
+    <string name="g_sheet_hint">Google will ask which account to use, right here inside HashPlayer.</string>
+
+    <!-- ── home-screen widget ── -->
+    <string name="widget_name">HashPlayer</string>
+    <string name="widget_desc">Search (with YouTube), your playlists and the file you played last.</string>
+    <string name="widget_search_hint">Search songs, videos, YouTube…</string>
+    <string name="widget_playlists">Playlists</string>
+    <string name="widget_play">Play</string>
+    <string name="widget_pause">Pause</string>
+    <string name="widget_last">Last played</string>
+    <string name="widget_idle_title">HashPlayer</string>
+    <string name="widget_idle_sub">Nothing played yet — tap to open</string>
+    <string name="widget_search">Search</string>
+    <string name="widget_youtube">YouTube</string>
+    <string name="widget_resume">Play the last file</string>
 </resources>

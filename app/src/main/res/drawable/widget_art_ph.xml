@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Placeholder tile: shown until the shell has a thumbnail for the file.
+     The note is a separate vector (not an inline one) so API 23 can inflate it. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@drawable/widget_art_bg" />
+    <item android:gravity="center" android:width="22dp" android:height="22dp"
+        android:drawable="@drawable/ic_w_note" />
+</layer-list>

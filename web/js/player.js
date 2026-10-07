@@ -1261,6 +1261,7 @@
     $('#lyrics').addEventListener('click', () => P.toggleLyrics(false));
 
     document.body.classList.toggle('can-pitch', !!(window.HashNative && window.HashNative.nPitch));
+    initLandscapeTools();
     syncToggles(); updateSpeedLabel(); updatePitchLabel(); setCCUI(false, false); setSkipSilenceUI(!!S.skipSilence);
     /* restore persistent ANC / Enhancer state without toasts */
     $('#t-anc').classList.toggle('on', !!S.anc);
@@ -1478,7 +1479,7 @@
     let zoom0 = 1, mid0 = null, pan0 = { x: 0, y: 0 }, panOnly = null;
 
     stage.addEventListener('pointerdown', e => {
-      if (e.target.closest('.vtools') || e.target.closest('.lyrics-scroll')) return;
+      if (e.target.closest('.vtools') || e.target.closest('.ltools') || e.target.closest('.lyrics-scroll')) return;
       pts.set(e.pointerId, e);
       if (pts.size === 2) {
         const [p1, p2] = Array.from(pts.values());
@@ -1669,13 +1670,119 @@
     if (!quiet) HP.toast(S.anc ? 'ANC on — noise down, voices clear' : 'ANC off');
   };
   P.toggleAnc = function () { P.setAnc(!S.anc); };
+  /* ============================================================
+     Landscape left panel
+
+     While a video fills the screen in landscape, five tools move over to a
+     panel on the LEFT — a mirror of the palette on the right:
+
+        Enhancer · ANC · Skip silence · Pitch · YouTube 🔗
+
+     Enhancer, ANC, Skip silence and Pitch are re-parented out of the bottom
+     bar and the YouTube 🔗 button out of the right palette. They are the very
+     same DOM nodes, so every click binding, badge and on/off state keeps
+     working in both places and nothing has to be duplicated or re-synced.
+
+     The panel appears when you tap the picture and hides itself again five
+     seconds later, exactly like the chrome above and below the video.
+     ============================================================ */
+  const LTOOLS = ['t-enhance', 't-anc', 't-silence', 't-pitch', 'v-yt'];
+  const UI_HIDE_MS = 5000;
+  const toolHome = new Map();
+  const landMQ = w.matchMedia ? w.matchMedia('(orientation:landscape) and (max-height:620px)') : null;
+
+  /** Where each tool lives while it is NOT in the left panel. */
+  function rememberToolHome() {
+    LTOOLS.forEach(id => {
+      const n = document.getElementById(id);
+      if (!n || toolHome.has(id)) return;
+      const parent = n.parentNode;
+      let next = n.nextElementSibling;
+      while (next && LTOOLS.indexOf(next.id) > -1) next = next.nextElementSibling;
+      toolHome.set(id, { parent, next, i: Array.prototype.indexOf.call(parent.children, n) });
+    });
+  }
+
+  /** Landscape + a video on screen = the tools belong on the left. */
+  function wantsLeftTools() {
+    const b = document.body;
+    if (!b.classList.contains('has-video') || b.classList.contains('in-pip')) return false;
+    return b.classList.contains('cinema') || !!(landMQ && landMQ.matches);
+  }
+
+  function layoutLandscapeTools() {
+    const l = $('#ltools');
+    if (!l) return;
+    rememberToolHome();
+    const on = wantsLeftTools();
+    document.body.classList.toggle('land-tools', on);
+    l.setAttribute('aria-hidden', on ? 'false' : 'true');
+    if (on) {
+      LTOOLS.forEach(id => {
+        const n = document.getElementById(id);
+        if (n && n.parentNode !== l) l.appendChild(n);
+      });
+    } else {
+      hideVideoUI();
+      Array.from(toolHome.entries())
+        .sort((a, b) => a[1].i - b[1].i)
+        .forEach(([id, h]) => {
+          const n = document.getElementById(id);
+          if (!n || n.parentNode === h.parent) return;
+          try {
+            h.parent.insertBefore(n, h.next && h.next.parentNode === h.parent ? h.next : null);
+          } catch (e) { try { h.parent.appendChild(n); } catch (e2) { } }
+        });
+    }
+  }
+  P.layoutLandscapeTools = layoutLandscapeTools;
+
+  function initLandscapeTools() {
+    layoutLandscapeTools();
+    /* The body class list is the single source of truth here (has-video,
+       cinema, in-pip, yt-mode) — watching it catches every route, rotation
+       and fullscreen change without sprinkling calls through the player. */
+    if (w.MutationObserver) {
+      try {
+        new MutationObserver(() => layoutLandscapeTools())
+          .observe(document.body, { attributes: true, attributeFilter: ['class'] });
+      } catch (e) { }
+    }
+    const onMq = () => layoutLandscapeTools();
+    if (landMQ) {
+      if (landMQ.addEventListener) landMQ.addEventListener('change', onMq);
+      else if (landMQ.addListener) landMQ.addListener(onMq);
+    }
+    w.addEventListener('resize', HP.throttle(onMq, 200));
+    /* using a tool keeps the panels up: re-arm the five seconds instead of
+       letting them vanish half way through a pitch change */
+    ['#ltools', '#vtools'].forEach(sel => {
+      const n = $(sel);
+      if (!n) return;
+      n.addEventListener('pointerdown', () => {
+        if (!n.classList.contains('show')) return;
+        clearTimeout(uiTimer);
+        uiTimer = setTimeout(hideVideoUI, UI_HIDE_MS);
+      });
+    });
+  }
+
   let uiTimer;
+  function hideVideoUI() {
+    const v = $('#vtools'), l = $('#ltools');
+    if (v) v.classList.remove('show');
+    if (l) l.classList.remove('show');
+    document.body.classList.remove('ui-show');
+    clearTimeout(uiTimer);
+  }
+  /** Tap on the picture: both side panels and the chrome come up for 5 s. */
   function toggleVideoUI() {
-    const v = $('#vtools');
-    const on = v.classList.toggle('show');
+    const v = $('#vtools'), l = $('#ltools');
+    const on = v ? v.classList.toggle('show') : true;
+    if (l) l.classList.toggle('show', on);
     document.body.classList.toggle('ui-show', on);
     clearTimeout(uiTimer);
-    if (on) uiTimer = setTimeout(() => { v.classList.remove('show'); document.body.classList.remove('ui-show'); }, 3600);
+    if (on) uiTimer = setTimeout(hideVideoUI, UI_HIDE_MS);
   }
   P.toggleVideoUI = toggleVideoUI;
 

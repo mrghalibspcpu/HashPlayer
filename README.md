@@ -2,7 +2,7 @@
 
 <img src="web/icons/icon-192.png" width="110" alt="HashPlayer" />
 
-# HashPlayer 2.0
+# HashPlayer 2.8
 
 **A private, offline-first audio & video player.**
 Install it as an app on your phone or desktop, or build a real Android APK — same code, one repository.
@@ -11,9 +11,21 @@ Install it as an app on your phone or desktop, or build a real Android APK — s
 
 ### [⬇️ Android APK download karein](https://github.com/mrghalibspcpu/HashPlayer/releases/latest)
 
-`YouTube links` · `auto device scan` · `picture-in-picture` · `open with / share to` · `online lyrics` · `landscape video`
+`YouTube links` · `auto device scan` · `picture-in-picture` · `open with / share to` · `online lyrics` · `landscape video` · `home-screen widget`
 
 </div>
+
+---
+
+## 🆕 Naya kya hai — 2.8
+
+| Masla / feature | Ab kya hota hai |
+|---|---|
+| **Landscape me left side panel** | Video landscape me chalte waqt ab right palette ki tarah **left side par bhi ek panel** hai — **Enhancer · ANC · Skip silence · Pitch · YouTube 🔗**. Video par **tap** karte hi khulta hai aur **5 second baad khud chhup** jata hai (dobara tap = dobara 5 second). |
+| **YouTube 🔗 left me shift** | YouTube link wala button right palette se nikal kar **left panel** me chala gaya — portrait me wapas apni purani jagah chala jata hai. |
+| **Enhancer + ANC bottom se left panel me** | Landscape video me **Enhancer** aur **ANC** ab bottom bar ki jagah left panel me hain. Bottom bar sirf title, seek bar, times aur transport tak simat gaya — video ko zyada screen mili. |
+| **Continue with Google** | Library ke upar ek card, aur **Settings → Google & YouTube** me button — dono **Continue with Google** wale: safed pill par rang-biranga G, tap karte hi Google ka apna account chooser app ke andar khulta hai. Screenshots wale sign-in screens jaisa hi, ek tap ka raasta. YouTube browser khulte waqt (signed out) card khud bhi aa jata hai; **Not now** dabane ke baad dobara tang nahi karta. |
+| **Home-screen widget** | Chhota sa pyara widget: **search bar** (andar laal **▶ YouTube** icon — seedha YouTube khulta hai), **playlist** button, aur **last played file ka preview** (art + title + artist) play/pause ke saath. Tap = wahi file jahan chhodi thi wahin se chal parti hai. Lagane ka tareeqa: HashPlayer icon ko **long-press → Widgets → HashPlayer** ko home screen par kheench lein. |
 
 ---
 
@@ -124,6 +136,11 @@ Install it as an app on your phone or desktop, or build a real Android APK — s
 - **Playback speed** and **screen lock** right in the side panel — the lock swallows every touch until you tap *unlock*
 - **Subtitles**: `.srt`, `.vtt` and `.ass` (converted on the fly), toggle with one tap
 
+### Home-screen widget
+- A small 3 × 2 widget: **search bar** (tap → the app opens with search focused, YouTube results included), the red **▶** inside it (straight into YouTube), a **playlist** shortcut
+- and the **file you played last** — art, title, artist — with a play/pause button that resumes it from where it stopped
+- The thumbnail is read natively (MediaStore / embedded cover / a video frame / a YouTube thumbnail), and play-pause never drags the app to the front
+
 ### YouTube (Android)
 - Paste a link, share from the YouTube app, or just **search** — the same library search box also lists YouTube results when you are online
 - Videos play **inside HashPlayer's own engine**, so every control, gesture and side tool works exactly like a local file
@@ -198,6 +215,10 @@ web/                     the player (this is the product)
  │   └─ app.js           shell wiring, settings, shortcuts, PWA, Android bridge
  ├─ manifest.webmanifest · sw.js · icons/
 app/                     Android shell (Kotlin) — WebView + MediaStore + media notification
+ ├─ MainActivity.kt      WebView host, in-app browser, "Continue with Google" card, widget intents
+ ├─ NativePlayback.kt    ExoPlayer engine (mkv/avi/hevc, EQ, ANC, enhancer, pitch, silence skip)
+ ├─ HashWidget.kt        the home-screen widget + the store it reads its last-played art from
+ └─ GoogleSignIn.kt      the Google sign-in card (built in code, like the rest of the shell)
  └─ src/main/java/.../YouTubeStream.kt   resolves YouTube streams for the native engine
 .github/workflows/       APK build + Pages deploy
 legacy/                  the original single-file v1 player, kept for reference

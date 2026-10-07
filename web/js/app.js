@@ -6,7 +6,7 @@
   'use strict';
   const HP = w.HP, S = HP.S, $ = HP.$, $$ = HP.$$, el = HP.el, icon = HP.icon, clamp = HP.clamp;
   const L = HP.Lib, P = HP.Player, E = HP.Engine, UI = {};
-  const APP_VERSION = '2.7.0';
+  const APP_VERSION = '2.8.0';
 
   /* =========================================================
      views & navigation
@@ -645,7 +645,7 @@
         }
       }
       HP.toast('Imported · ' + merged + ' updated, ' + created + ' added', 'ok');
-      applyTheme(); HP.applyI18n(); L.render(); L.renderPlaylists();
+      applyTheme(); HP.applyI18n(); L.render(); L.renderPlaylists(); Google.paint();
     } catch (x) { HP.toast('That file could not be read', 'err'); }
     e.target.value = '';
   }
@@ -776,7 +776,28 @@
       try { w.HashNative.scanMedia(); } catch (e) { HP.toast('Scan failed', 'err'); }
     },
     notify(playing) {
-      try { w.HashNative && w.HashNative.setPlaybackState && w.HashNative.setPlaybackState(!!playing, P.current ? (P.current.title || P.current.name) : '', P.current ? (P.current.artist || '') : ''); } catch (e) { }
+      const t = P.current;
+      try { w.HashNative && w.HashNative.setPlaybackState && w.HashNative.setPlaybackState(!!playing, t ? (t.title || t.name) : '', t ? (t.artist || '') : ''); } catch (e) { }
+      /* The home-screen widget shows the file that played last: title, artist,
+         play/pause and a thumbnail. Whatever art we cannot hand over as a data
+         url (device files) the shell reads itself through MediaStore. */
+      const n = w.HashNative;
+      if (!n || !n.setNowPlaying) return;
+      const seq = ++widgetSeq;
+      widgetArt(t).then(art => {
+        if (seq !== widgetSeq) return;              // a newer track already spoke
+        try {
+          n.setNowPlaying(JSON.stringify({
+            playing: !!playing,
+            title: t ? (t.title || t.name || '') : '',
+            artist: t ? (t.artist || '') : '',
+            uri: t ? (t.nativeUri || t.url || (t.ytId ? 'https://www.youtube.com/watch?v=' + t.ytId : '')) : '',
+            trackId: t ? (t.id || '') : '',
+            kind: t ? (t.kind || 'audio') : 'audio',
+            art: art || ''
+          }));
+        } catch (e) { }
+      });
     },
     exit() { try { w.HashNative && w.HashNative.exitApp && w.HashNative.exitApp(); } catch (e) { } },
     call(fn) {
@@ -785,7 +806,132 @@
       try { return n[fn].apply(n, Array.prototype.slice.call(arguments, 1)); } catch (e) { return undefined; }
     }
   };
+  /* A thumbnail for the widget: a data url when we already have one, the
+     YouTube thumbnail url when the track has one, otherwise the embedded
+     cover blob re-drawn at 192 px so the bridge string stays small. */
+  let widgetSeq = 0;
+  function widgetArt(t) {
+    return new Promise(res => {
+      const done = v => res(v || '');
+      try {
+        if (!t) return done('');
+        const cu = L.coverUrl(t);
+        if (typeof cu === 'string' && cu.indexOf('data:') === 0) return done(cu);
+        if (typeof t.thumb === 'string' && t.thumb) return done(t.thumb);
+        if (!t.cover || !w.URL || !w.URL.createObjectURL) return done('');
+        const url = URL.createObjectURL(t.cover);
+        const img = new Image();
+        const timer = setTimeout(() => { URL.revokeObjectURL(url); done(''); }, 1200);
+        img.onload = () => {
+          clearTimeout(timer);
+          try {
+            const c = document.createElement('canvas'), n = 192;
+            const side = Math.min(img.width || n, img.height || n) || n;
+            c.width = n; c.height = n;
+            c.getContext('2d').drawImage(img, ((img.width || side) - side) / 2, ((img.height || side) - side) / 2, side, side, 0, 0, n, n);
+            done(c.toDataURL('image/jpeg', .85));
+          } catch (e) { done(''); }
+          URL.revokeObjectURL(url);
+        };
+        img.onerror = () => { clearTimeout(timer); URL.revokeObjectURL(url); done(''); };
+        img.src = url;
+      } catch (e) { done(''); }
+    });
+  }
+
   HP.Native = Native;
+
+  /* =========================================================
+     "Continue with Google" — the Android shell owns the WebView
+     that holds the session, so it also owns the sign-in sheet.
+     The web side only paints the two entry points (the library
+     card and the Settings row) and asks the shell for the state.
+     ========================================================= */
+  const Google = {
+    signedIn: false,
+    get available() { try { return !!(w.HashNative && w.HashNative.googleSignInSheet); } catch (e) { return false; } },
+    signIn() {
+      try {
+        if (w.HashNative && w.HashNative.googleSignInSheet) { w.HashNative.googleSignInSheet(); return; }
+      } catch (e) { }
+      L.openYouTube('');            // no shell sheet: the browser bar still has its pill
+    },
+    signOut() {
+      try { w.HashNative && w.HashNative.googleSignOut && w.HashNative.googleSignOut(); } catch (e) { }
+      Google.set(false);
+    },
+    set(on) { Google.signedIn = !!on; Google.paint(); },
+    paint() {
+      const app = HP.isAndroidApp;
+      const panel = $('#panel-google');
+      if (panel) panel.hidden = !app;
+      const card = $('#g-card');
+      if (card) card.hidden = !(app && !Google.signedIn && !S.googleCardHidden);
+      const st = $('#g-status');
+      if (st) st.textContent = HP.t(Google.signedIn ? 'gStatusIn' : 'gStatusOut');
+      const b2 = $('#btn-google2');
+      if (b2) {
+        b2.classList.toggle('signed', Google.signedIn);
+        const sp = b2.querySelector('span');
+        if (sp) sp.textContent = HP.t(Google.signedIn ? 'gOpenYt' : 'gContinue');
+      }
+      const out = $('#btn-google-out');
+      if (out) out.hidden = !(app && Google.signedIn);
+    }
+  };
+  HP.Google = Google;
+
+  function bindGoogle() {
+    const card = $('#btn-google');
+    if (card) card.addEventListener('click', () => Google.signIn());
+    const hide = $('#g-card-hide');
+    if (hide) hide.addEventListener('click', () => { S.googleCardHidden = true; HP.save(); Google.paint(); });
+    const two = $('#btn-google2');
+    if (two) two.addEventListener('click', () => {
+      /* signed in → straight to your own feed; signed out → the sheet */
+      if (Google.signedIn) L.openYouTube(''); else Google.signIn();
+    });
+    const out = $('#btn-google-out');
+    if (out) out.addEventListener('click', () => Google.signOut());
+    if (HP.isAndroidApp) {
+      let v = false;
+      try { v = !!(w.HashNative && w.HashNative.googleSignedIn && w.HashNative.googleSignedIn()); } catch (e) { }
+      Google.set(v);
+    } else Google.paint();
+  }
+
+  /* =========================================================
+     Home-screen widget taps
+     ========================================================= */
+  UI.widgetAction = function (a) {
+    UI.closeAll(); UI.toggleQueue(false);
+    if (a === 'yt') { L.openYouTube($('#search') ? $('#search').value : ''); return; }
+    if (a === 'search') {
+      UI.openNP(false); UI.nav('library');
+      const s = $('#search');
+      if (s) setTimeout(() => { try { s.focus(); s.click(); } catch (e) { } }, 320);
+      return;
+    }
+    if (a === 'playlists') { UI.openNP(false); UI.nav('playlists'); return; }
+    if (a === 'toggle' && P.current) { P.toggle(); UI.openNP(true); return; }
+    /* resume: the file that played last, from where it stopped. On a cold
+       start the widget tap can beat IndexedDB, so give the library a few
+       seconds to arrive before giving up. */
+    const attempt = tries => {
+      const id = (P.current && P.current.id) || S.lastId;
+      if (id && L.tracks.has(id)) {
+        UI.openNP(true);
+        if (P.current && P.current.id === id) { P.play(); return; }
+        P.context = 'Widget';
+        P.playTrack(id, L.contextIds().length ? L.contextIds() : [id], S.lastPos || 0);
+        return;
+      }
+      if (tries > 0) { setTimeout(() => attempt(tries - 1), 700); return; }
+      UI.openNP(false); UI.nav('library');
+      HP.toast(HP.t('widgetNothing'));
+    };
+    attempt(6);
+  };
 
   /* called from Kotlin */
   let artTimer = 0;
@@ -820,6 +966,15 @@
         } catch (e) { HP.toast('Could not open that link', 'err'); }
       })();
     },
+
+    /** Google sign-in state changed in the shell's WebView. */
+    onGoogleSignIn(signedIn) {
+      Google.set(!!signedIn);
+      if (signedIn) HP.toast(HP.t('gSignedInToast'), 'ok');
+    },
+
+    /** A tap on the home-screen widget. */
+    onWidget(action) { UI.widgetAction(String(action || '')); },
 
     /** The Activity entered or left system picture-in-picture. */
     onPip(active) {
@@ -1039,6 +1194,7 @@
     $('#btn-shuffle-all').addEventListener('click', () => { P.context = 'Shuffle'; P.playList(L.contextIds(), true); UI.openNP(true); });
     $('#btn-scan').addEventListener('click', () => Native.scan());
     if (HP.isAndroidApp) $('#btn-scan').hidden = false;
+    bindGoogle();
 
     /* playlists */
     $('#btn-new-playlist').addEventListener('click', () => {
@@ -1118,7 +1274,7 @@
     $('#btn-install2').addEventListener('click', doInstall);
     $('#btn-lang').addEventListener('click', () => {
       S.lang = S.lang === 'en' ? 'ur' : 'en'; HP.save();
-      HP.applyI18n(); L.render();
+      HP.applyI18n(); L.render(); Google.paint();
       HP.toast(S.lang === 'ur' ? 'زبان: اردو' : 'Language: English', 'ok');
     });
 

@@ -64,7 +64,7 @@
     preamp: 0, bass: 0, treble: 0, reverb: 0, width: 100, balance: 0, boost: 100, crossfade: 0,
     mono: false, normalize: false, fade: true, pitch: true, pitchShift: 0, lastId: null, lastPos: 0, lyricsOn: false,
     perf: null, autoPip: true, autoScan: true, autoLandscape: true, ytSearch: true, skipSilence: false,
-    anc: false, enhance: false
+    anc: false, enhance: false, googleCardHidden: false
   };
   /* ---------- how much eye-candy can this device actually afford? ---------- */
   const ua = navigator.userAgent || '';
@@ -117,7 +117,13 @@
       ytSearching: 'Searching YouTube for',
       ytOffline: 'YouTube search is not reachable right now',
       ttDownload: 'Save for offline',
-      anc: 'ANC', enhance: 'Enhance'
+      anc: 'ANC', enhance: 'Enhance',
+      ytLink: 'YouTube',
+      /* only ever set from JS, so they need an English seed here */
+      gStatusIn: '✓ Signed in — your YouTube feed is ready',
+      gOpenYt: 'Open my YouTube',
+      gSignedInToast: 'Signed in — your YouTube feed, subscriptions and history are here',
+      widgetNothing: 'Nothing played yet — pick a song or a video first'
     },
     ur: {
       search: 'تلاش کریں…', library: 'لائبریری', playlists: 'پلے لسٹ', favorites: 'پسندیدہ', sound: 'آواز',
@@ -161,7 +167,18 @@
       ttSubs: 'سب ٹائٹل', ttSpeed: 'چلنے کی رفتار', ttLock: 'اسکرین لاک', ttPip: 'چھوٹی ونڈو',
       ttYt: 'یوٹیوب میں کھولیں', ttFull: 'پوری اسکرین',
       ttDownload: 'آف لائن کے لیے محفوظ کریں',
-      anc: 'اے این سی', enhance: 'اینہانس'
+      anc: 'اے این سی', enhance: 'اینہانس',
+      ytLink: 'یوٹیوب',
+      gCardTitle: 'گوگل سے جاری رکھیں',
+      gCardSub: 'بس ایک ٹیپ کریں اور اپنا یوٹیوب ہوم فیڈ، سبسکرپشنز اور ہسٹری ہیش پلیئر کے اندر کھول لیں۔ آپ کی فائلیں اسی فون میں رہتی ہیں۔',
+      gContinue: 'گوگل سے جاری رکھیں', gPanel: 'گوگل اور یوٹیوب',
+      gStatusOut: 'سائن اِن نہیں ہے', gStatusIn: '✓ سائن اِن ہو چکا — آپ کا یوٹیوب فیڈ تیار ہے',
+      gStatusSub: 'سائن اِن کرنے سے آپ کا اپنا یوٹیوب فیڈ، سبسکرپشنز اور ہسٹری ہیش پلیئر میں آ جاتی ہے۔ باقی کچھ شیئر نہیں ہوتا، فائلیں اسی فون پر رہتی ہیں۔',
+      gSignOut: 'سائن آؤٹ', gOpenYt: 'میرا یوٹیوب کھولیں',
+      gSignedInToast: 'سائن اِن ہو گیا — آپ کا یوٹیوب فیڈ، سبسکرپشنز اور ہسٹری یہاں ہے',
+      widgetTitle: 'ہوم اسکرین وجٹ',
+      widgetSub: 'ہیش پلیئر کے آئیکن کو دبائے رکھیں → Widgets → چھوٹا ہیش پلیئر وجٹ ہوم اسکرین پر کھینچ لائیں۔ اس میں سرچ بار (یوٹیوب سپورٹ کے ساتھ)، پلے لسٹ کا بٹن اور آخری چلی ہوئی فائل کا پیشِ منظر ہوتا ہے۔',
+      widgetNothing: 'ابھی کچھ نہیں چلا — پہلے کوئی گانا یا ویڈیو منتخب کریں'
     }
   };
   HP.t = k => (STR[S.lang] && STR[S.lang][k]) || STR.en[k] || k;

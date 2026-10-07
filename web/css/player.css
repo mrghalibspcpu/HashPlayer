@@ -184,6 +184,41 @@ body.has-video .vtools.show,.stage:hover .vtools{opacity:1}
   background:var(--a1);color:#04060c;font-size:9px;font-weight:800;line-height:12px;text-align:center;
   pointer-events:none;box-shadow:0 1px 4px rgba(0,0,0,.45)}
 
+/* ---------------- landscape left panel ----------------
+   The mirror of the right palette. While a video fills the screen in
+   landscape, the tools that used to live on the bottom bar (Enhancer, ANC,
+   Skip silence, Pitch) and the YouTube 🔗 button are re-parented into here by
+   player.js — the very same nodes, so badges and on/off states follow.
+   A tap on the picture shows it, five seconds later it hides itself. */
+.ltools{position:absolute;z-index:5;left:10px;top:50%;transform:translateY(-50%);
+  display:none;flex-direction:column;align-items:stretch;gap:3px;padding:5px;border-radius:19px;
+  background:rgba(4,6,12,.5);backdrop-filter:blur(14px);border:1px solid rgba(255,255,255,.1);
+  opacity:0;pointer-events:none;transition:opacity .3s}
+body.land-tools .ltools{display:flex}
+body.land-tools .ltools.show{opacity:1;pointer-events:auto}
+/* the desktop mouse gets the same courtesy as the right palette */
+.stage:hover .ltools{opacity:1;pointer-events:auto}
+.ltools .tool{flex-direction:row;justify-content:flex-start;gap:6px;min-width:0;padding:6px 10px;
+  border-radius:13px;background:transparent;border:1px solid transparent;color:rgba(255,255,255,.86);
+  font-size:9px;letter-spacing:.3px}
+.ltools .tool .ic{width:17px;height:17px}
+.ltools .tool span{white-space:nowrap}
+.ltools .tool b{font-size:10.5px;color:#fff;min-width:12px;text-align:center}
+.ltools .tool.on{color:var(--a1);background:color-mix(in srgb,var(--a1) 16%,transparent);
+  border-color:color-mix(in srgb,var(--a1) 42%,transparent)}
+.ltools .tool.on b{color:var(--a1)}
+/* the YouTube 🔗 button keeps its icon-button shape but reads like the rest */
+.ltools .icon-btn{width:auto;height:30px;display:flex;align-items:center;justify-content:flex-start;
+  gap:6px;padding:0 10px;border-radius:13px;color:#ff5a52}
+.ltools .icon-btn .ic{width:17px;height:17px}
+.ltools .l-label{font-size:9px;font-weight:700;letter-spacing:.3px;text-transform:uppercase;white-space:nowrap}
+/* in the right palette the 🔗 button stays a plain round icon */
+.vtools .l-label{display:none}
+/* …and it only exists for YouTube tracks at all. Those two rules are id-based,
+   so the left panel needs the same weight to lay the label out beside the icon
+   instead of under it. */
+body.yt-mode .ltools #v-yt,body.yt-track .ltools #v-yt{display:flex}
+
 /* ---------------- screen lock ----------------
    A full-screen catcher: while it is up nothing below it can be tapped,
    swiped or scrolled, so a pocket or a stray thumb cannot touch playback. */
@@ -199,7 +234,7 @@ body.has-video .vtools.show,.stage:hover .vtools{opacity:1}
 /* Keep the controls out of the way, but leave the video exactly as it was.
    !important because the hover/“show” rules for the side tools are more
    specific and would otherwise fade them back in under the lock. */
-body.locked .vtools,body.locked .np-ctrl,body.locked .np-top,body.locked #minibar,
+body.locked .vtools,body.locked .ltools,body.locked .np-ctrl,body.locked .np-top,body.locked #minibar,
 body.locked .gbar,body.locked .gfx{opacity:0 !important;pointer-events:none;transition:opacity .2s}
 
 /* ---------------- controls ---------------- */
@@ -357,6 +392,7 @@ body.yt-mode #v-yt,body.yt-track #v-yt{display:grid;color:#ff4d4d}
    no side-loaded captions, everything else behaves like a normal video. */
 body.yt-track #v-cc{display:none}
 body.yt-mode .vtools{opacity:1}
+body.yt-mode.land-tools .ltools{opacity:1;pointer-events:auto}
 
 /* Skip Silence applies to audio listening; do not show its lower-panel action
    while any video is playing in landscape. Other video controls, including
@@ -402,6 +438,9 @@ body.yt-mode .vtools{opacity:1}
      landscape screens; all non-video tools stay tucked away to save height.
      ANC stays — it is the one audio tool you want while watching a video. */
   body.has-video #np .np-tools{display:flex;min-height:0;padding:2px 0 0;gap:6px}
+  /* Enhancer, ANC, Skip silence and Pitch now live in the left panel, so the
+     bottom overlay has nothing left to hold — give the video its height back. */
+  body.land-tools #np .np-tools{display:none !important}
   body.has-video #np .np-tools .tool:not(.video-tool):not(.anc-tool),
   body.has-video #np .np-tools #t-silence,
   body.has-video #np .np-tools #t-cc{display:none !important}
@@ -417,6 +456,10 @@ body.yt-mode .vtools{opacity:1}
   body.has-video .vtools{right:6px;gap:2px;padding:4px;border-radius:15px}
   body.has-video .vtools .icon-btn{width:31px;height:31px}
   body.has-video .vtools .icon-btn .ic{width:16px;height:16px}
+  body.land-tools .ltools{left:6px;gap:2px;padding:4px;border-radius:15px}
+  body.land-tools .ltools .tool{padding:5px 9px;font-size:8.5px;gap:5px}
+  body.land-tools .ltools .tool .ic{width:15px;height:15px}
+  body.land-tools .ltools .icon-btn{height:28px;padding:0 9px}
 
   /* tap the picture to hide the chrome; cinema keeps it hidden */
   body.has-video.cinema #np .np-top,
@@ -437,6 +480,12 @@ body.yt-mode .vtools{opacity:1}
 @media (orientation:landscape) and (max-height:430px){
   body.has-video #np .np-ctrl{padding-top:18px}
   body.has-video #np .np-meta{display:none}
+  /* icon-only left panel, so five tools still fit a 400 px tall screen */
+  body.land-tools .ltools .tool span,body.land-tools .ltools .l-label{display:none}
+  body.land-tools .ltools .tool{justify-content:center;padding:6px}
+  body.land-tools .ltools .tool b{position:absolute;top:-3px;right:-2px;min-width:14px;padding:0 2px;
+    border-radius:6px;background:var(--a1);color:#04060c;font-size:8px;line-height:11px}
+  body.land-tools .ltools .tool{position:relative}
 }
 
 /* ============================================================
@@ -444,7 +493,7 @@ body.yt-mode .vtools{opacity:1}
    UI down to just the picture.
    ============================================================ */
 body.in-pip #topbar,body.in-pip #rail,body.in-pip #minibar,
-body.in-pip .np-top,body.in-pip .np-ctrl,body.in-pip .vtools,
+body.in-pip .np-top,body.in-pip .np-ctrl,body.in-pip .vtools,body.in-pip .ltools,
 body.in-pip #toasts,body.in-pip .aurora{display:none !important}
 body.in-pip #np{transform:none !important;visibility:visible}
 body.in-pip #np .np-body{padding:0}

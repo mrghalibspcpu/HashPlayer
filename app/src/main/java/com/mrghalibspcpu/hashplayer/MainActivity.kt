@@ -83,6 +83,11 @@ class MainActivity : AppCompatActivity() {
         private const val MEDIA_PREFIX = "/media/"
         private const val PREFS = "hashplayer"
         private const val KEY_ASKED = "asked_media_permission"
+        private const val KEY_G_SHEET = "google_sheet_dismissed"
+        /** Google's own account chooser — inside our WebView, so the cookie sticks. */
+        private const val CHOOSER =
+            "https://accounts.google.com/AccountChooser?service=youtube" +
+                "&continue=https%3A%2F%2Fm.youtube.com%2F%3Fpersist_app%3D1"
         private val LINK = Regex("""https?://\S+""")
     }
 
@@ -107,6 +112,14 @@ class MainActivity : AppCompatActivity() {
     private var ytLayer: View? = null
     private var ytWeb: WebView? = null
     private var ytPicked = ""
+
+    /* The "Continue with Google" card, and the last sign-in state we told the
+       web app about (so it only hears about real changes). */
+    private var gSheet: GoogleSignInSheet? = null
+    private var lastGoogleState: Boolean? = null
+    /* set while the account chooser is on screen, so opening the browser for a
+       sign-in does not immediately throw the card over it again */
+    private var gSheetHold = false
 
     /* The volume slider and the vertical swipe move the *device* media volume,
        the same thing the hardware keys do — so the UI has to follow the keys too. */
@@ -196,7 +209,7 @@ class MainActivity : AppCompatActivity() {
             cacheMode = WebSettings.LOAD_DEFAULT
             mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
             textZoom = 100
-            userAgentString = "$userAgentString HashPlayer/2.7.0"
+            userAgentString = "$userAgentString HashPlayer/2.8.0"
         }
 
         web.webViewClient = object : WebViewClient() {
@@ -312,6 +325,7 @@ class MainActivity : AppCompatActivity() {
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
                 if (customView != null) { web.webChromeClient?.onHideCustomView(); return }
+                if (gSheet?.isShowing() == true) { gSheet?.hide(); rememberSheetDismissed(); return }
                 if (ytLayer != null) {
                     val wv = ytWeb
                     if (wv != null && wv.canGoBack()) wv.goBack() else closeYouTubeBrowser()
@@ -428,6 +442,7 @@ class MainActivity : AppCompatActivity() {
         @android.webkit.JavascriptInterface
         fun setPlaybackState(playing: Boolean, title: String?, artist: String?) = runOnUiThread {
             isPlaying = playing
+            WidgetStore.setPlaying(applicationContext, playing)
             if (playing && Build.VERSION.SDK_INT >= 33 &&
                 ContextCompat.checkSelfPermission(this@MainActivity, "android.permission.POST_NOTIFICATIONS")
                 != PackageManager.PERMISSION_GRANTED
@@ -608,7 +623,41 @@ class MainActivity : AppCompatActivity() {
         fun toastMsg(msg: String) = runOnUiThread { toast(msg) }
 
         @android.webkit.JavascriptInterface
-        fun version(): String = "2.7.0"
+        fun version(): String = "2.8.0"
+
+        /* ---------------- Google sign-in ---------------- */
+
+        /** The web app's "Continue with Google" card and Settings row. */
+        @android.webkit.JavascriptInterface
+        fun googleSignInSheet() = runOnUiThread { showGoogleSheet() }
+
+        @android.webkit.JavascriptInterface
+        fun googleSignedIn(): Boolean = signedIn()
+
+        @android.webkit.JavascriptInterface
+        fun googleSignOut() = runOnUiThread { this@MainActivity.googleSignOut() }
+
+        /* ---------------- home-screen widget ---------------- */
+
+        /**
+         * Everything the widget shows: what is playing, and enough to find its
+         * thumbnail. Sent by the web player on every play / pause / close.
+         * {playing,title,artist,uri,trackId,kind,art}
+         */
+        @android.webkit.JavascriptInterface
+        fun setNowPlaying(json: String?) {
+            val o = try { JSONObject(json ?: "{}") } catch (e: Exception) { return }
+            WidgetStore.update(
+                applicationContext,
+                o.optString("title", ""),
+                o.optString("artist", ""),
+                o.optString("uri", ""),
+                o.optString("trackId", ""),
+                o.optString("kind", "audio"),
+                o.optBoolean("playing", false),
+                o.optString("art", "")
+            )
+        }
 
         /* ---------------- native ExoPlayer engine ---------------- */
 
@@ -978,6 +1027,10 @@ class MainActivity : AppCompatActivity() {
         ytWeb = wv
         nativePlayer.setVideoVisible(false)           // the player's picture stays out of the way
         wv.loadUrl(startUrl)
+
+        /* Signed out and never dismissed it? Hand over the card — one tap from
+           here and the feed, subscriptions and history are the user's own. */
+        if (youtube && !gSheetHold && !signedIn() && !sheetDismissed()) showGoogleSheet()
     }
 
     /** Is there a Google session in this WebView's cookie jar? */
@@ -987,18 +1040,62 @@ class MainActivity : AppCompatActivity() {
     } catch (e: Exception) { false }
 
     private fun paintSignIn() {
-        val b = signInBtn ?: return
         val inNow = signedIn()
-        b.text = if (inNow) getString(R.string.yt_signed_in) else getString(R.string.yt_sign_in_google)
-        b.setTextColor(Color.parseColor(if (inNow) "#1a7f37" else "#1f1f1f"))
+        val b = signInBtn
+        if (b != null) {
+            val d = resources.displayMetrics.density
+            b.text = getString(if (inNow) R.string.yt_signed_in else R.string.yt_sign_in_google)
+            b.setTextColor(Color.parseColor(if (inNow) "#1a7f37" else "#1f1f1f"))
+            /* the four-colour G, exactly like the button Google asks apps to show */
+            val g = ContextCompat.getDrawable(this, R.drawable.ic_google_g)
+            g?.setBounds(0, 0, (17 * d).toInt(), (17 * d).toInt())
+            b.setCompoundDrawables(g, null, null, null)
+            b.compoundDrawablePadding = (7 * d).toInt()
+        }
+        notifyGoogleState(inNow)
     }
+
+    /** The web side paints its own card / Settings row — only on real changes. */
+    private fun notifyGoogleState(on: Boolean) {
+        if (lastGoogleState == on) return
+        lastGoogleState = on
+        js("window.HashBridge && window.HashBridge.onGoogleSignIn($on);")
+    }
+
+    /* ------------------------------------------------------------
+       The "Continue with Google" card. It sits above everything else
+       and can be reached from three places: the library card and the
+       Settings row in the web app, the pill in the YouTube browser's
+       bar, and — once — by simply opening that browser signed out.
+       ------------------------------------------------------------ */
+
+    private fun showGoogleSheet() {
+        val sheet = gSheet ?: GoogleSignInSheet(this, root).also { gSheet = it }
+        sheet.signedIn = { signedIn() }
+        sheet.onContinue = { googleSignIn() }
+        sheet.onOpenFeed = { openYouTubeBrowser("") }
+        sheet.onSignOut = { googleSignOut() }
+        sheet.onDismiss = { rememberSheetDismissed() }
+        sheet.show()
+    }
+
+    private fun hideGoogleSheet() { gSheet?.hide() }
+
+    /** "Not now" is remembered — the card stops appearing, the buttons stay. */
+    private fun rememberSheetDismissed() {
+        getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putBoolean(KEY_G_SHEET, true).apply()
+    }
+
+    private fun sheetDismissed(): Boolean =
+        getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_G_SHEET, false)
 
     /** Google's own account chooser, in this very WebView. */
     private fun googleSignIn() {
-        ytWeb?.loadUrl(
-            "https://accounts.google.com/AccountChooser?service=youtube" +
-                "&continue=https%3A%2F%2Fm.youtube.com%2F%3Fpersist_app%3D1"
-        )
+        hideGoogleSheet()
+        gSheetHold = true
+        if (ytWeb == null) openBrowser(CHOOSER, youtube = true)
+        else ytWeb?.loadUrl(CHOOSER)
         toast(getString(R.string.yt_sign_in_hint))
     }
 
@@ -1009,6 +1106,7 @@ class MainActivity : AppCompatActivity() {
             CookieManager.getInstance().flush()
         } catch (e: Exception) { }
         ytWeb?.loadUrl("https://m.youtube.com/")
+        lastGoogleState = null
         paintSignIn()
         toast(getString(R.string.yt_signed_out))
     }
@@ -1074,6 +1172,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun closeYouTubeBrowser() {
+        hideGoogleSheet()
+        gSheetHold = false
         val layer = ytLayer ?: return
         val wv = ytWeb
         ytLayer = null
@@ -1350,6 +1450,21 @@ class MainActivity : AppCompatActivity() {
     private fun handleIntent(intent: Intent?) {
         intent ?: return
         val action = intent.action
+
+        /* Home-screen widget: search, YouTube, playlists, resume last file.
+           YouTube opens right here; the rest is the web app's job, and js()
+           queues it until the page is ready on a cold start. */
+        if (action != null && action.startsWith("hashplayer.widget.")) {
+            when (action.substringAfterLast('.')) {
+                "YT" -> openYouTubeBrowser("")
+                "SEARCH" -> js("window.HashBridge && window.HashBridge.onWidget('search');")
+                "PLAYLISTS" -> js("window.HashBridge && window.HashBridge.onWidget('playlists');")
+                "TOGGLE", "RESUME" -> js("window.HashBridge && window.HashBridge.onWidget('resume');")
+            }
+            intent.action = null
+            return
+        }
+
         if (action != Intent.ACTION_VIEW && action != Intent.ACTION_SEND &&
             action != Intent.ACTION_SEND_MULTIPLE
         ) return

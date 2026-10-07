@@ -163,5 +163,20 @@
             android:exported="false"
             android:foregroundServiceType="mediaPlayback" />
 
+        <!-- The little home-screen widget: a search bar (YouTube included), a
+             playlist shortcut and the file that played last. Its own play/pause
+             tap arrives as an explicit broadcast, so no extra filter is needed. -->
+        <receiver
+            android:name=".HashWidget"
+            android:exported="true"
+            android:label="@string/widget_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_hash_info" />
+        </receiver>
+
     </application>
 </manifest>
