@@ -11,7 +11,7 @@
     a: null, b: null, active: null, current: null,
     queue: [], order: [], index: -1, context: 'Library',
     ab: { a: null, b: null }, sleep: null, wake: null, lyrics: null, lrcIndex: -1,
-    pendingSrc: null, crossing: false, speedHold: false, brightness: 1, zoom: 1,
+    pendingSrc: null, crossing: false, speedHold: false, brightness: 1,
     videoFit: 'contain'
   };
   const VIDEO_FITS = ['contain', 'cover', 'fill'];
@@ -121,6 +121,46 @@
     if (announce) HP.toast('Fit: ' + P.videoFit);
   };
 
+  /* ============================================================
+     Pinch zoom / pan — exactly what a normal video player does.
+
+     Zoom and pan live in CSS custom properties, so they compose with the
+     rotate and mirror tools instead of fighting them, and the very same
+     numbers are forwarded to ExoPlayer's TextureView on Android (where the
+     picture is drawn natively, behind the WebView).
+     ============================================================ */
+  const MAX_ZOOM = 8, MIN_ZOOM = 1;
+  P.zoom = 1;
+  P.pan = { x: 0, y: 0 };
+
+  function panLimit() {
+    const st = document.getElementById('stage');
+    const r = st ? st.getBoundingClientRect() : { width: 0, height: 0 };
+    const extra = Math.max(0, P.zoom - 1);
+    return { x: r.width * extra / 2, y: r.height * extra / 2 };
+  }
+
+  P.setZoom = function (z, px, py, announce) {
+    P.zoom = clamp(+z || 1, MIN_ZOOM, MAX_ZOOM);
+    const lim = panLimit();
+    P.pan.x = clamp(+px || 0, -lim.x, lim.x);
+    P.pan.y = clamp(+py || 0, -lim.y, lim.y);
+    if (P.zoom <= 1.001) { P.zoom = 1; P.pan.x = 0; P.pan.y = 0; }
+    const s = document.body.style;
+    s.setProperty('--zoom', P.zoom.toFixed(3));
+    s.setProperty('--panx', P.pan.x.toFixed(1) + 'px');
+    s.setProperty('--pany', P.pan.y.toFixed(1) + 'px');
+    const stage = document.getElementById('stage');
+    if (isNat(P.active) && P.active.setZoom) {
+      const r = stage ? stage.getBoundingClientRect() : { width: 1, height: 1 };
+      P.active.setZoom(P.zoom, r.width ? P.pan.x / r.width : 0, r.height ? P.pan.y / r.height : 0);
+    }
+    if (announce) flashGfx('expand', P.zoom.toFixed(2).replace(/0$/, '') + '×');
+  };
+
+  /** Back to 1× — called whenever a new video starts. */
+  P.resetZoom = function () { P.setZoom(1, 0, 0, false); };
+
   P.playTrack = async function (id, ids, startAt) {
     const t = L().get(id);
     if (!t) return;
@@ -175,6 +215,7 @@
     /* Never inherit cover/fill from a previous item: native aspect-fit and CSS
        object-fit both start at contain for every newly loaded video. */
     if (isVideo) P.setVideoFit('contain', false);
+    P.resetZoom();
 
     if (yt && !ytNative && !P.y) { HP.toast('YouTube playback is unavailable here', 'err'); return; }
     if ((!yt || ytNative) && P.y) P.y.stop();       // leaving the embed → tear it down
@@ -1327,6 +1368,19 @@
     clearTimeout(g._t); g._t = setTimeout(() => g.classList.remove('on'), 650);
   }
   P.flashGfx = flashGfx;
+  /** Live “2.4×” readout while the fingers are still on the glass. */
+  let zoomTimer = 0;
+  function showZoom() {
+    const g = $('#gfx');
+    if (!g) return;
+    g.querySelector('use').setAttribute('href', '#i-expand');
+    $('#gfx-text').textContent = P.zoom.toFixed(2) + '×';
+    g.classList.add('on');
+    clearTimeout(g._t);
+    clearTimeout(zoomTimer);
+    zoomTimer = setTimeout(() => g.classList.remove('on'), 500);
+  }
+
   function showBar(ic, val, pct) {
     const b = $('#gbar');
     $('#gbar-icon').querySelector('use').setAttribute('href', '#i-' + ic);
@@ -1350,13 +1404,19 @@
   function bindGestures() {
     const stage = $('#stage');
     let st = null, lastTap = 0, tapTimer = null, holdTimer = null, pts = new Map(), pinch0 = 0;
+    let zoom0 = 1, mid0 = null, pan0 = { x: 0, y: 0 }, panOnly = null;
 
     stage.addEventListener('pointerdown', e => {
       if (e.target.closest('.vtools') || e.target.closest('.lyrics-scroll')) return;
       pts.set(e.pointerId, e);
       if (pts.size === 2) {
         const [p1, p2] = Array.from(pts.values());
-        pinch0 = Math.hypot(p1.clientX - p2.clientX, p1.clientY - p2.clientY) / (P.zoom || 1);
+        pinch0 = Math.hypot(p1.clientX - p2.clientX, p1.clientY - p2.clientY) || 1;
+        zoom0 = P.zoom || 1;
+        mid0 = { x: (p1.clientX + p2.clientX) / 2, y: (p1.clientY + p2.clientY) / 2 };
+        pan0 = { x: P.pan.x, y: P.pan.y };
+        document.body.classList.add('zooming');
+        clearTimeout(holdTimer);
         st = null; return;
       }
       const r = stage.getBoundingClientRect();
@@ -1374,6 +1434,10 @@
         screen0, moved: false
       };
       try { stage.setPointerCapture(e.pointerId); } catch (x) { }
+      if (P.zoom > 1.001 && !document.body.classList.contains('yt-mode')) {
+        panOnly = { x: P.pan.x, y: P.pan.y, sx: e.clientX, sy: e.clientY };
+        st = null; return;
+      }
       holdTimer = setTimeout(() => {
         if (st && !st.moved && P.current) {
           P.speedHold = true;
@@ -1391,8 +1455,18 @@
         if (document.body.classList.contains('yt-mode')) return;   // the embed owns its own frame
         const [p1, p2] = Array.from(pts.values());
         const d = Math.hypot(p1.clientX - p2.clientX, p1.clientY - p2.clientY);
-        P.zoom = clamp(d / pinch0, .6, 3);
-        P.a.style.transform = 'scale(' + P.zoom.toFixed(3) + ')';
+        const mx = (p1.clientX + p2.clientX) / 2, my = (p1.clientY + p2.clientY) / 2;
+        /* zoom from where the fingers started, and let the same two fingers
+           drag the picture around once it no longer fits the stage */
+        P.setZoom(zoom0 * (d / pinch0),
+          pan0.x + (mx - (mid0 ? mid0.x : mx)),
+          pan0.y + (my - (mid0 ? mid0.y : my)), false);
+        showZoom();
+        return;
+      }
+      /* one finger drags the zoomed picture instead of seeking */
+      if (panOnly) {
+        P.setZoom(P.zoom, panOnly.x + (e.clientX - panOnly.sx), panOnly.y + (e.clientY - panOnly.sy), false);
         return;
       }
       if (!st || !S.gestures || !P.current) return;
@@ -1437,7 +1511,15 @@
 
     const end = e => {
       pts.delete(e.pointerId);
-      if (pts.size < 2) pinch0 = 0;
+      if (pts.size < 2) { pinch0 = 0; mid0 = null; document.body.classList.remove('zooming'); }
+      if (panOnly) {
+        const moved = Math.abs(e.clientX - panOnly.sx) > 8 || Math.abs(e.clientY - panOnly.sy) > 8;
+        panOnly = null;
+        clearTimeout(holdTimer);
+        if (moved) { st = null; return; }
+        /* a tap while zoomed still shows/hides the controls */
+        if (P.current && P.current.kind === 'video') { toggleVideoUI(); st = null; return; }
+      }
       clearTimeout(holdTimer);
       if (P.speedHold) { P.speedHold = false; P.active.playbackRate = S.speed; $('#speed-badge').hidden = true; st = null; return; }
       if (!st) return;

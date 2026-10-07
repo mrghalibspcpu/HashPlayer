@@ -183,6 +183,11 @@
       if (viewActive) requestAnimationFrame(pushRect);
     };
 
+    /** Pinch zoom/pan for the native picture. Pan is a fraction of the stage. */
+    this.setZoom = function (z, px, py) {
+      try { bridge().nZoom(+z || 1, +px || 0, +py || 0); } catch (e) { }
+    };
+
     this.setResizeMode = function (mode) {
       resizeMode = ['cover', 'fill'].indexOf(mode) > -1 ? mode : 'contain';
       try { bridge().nResizeMode(resizeMode); } catch (e) { }
@@ -198,6 +203,7 @@
       buffered = 0; ended = false; ready = false; failed = null;
       paused = !autoplay;
       resizeMode = 'contain';
+      try { bridge().nZoom(1, 0, 0); } catch (e) { }
       viewActive = isVideo;
       document.body.classList.toggle('nv-mode', viewActive);
       try { bridge().nLoad(uri, pos, !!autoplay, isVideo, sub); } catch (e) { }

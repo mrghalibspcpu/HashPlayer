@@ -332,14 +332,19 @@ object YouTubeStream {
         val body = JSONObject().apply {
             put("context", context(client))
             put("query", q)
-            put("params", "EgIQAQ%3D%3D")          // filter: videos only
+            put("params", "EgIQAQ==")          // filter: videos only
         }
         val json = try { post(SEARCH_URL, body, client) } catch (e: Exception) {
             Log.w(TAG, "search failed", e); null
         } ?: return out
 
         val found = ArrayList<JSONObject>()
-        collectRenderers(json, found, limit)
+        // Keep YouTube's own ranking: walk the primary result list in order
+        // first, and only fall back to a generic tree walk if the layout
+        // changed (a tree walk cannot preserve order — JSON object keys are
+        // unordered on Android).
+        collectOrdered(json, found, limit)
+        if (found.isEmpty()) collectRenderers(json, found, limit)
         for (v in found) {
             val id = v.optString("videoId", "")
             if (id.isBlank()) continue
@@ -362,6 +367,40 @@ object YouTubeStream {
             if (out.length() >= limit) break
         }
         return out
+    }
+
+    /**
+     * The real search page order: `contents → twoColumnSearchResultsRenderer →
+     * primaryContents → sectionListRenderer → contents[] → itemSectionRenderer →
+     * contents[]`. Every step here is a JSON *array*, so the rows come back in
+     * exactly the sequence youtube.com would show them. Shelves ("People also
+     * watched", Shorts, ads, channels) are skipped rather than mixed in.
+     */
+    private fun collectOrdered(json: JSONObject, out: MutableList<JSONObject>, limit: Int) {
+        val sections = json
+            .optJSONObject("contents")
+            ?.optJSONObject("twoColumnSearchResultsRenderer")
+            ?.optJSONObject("primaryContents")
+            ?.optJSONObject("sectionListRenderer")
+            ?.optJSONArray("contents") ?: return
+
+        for (i in 0 until sections.length()) {
+            val items = sections.optJSONObject(i)
+                ?.optJSONObject("itemSectionRenderer")
+                ?.optJSONArray("contents") ?: continue
+            for (j in 0 until items.length()) {
+                val item = items.optJSONObject(j) ?: continue
+                if (item.has("adSlotRenderer") || item.has("promotedVideoRenderer") ||
+                    item.has("searchPyvRenderer")
+                ) continue
+                val v = item.optJSONObject("videoRenderer")
+                    ?: item.optJSONObject("videoWithContextRenderer")
+                    ?: continue
+                if (v.optString("videoId", "").isBlank()) continue
+                out.add(v)
+                if (out.size >= limit) return
+            }
+        }
     }
 
     /** YouTube ships several result layouts; just walk the tree for video cards. */

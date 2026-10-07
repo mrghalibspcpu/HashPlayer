@@ -96,6 +96,10 @@ class NativePlayback(
        TextureView by stretching its buffer to that view, so we counter-scale
        the texture below to preserve the video's display aspect ratio. */
     private var resizeMode = "contain"
+    /** Pinch zoom from the web UI: scale, plus pan as a fraction of the stage. */
+    private var zoom = 1f
+    private var panX = 0f
+    private var panY = 0f
     private var stageWidth = 1
     private var stageHeight = 1
 
@@ -283,10 +287,25 @@ class NativePlayback(
             }
         }
 
+        val z = zoom.coerceIn(1f, 8f)
+        val extraX = stageWidth * (z - 1f) / 2f
+        val extraY = stageHeight * (z - 1f) / 2f
+        val dx = (panX * stageWidth).coerceIn(-extraX, extraX)
+        val dy = (panY * stageHeight).coerceIn(-extraY, extraY)
+
         val matrix = Matrix().apply {
-            setScale(sx, sy, stageWidth / 2f, stageHeight / 2f)
+            setScale(sx * z, sy * z, stageWidth / 2f, stageHeight / 2f)
+            postTranslate(dx, dy)
         }
         sv.setTransform(matrix)
+    }
+
+    /** Pinch-to-zoom, mirroring what the web layer does for <video>. */
+    fun setZoom(z: Float, px: Float, py: Float) = main.post {
+        zoom = if (z.isFinite()) z.coerceIn(1f, 8f) else 1f
+        panX = if (px.isFinite()) px else 0f
+        panY = if (py.isFinite()) py else 0f
+        applyVideoTransform()
     }
 
     fun setResizeMode(mode: String) = main.post {

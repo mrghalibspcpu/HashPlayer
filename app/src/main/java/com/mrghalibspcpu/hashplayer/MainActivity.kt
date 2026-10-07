@@ -644,6 +644,10 @@ class MainActivity : AppCompatActivity() {
         @android.webkit.JavascriptInterface
         fun nResizeMode(mode: String) = nativePlayer.setResizeMode(mode)
 
+        /** Pinch zoom: scale plus a pan expressed as a fraction of the stage. */
+        @android.webkit.JavascriptInterface
+        fun nZoom(zoom: Float, panX: Float, panY: Float) = nativePlayer.setZoom(zoom, panX, panY)
+
         /** Where to draw the video, in CSS pixels, so the web UI stays on top of it. */
         @android.webkit.JavascriptInterface
         fun nRect(x: Float, y: Float, w: Float, h: Float) = nativePlayer.setRect(x, y, w, h)

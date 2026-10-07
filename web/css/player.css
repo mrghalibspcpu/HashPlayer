@@ -76,18 +76,19 @@ body.surface-light .np-bg::after{background:linear-gradient(180deg,rgba(255,255,
   touch-action:none;
 }
 body.has-video .stage{background:#000}
+/* Zoom/pan live in their own custom properties so pinch-to-zoom composes with
+   rotate and mirror instead of overwriting them. */
 #media{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:none;background:#000;
-  transition:filter .2s,transform .3s var(--ease)}
+  transition:filter .2s,transform .3s var(--ease);
+  transform:translate3d(var(--panx,0px),var(--pany,0px),0) scale(var(--zoom,1)) var(--vrot,) var(--vflip,)}
+body.zooming #media{transition:filter .2s}
 body.has-video #media{display:block}
 body.fit-cover #media{object-fit:cover}
 body.fit-fill #media{object-fit:fill}
-body.mirror #media{transform:scaleX(-1)}
-body.rot-90 #media{transform:rotate(90deg) scale(var(--rotscale,.56))}
-body.rot-180 #media{transform:rotate(180deg)}
-body.rot-270 #media{transform:rotate(270deg) scale(var(--rotscale,.56))}
-body.mirror.rot-90 #media{transform:rotate(90deg) scale(var(--rotscale,.56)) scaleX(-1)}
-body.mirror.rot-180 #media{transform:rotate(180deg) scaleX(-1)}
-body.mirror.rot-270 #media{transform:rotate(270deg) scale(var(--rotscale,.56)) scaleX(-1)}
+body.mirror{--vflip:scaleX(-1)}
+body.rot-90{--vrot:rotate(90deg) scale(var(--rotscale,.56))}
+body.rot-180{--vrot:rotate(180deg)}
+body.rot-270{--vrot:rotate(270deg) scale(var(--rotscale,.56))}
 
 #media::cue{background:rgba(0,0,0,.6);color:#fff;font-size:.92em;line-height:1.35;
   font-family:var(--font);text-shadow:0 2px 6px #000}
@@ -345,7 +346,8 @@ body.yt-mode .vtools{opacity:1}
    while any video is playing in landscape. Other video controls, including
    CC after a confirmed track scan, stay available. */
 @media (orientation:landscape){
-  body.has-video #np .np-tools #t-silence{display:none !important}
+  body.has-video #np .np-tools #t-silence,
+  body.has-video #np .np-tools #t-cc{display:none !important}
 }
 
 /* ============================================================
@@ -379,7 +381,8 @@ body.yt-mode .vtools{opacity:1}
      landscape screens; all non-video tools stay tucked away to save height. */
   body.has-video #np .np-tools{display:flex;min-height:0;padding:2px 0 0;gap:6px}
   body.has-video #np .np-tools .tool:not(.video-tool),
-  body.has-video #np .np-tools #t-silence{display:none !important}
+  body.has-video #np .np-tools #t-silence,
+  body.has-video #np .np-tools #t-cc{display:none !important}
   body.has-video #np .np-tools .video-tool{display:flex;flex-direction:row;min-width:0;padding:6px 10px;font-size:9px}
   body.has-video #np .np-tools .video-tool .ic{width:16px;height:16px}
   body.has-video #np .np-tools .video-tool span{white-space:nowrap}
