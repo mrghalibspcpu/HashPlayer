@@ -45,6 +45,7 @@
     HP.Vis.setMode(S.vis);
     bindUI();
     bindGestures();
+    bindLandscapeTools();
     mediaSession();
     tick();
   };
@@ -102,7 +103,11 @@
     if (!active && P.locked) P.setLock(false, true);   // never leave the lock on behind you
     document.body.classList.toggle('video-view-active', visible);
     if (isNat(P.active) && P.active.setViewActive) P.active.setViewActive(visible);
+    syncLandscapeTools();
     if (!active && video) {
+      clearTimeout(uiTimer);
+      $('#vtools').classList.remove('show');
+      $('#landscape-tools').classList.remove('show');
       document.body.classList.remove('cinema', 'ui-show');
       try {
         if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen();
@@ -727,6 +732,12 @@
     syncMiniPlayer();
     updateTimes();
     setMediaSession(t, cu);
+    try {
+      if (window.HashNative && window.HashNative.setWidgetTrack)
+        window.HashNative.setWidgetTrack(String(t.id), t.title || t.name || 'HashPlayer',
+          t.artist || (t.kind === 'video' ? 'Video' : 'Audio'));
+    } catch (e) { }
+    syncLandscapeTools();
   }
 
   let tintTimer;
@@ -1478,7 +1489,7 @@
     let zoom0 = 1, mid0 = null, pan0 = { x: 0, y: 0 }, panOnly = null;
 
     stage.addEventListener('pointerdown', e => {
-      if (e.target.closest('.vtools') || e.target.closest('.lyrics-scroll')) return;
+      if (e.target.closest('.vtools') || e.target.closest('.landscape-tools') || e.target.closest('.lyrics-scroll')) return;
       pts.set(e.pointerId, e);
       if (pts.size === 2) {
         const [p1, p2] = Array.from(pts.values());
@@ -1669,13 +1680,59 @@
     if (!quiet) HP.toast(S.anc ? 'ANC on — noise down, voices clear' : 'ANC off');
   };
   P.toggleAnc = function () { P.setAnc(!S.anc); };
+  const landscapeToolIds = ['t-enhance', 't-anc', 't-silence', 't-pitch', 'v-yt'];
+  const landscapeToolSlots = new Map();
+  function syncLandscapeTools() {
+    const box = $('#landscape-tools');
+    if (!box) return;
+    const landscape = !!(window.matchMedia && window.matchMedia('(orientation: landscape)').matches);
+    const useSide = landscape && !!(P.current && P.current.kind === 'video') && $('#np').classList.contains('on');
+    document.body.classList.toggle('side-tools-active', useSide);
+    box.setAttribute('aria-hidden', useSide ? 'false' : 'true');
+
+    landscapeToolIds.forEach(id => {
+      const node = $('#' + id);
+      if (!node) return;
+      if (useSide) {
+        if (!landscapeToolSlots.has(id)) {
+          const anchor = document.createComment('landscape tool: ' + id);
+          node.parentNode.insertBefore(anchor, node);
+          landscapeToolSlots.set(id, { parent: node.parentNode, anchor });
+        }
+        if (node.parentNode !== box) box.appendChild(node);
+      } else {
+        const slot = landscapeToolSlots.get(id);
+        if (slot) {
+          slot.parent.insertBefore(node, slot.anchor);
+          slot.anchor.remove();
+          landscapeToolSlots.delete(id);
+        }
+      }
+    });
+  }
+  function bindLandscapeTools() {
+    const mq = window.matchMedia && window.matchMedia('(orientation: landscape)');
+    if (mq) {
+      if (mq.addEventListener) mq.addEventListener('change', syncLandscapeTools);
+      else if (mq.addListener) mq.addListener(syncLandscapeTools);
+    }
+    window.addEventListener('resize', syncLandscapeTools, { passive: true });
+    window.addEventListener('orientationchange', syncLandscapeTools, { passive: true });
+    syncLandscapeTools();
+  }
+
   let uiTimer;
   function toggleVideoUI() {
-    const v = $('#vtools');
-    const on = v.classList.toggle('show');
-    document.body.classList.toggle('ui-show', on);
+    const v = $('#vtools'), left = $('#landscape-tools');
+    v.classList.add('show');
+    if (left && document.body.classList.contains('side-tools-active')) left.classList.add('show');
+    document.body.classList.add('ui-show');
     clearTimeout(uiTimer);
-    if (on) uiTimer = setTimeout(() => { v.classList.remove('show'); document.body.classList.remove('ui-show'); }, 3600);
+    uiTimer = setTimeout(() => {
+      v.classList.remove('show');
+      if (left) left.classList.remove('show');
+      document.body.classList.remove('ui-show');
+    }, 5000);
   }
   P.toggleVideoUI = toggleVideoUI;
 

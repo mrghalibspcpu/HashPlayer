@@ -199,7 +199,7 @@ body.has-video .vtools.show,.stage:hover .vtools{opacity:1}
 /* Keep the controls out of the way, but leave the video exactly as it was.
    !important because the hover/“show” rules for the side tools are more
    specific and would otherwise fade them back in under the lock. */
-body.locked .vtools,body.locked .np-ctrl,body.locked .np-top,body.locked #minibar,
+body.locked .vtools,body.locked .landscape-tools,body.locked .np-ctrl,body.locked .np-top,body.locked #minibar,
 body.locked .gbar,body.locked .gfx{opacity:0 !important;pointer-events:none;transition:opacity .2s}
 
 /* ---------------- controls ---------------- */
@@ -353,6 +353,33 @@ body.yt-track #v-dl{display:grid}
 #v-dl.busy{color:var(--a1)}
 #v-yt{display:none}
 body.yt-mode #v-yt,body.yt-track #v-yt{display:grid;color:#ff4d4d}
+#v-yt .side-label{display:none}
+
+/* A thumb-sized palette on the left, revealed with the same tap as the video
+   chrome. The actual control nodes are moved here only for landscape video. */
+.landscape-tools{
+  position:absolute;z-index:7;left:max(8px,env(safe-area-inset-left));top:50%;
+  transform:translateY(-50%);display:none;flex-direction:column;align-items:stretch;gap:4px;
+  width:clamp(102px,14vw,128px);max-height:calc(100% - 20px);overflow:auto;
+  padding:6px;border:1px solid rgba(255,255,255,.14);border-radius:17px;
+  background:rgba(4,6,12,.72);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
+  box-shadow:0 8px 30px rgba(0,0,0,.32);opacity:0;pointer-events:none;
+  transition:opacity .25s,transform .25s var(--ease);scrollbar-width:none
+}
+.landscape-tools::-webkit-scrollbar{display:none}
+body.has-video.side-tools-active .landscape-tools{display:flex}
+body.has-video.side-tools-active .landscape-tools.show{opacity:1;pointer-events:auto}
+.landscape-tools .tool{min-width:0;width:100%;min-height:34px;flex-direction:row;justify-content:flex-start;gap:7px;
+  padding:5px 7px;border:0;border-radius:10px;background:transparent;color:#fff;
+  font-size:8px;letter-spacing:.1px;text-transform:none;text-align:left;white-space:nowrap}
+.landscape-tools .tool .ic{width:16px;height:16px;flex:none}
+.landscape-tools .tool b{font-size:10px;color:inherit}
+.landscape-tools .tool.on{background:color-mix(in srgb,var(--a1) 22%,transparent);color:var(--a1)}
+body.has-video.side-tools-active.yt-track .landscape-tools #v-yt{display:flex !important;align-items:center;justify-content:flex-start;width:100%;height:34px;padding:5px 7px;
+  border:0;border-radius:10px;background:transparent;color:#fff;gap:7px;font-size:8px;font-weight:700}
+.landscape-tools #v-yt .ic{width:16px;height:16px;flex:none}
+.landscape-tools #v-yt .side-label{display:inline;white-space:nowrap}
+
 /* YouTube streamed by our own engine: no screenshot of a protected surface and
    no side-loaded captions, everything else behaves like a normal video. */
 body.yt-track #v-cc{display:none}
@@ -439,12 +466,18 @@ body.yt-mode .vtools{opacity:1}
   body.has-video #np .np-meta{display:none}
 }
 
+/* In landscape these controls have their single home on the left-side panel;
+   leave the transport controls and seek bar in the bottom overlay. */
+body.has-video.side-tools-active #np .np-tools{display:none !important}
+body.has-video.side-tools-active #vtools{right:8px}
+body.has-video.side-tools-active .landscape-tools.show{transform:translateY(-50%)}
+
 /* ============================================================
    System picture-in-picture: the Activity shrinks, so strip the
    UI down to just the picture.
    ============================================================ */
 body.in-pip #topbar,body.in-pip #rail,body.in-pip #minibar,
-body.in-pip .np-top,body.in-pip .np-ctrl,body.in-pip .vtools,
+body.in-pip .np-top,body.in-pip .np-ctrl,body.in-pip .vtools,body.in-pip .landscape-tools,
 body.in-pip #toasts,body.in-pip .aurora{display:none !important}
 body.in-pip #np{transform:none !important;visibility:visible}
 body.in-pip #np .np-body{padding:0}

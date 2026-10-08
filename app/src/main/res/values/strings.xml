@@ -18,4 +18,10 @@
     <string name="yt_sign_in_hint">Sign in once — HashPlayer remembers your YouTube account</string>
     <string name="web_browse_hint">Play the video on the page, then tap Play in HashPlayer</string>
     <string name="web_play_here">▶ Play in HashPlayer</string>
+    <string name="widget_name">HashPlayer</string>
+    <string name="widget_description">Search your music and YouTube, open playlists, and return to your last track.</string>
+    <string name="widget_search_title">Search HashPlayer</string>
+    <string name="widget_search_hint">Song, artist, or YouTube video</string>
+    <string name="widget_cancel">Cancel</string>
+    <string name="widget_search_action">Search YouTube</string>
 </resources>

@@ -38,6 +38,7 @@ import android.webkit.WebViewClient
 import android.webkit.WebView
 import android.widget.FrameLayout
 import android.widget.ImageButton
+import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
@@ -435,6 +436,18 @@ class MainActivity : AppCompatActivity() {
             PlaybackService.update(
                 this@MainActivity, playing, title ?: "", artist ?: "",
                 nativePlayer.positionMs(), nativePlayer.durationMs()
+            )
+        }
+
+        /** Keep the tiny home-screen widget in sync with the player's last item. */
+        @android.webkit.JavascriptInterface
+        fun setWidgetTrack(id: String?, title: String?, artist: String?) = runOnUiThread {
+            val key = id.orEmpty()
+            if (key.isNotBlank()) HashPlayerWidget.saveNowPlaying(
+                this@MainActivity,
+                title.orEmpty().ifBlank { "HashPlayer" },
+                artist.orEmpty().ifBlank { "Audio / video" },
+                key
             )
         }
 
@@ -1344,11 +1357,70 @@ class MainActivity : AppCompatActivity() {
         override fun available(): Int = minOf(super.available().toLong(), left).toInt()
     }
 
+    /* ====================================================== home-screen widget */
+
+    private fun showWidgetSearchDialog() {
+        val field = EditText(this).apply {
+            hint = getString(R.string.widget_search_hint)
+            singleLine = true
+            inputType = android.text.InputType.TYPE_CLASS_TEXT
+            setPadding((20 * resources.displayMetrics.density).toInt(), 0,
+                (20 * resources.displayMetrics.density).toInt(), 0)
+        }
+        val dialog = androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle(R.string.widget_search_title)
+            .setView(field)
+            .setNegativeButton(R.string.widget_cancel, null)
+            .setPositiveButton(R.string.widget_search_action, null)
+            .create()
+        dialog.setOnShowListener {
+            dialog.getButton(androidx.appcompat.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val query = field.text?.toString()?.trim().orEmpty()
+                if (query.isNotBlank()) {
+                    dialog.dismiss()
+                    openYouTubeBrowser(query)
+                } else {
+                    field.error = getString(R.string.widget_search_hint)
+                }
+            }
+            field.requestFocus()
+            dialog.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE)
+        }
+        dialog.show()
+    }
+
+    private fun playWidgetLastTrack() {
+        val id = HashPlayerWidget.lastTrackId(this)
+        if (id.isBlank()) {
+            toast("Play something in HashPlayer first")
+            return
+        }
+        val safeId = JSONObject.quote(id)
+        js("""(function(){var tries=0;function run(){var h=window.HP;if(h&&h.Lib&&h.Player){var t=h.Lib.get($safeId);if(t){h.Player.playTrack(t.id,h.Lib.contextIds());return;}}if(++tries<24)setTimeout(run,350);else if(h&&h.toast)h.toast('Last played item is no longer in your library','err');}setTimeout(run,500);})();""")
+    }
+
     /* ====================================================== incoming intents */
 
     @SuppressLint("NewApi")
     private fun handleIntent(intent: Intent?) {
         intent ?: return
+        when (intent.action) {
+            HashPlayerWidget.ACTION_SEARCH -> {
+                intent.action = null
+                showWidgetSearchDialog()
+                return
+            }
+            HashPlayerWidget.ACTION_PLAYLISTS -> {
+                intent.action = null
+                js("setTimeout(function(){if(window.HP&&window.HP.UI)window.HP.UI.nav('playlists');},650);")
+                return
+            }
+            HashPlayerWidget.ACTION_PLAY_LAST -> {
+                intent.action = null
+                playWidgetLastTrack()
+                return
+            }
+        }
         val action = intent.action
         if (action != Intent.ACTION_VIEW && action != Intent.ACTION_SEND &&
             action != Intent.ACTION_SEND_MULTIPLE
