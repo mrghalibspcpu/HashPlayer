@@ -1362,7 +1362,7 @@ class MainActivity : AppCompatActivity() {
     private fun showWidgetSearchDialog() {
         val field = EditText(this).apply {
             hint = getString(R.string.widget_search_hint)
-            singleLine = true
+            setSingleLine(true)
             inputType = android.text.InputType.TYPE_CLASS_TEXT
             setPadding((20 * resources.displayMetrics.density).toInt(), 0,
                 (20 * resources.displayMetrics.density).toInt(), 0)
