@@ -17,6 +17,15 @@ Install it as an app on your phone or desktop, or build a real Android APK — s
 
 ---
 
+## 🆕 Naya kya hai — 2.8
+
+| Masla / feature | Ab kya hota hai |
+|---|---|
+| **YouTube se wapsi** | HashPlayer se YouTube par video chala kar **back** dabao to ab seedha HashPlayer ki library/home par laut te ho — pehle YouTube apni hi screen par atka rehta tha aur Recents khol kar wapas jana parta tha. Watch screen ab alag task me khulti hai jo ek back par khatam ho jati hai, aur in-app YouTube browser me bhi video chalte waqt back ab YouTube history nahi ghoomta, seedha player band kar deta hai. |
+| **ANC+ (earbud jaisa)** | ANC button ab **do** level ka hai: **ANC** (purana fixed curve) aur **ANC+**. ANC+ mic se kamre ka shor naapta hai (kuch record nahi hota) aur jitna shor ho utni awaaz upar + voices clear rakhta hai — bilkul adaptive-volume earbuds ki tarah, taake paas jitna bhi shor ho, dialogue saaf sune. Sound Lab me live **room dB** readout bhi hai. Sach ye hai ke asli "noise cancelling" speaker se mumkin nahi — ye wahi adaptive trick hai jo earbuds/hearing-aids use karte hain. |
+| **Android TV build** | Ab do alag APK: phone (`HashPlayer`) aur **Android TV** (`HashPlayer TV`). TV build me Leanback launcher, 320×180 banner, landscape lock, **remote/D-pad navigation** (teer se focus, OK se select), media keys (play/pause/next), bade focus-rings aur halka performance profile — taake TV par smooth chale, lag na ho. |
+| **TV par smooth** | TV boxes aam tor par phone se kamzor hote hain, is liye TV build default par light renderer, bina bhari blur/aurora, aur bina gestures ke chalta hai — playback compositor se nahi larta. |
+
 ## 🆕 Naya kya hai — 2.7
 
 | Masla / feature | Ab kya hota hai |

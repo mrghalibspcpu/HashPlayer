@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Build marker: the native shell reads this to decide whether to turn on
+         D-pad navigation, the remote media keys and the TV performance profile. -->
+    <bool name="tv_build">true</bool>
+</resources>

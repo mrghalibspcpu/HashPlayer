@@ -9,6 +9,7 @@
     <string name="open_with">Play with HashPlayer</string>
     <string name="play_in_hashplayer">Play in HashPlayer</string>
     <string name="vis_needs_mic">The visualiser needs audio access — playback keeps working without it</string>
+    <string name="anc_needs_mic">ANC+ listens to the room through the microphone to keep voices clear — nothing is recorded. The standard ANC curve stays on.</string>
     <string name="yt_close">Close YouTube</string>
     <string name="yt_browse_hint">YouTube — tap any video to play it in HashPlayer</string>
     <string name="yt_sign_in">Sign in</string>

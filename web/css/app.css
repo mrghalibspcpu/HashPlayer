@@ -408,6 +408,14 @@ body[dir=rtl] .notice .btn{margin-left:0;margin-right:auto}
 }
 
 /* ============================================================
+   ANC / ANC+ in the Sound Lab
+   ============================================================ */
+.anc-note{font-size:12.5px;line-height:1.65;margin-top:10px}
+body[dir=rtl] .anc-note{line-height:2.1}
+/* The live room reading in the panel title is the proof ANC+ is listening. */
+#anc-room{font-variant-numeric:tabular-nums;white-space:nowrap}
+
+/* ============================================================
    Smooth mode (body.perf)
 
    A phone GPU pays for every blurred layer on every single frame.

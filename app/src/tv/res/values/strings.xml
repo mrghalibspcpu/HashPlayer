@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The TV flavour shows up as its own app on the home screen, next to the
+         phone build if both are installed. -->
+    <string name="app_name">HashPlayer TV</string>
+    <string name="widget_name">HashPlayer TV</string>
+</resources>

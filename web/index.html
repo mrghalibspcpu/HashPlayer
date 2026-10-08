@@ -17,6 +17,7 @@
 <link rel="stylesheet" href="css/base.css">
 <link rel="stylesheet" href="css/app.css">
 <link rel="stylesheet" href="css/player.css">
+<link rel="stylesheet" href="css/tv.css">
 </head>
 <body class="theme-neon mode-pro" data-view="library">
 
@@ -299,6 +300,12 @@
         <label data-i18n="crossfade">Crossfade</label>
         <input type="range" id="fx-crossfade" min="0" max="12" step="1" value="0"><output>Off</output>
       </div>
+    </div>
+
+    <div class="panel anc-panel">
+      <div class="panel-title"><svg class="ic"><use href="#i-anc"/></svg><span data-i18n="ancTitle">Noise cancelling</span><span class="hint" id="anc-room" hidden></span></div>
+      <div class="chips wrap" id="anc-modes"></div>
+      <p class="muted anc-note" data-i18n="ancNote">ANC trims rumble, mud and hiss and lifts voices. ANC+ also listens to the room and keeps the sound the same distance above the noise, so a voice stays as clear next to a fan as it is in a quiet room.</p>
     </div>
 
     <div class="panel toggles">
@@ -649,11 +656,13 @@
 <script src="js/db.js"></script>
 <script src="js/meta.js"></script>
 <script src="js/engine.js"></script>
+<script src="js/anc.js"></script>
 <script src="js/visual.js"></script>
 <script src="js/native.js"></script>
 <script src="js/yt.js"></script>
 <script src="js/library.js"></script>
 <script src="js/player.js"></script>
 <script src="js/app.js"></script>
+<script src="js/tv.js"></script>
 </body>
 </html>

@@ -118,6 +118,18 @@ class NativePlayback(
     private var fxAnc = false
     private var baseVolume = 1f
 
+    /**
+     * ANC mode: 0 = off, 1 = the fixed clarity curve, 2 = ANC+ — the room is
+     * measured and both the curve and a level lift follow it, so a voice stays
+     * equally intelligible next to a fan as it does in a quiet room.
+     */
+    private var fxAncMode = 0
+    private var ancStrength = 0f          // 0…1, from the room meter
+    private var ancLift = 0f              // dB the adaptive mode adds on top
+    private var lastAncDb = -1f
+    private var lastAncReport = 0L
+    private val ancEngine = AncEngine(main) { level -> onAmbient(level) }
+
     /** Professional colour grade for the video surface (see setEnhance). */
     private var enhanceOn = false
 
@@ -198,6 +210,8 @@ class NativePlayback(
 
             override fun onIsPlayingChanged(playing: Boolean) {
                 if (playing) startTick() else stopTick()
+                /* ANC+ only listens while there is something to listen for. */
+                if (playing) startAncIfPlaying() else ancEngine.stop()
                 post(if (playing) "play" else "pause")
             }
 
@@ -621,6 +635,7 @@ class NativePlayback(
 
     fun release() = main.post {
         stopTick()
+        ancEngine.stop()
         try { vis?.enabled = false; vis?.release() } catch (e: Throwable) { }
         try { eq?.release(); bass?.release() } catch (e: Throwable) { }
         try { loudness?.release() } catch (e: Throwable) { }
@@ -702,10 +717,81 @@ class NativePlayback(
         fxBass = if (bassDb.isFinite()) bassDb.coerceIn(0f, 18f) else 0f
         fxReverb = if (reverb.isFinite()) reverb.coerceIn(0f, 100f) else 0f
         fxBoost = if (boost.isFinite()) boost.coerceIn(100f, 300f) else 100f
+        /* The plain on/off flag still arrives on this call; the *mode* is set by
+           setAncMode(). Reconcile them: switching ANC off stops the room meter,
+           switching it on defaults to the static curve and never downgrades an
+           ANC+ session that is already listening. */
+        if (!anc && fxAncMode > 0) { fxAncMode = 0; stopAnc() }
+        else if (anc && fxAncMode == 0) fxAncMode = 1
         fxAnc = anc
         applyEq()
         applyFx()
         applyVolume()
+    }
+
+    /**
+     * ANC (1) or ANC+ (2). ANC+ starts the room meter so the clarity curve and a
+     * level lift track the noise around the phone — the "earbud" behaviour. Needs
+     * RECORD_AUDIO; without it the engine quietly stays on the static curve.
+     */
+    fun setAncMode(mode: Int) = main.post {
+        val m = mode.coerceIn(0, 2)
+        fxAncMode = m
+        fxAnc = m > 0
+        if (m == 2) startAncIfPlaying() else stopAnc()
+        applyEq()
+        applyFx()
+        reportAnc()
+    }
+
+    fun ancMode(): Int = fxAncMode
+
+    /** The meter only runs while something is actually playing — no idle battery. */
+    private fun startAncIfPlaying() {
+        if (fxAncMode != 2) return
+        if (player?.isPlaying != true) return
+        ancEngine.start()
+        reportAnc()
+    }
+
+    private fun stopAnc() {
+        ancEngine.stop()
+        ancStrength = 0f
+        ancLift = 0f
+        lastAncDb = -1f
+    }
+
+    /**
+     * The room got louder or quieter. Re-shape the voice curve and lift the
+     * programme material by however much it takes to stay clear of the noise.
+     * Called on the main thread, a couple of times a second.
+     */
+    private fun onAmbient(level: AncEngine.Level) {
+        if (fxAncMode != 2) return
+        if (Math.abs(level.strength - ancStrength) >= 0.05f) {
+            ancStrength = level.strength
+            ancLift = ancEngine.liftDb(level.strength)
+            applyEq()
+            applyFx()
+        }
+        val now = System.currentTimeMillis()
+        if (now - lastAncReport < 1200L) return
+        lastAncReport = now
+        lastAncDb = level.db
+        reportAnc()
+    }
+
+    /** Room reading for the ANC button badge: {"e":"anc",…}. */
+    private fun reportAnc() {
+        val o = JSONObject()
+        try {
+            o.put("e", "anc")
+            o.put("mode", fxAncMode)
+            o.put("db", Math.round(lastAncDb))
+            o.put("lift", Math.round(ancLift * 10f) / 10f)
+            o.put("listening", ancEngine.isRunning)
+        } catch (e: Exception) { return }
+        emit(o.toString())
     }
 
     private val webFreqs = intArrayOf(31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000)
@@ -722,10 +808,14 @@ class NativePlayback(
             if (i >= 7) v += fxTreble * 0.8f
             if (i <= 1) v += fxBass * 0.6f
             if (fxAnc) {
+                /* ANC+ opens the curve up as the room gets louder: in a quiet
+                   room it barely touches the sound, next to a fan it is cutting
+                   rumble and mud and lifting the speech band hard. */
+                val k = if (fxAncMode == 2) 0.5f + 0.5f * ancStrength else 1f
                 when (webFreqs[i]) {
-                    31, 62, 125 -> v -= 5f
-                    250 -> v -= 3f
-                    2000, 4000 -> v += 3.5f
+                    31, 62, 125 -> v -= 5f * k
+                    250 -> v -= 3f * k
+                    2000, 4000 -> v += 3.5f * k
                     else -> Unit
                 }
             }
@@ -771,9 +861,10 @@ class NativePlayback(
 
     private fun applyFx() {
         val p = player ?: return
-        /* loudness: pre-amp + volume boost + the ANC clarity lift */
         try {
-            val gainDb = fxPreamp + boostDb() + if (fxAnc) 2.5f else 0f
+            /* loudness: pre-amp + volume boost + the ANC clarity lift, plus
+               whatever ANC+ needs to stay above the room it just measured. */
+            val gainDb = fxPreamp + boostDb() + (if (fxAnc) 2.5f else 0f) + ancLift
             if (gainDb > 0.05f) {
                 if (loudness == null)
                     loudness = try { LoudnessEnhancer(p.audioSessionId) } catch (e: Throwable) { null }

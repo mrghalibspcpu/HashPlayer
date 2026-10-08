@@ -1,0 +1,37 @@
+/* ============================================================
+   HashPlayer · tv.css — ten-foot presentation
+
+   Loaded on every build; the rules only bite when tv.js has put
+   `body.tv` on the document. Kept as a separate sheet so the phone
+   build never pays for it and the TV tweaks stay in one place.
+
+   The goals are the two that make or break a TV app:
+     1. a focus ring you can read from a couch, and
+     2. controls big enough to land on with a D-pad.
+   ============================================================ */
+
+body.tv{font-size:17px}
+
+/* Bigger D-pad targets */
+body.tv .nav-item{min-height:52px}
+body.tv .tool{min-width:72px;padding:10px 14px}
+body.tv .btn{min-height:46px}
+body.tv .chip{min-height:40px}
+body.tv .card{min-height:120px}
+
+/* A focus ring a couch can see. D-pad focus is programmatic, so it may not
+   trip :focus-visible on every WebView — style plain :focus as well. */
+body.tv :focus{
+  outline:3px solid var(--a1);
+  outline-offset:2px;
+  box-shadow:0 0 0 5px color-mix(in srgb,var(--a1) 22%,transparent);
+}
+body.tv .card:focus{transform:scale(1.045);z-index:3}
+body.tv .tool:focus{transform:translateY(-1px)}
+
+/* Bits that only make sense with a finger */
+body.tv #btn-install{display:none}
+body.tv #btn-install2{display:none}
+
+/* TV is always dark-on-dark; keep the ambient light renderer */
+body.tv .aurora{filter:none;opacity:.4}

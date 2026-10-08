@@ -259,6 +259,16 @@ body.playing .play-btn{animation:playGlow 3.4s ease-in-out infinite}
 .tool.on{color:var(--a1);border-color:color-mix(in srgb,var(--a1) 55%,transparent);
   background:color-mix(in srgb,var(--a1) 12%,transparent)}
 .tool.on b{color:var(--a1)}
+/* ANC+ — the plus is drawn by CSS so i18n can keep owning the label text, and
+   the slow ring is the "it is listening to the room" tell. */
+.anc-tool.anc-plus span::after{content:'+';font-weight:800;margin-inline-start:1px}
+.anc-tool.anc-plus{animation:ancBreathe 2.6s ease-in-out infinite}
+@keyframes ancBreathe{
+  0%,100%{box-shadow:0 0 0 0 color-mix(in srgb,var(--a1) 0%,transparent)}
+  50%{box-shadow:0 0 0 3px color-mix(in srgb,var(--a1) 18%,transparent)}
+}
+body.perf .anc-tool.anc-plus{animation:none}
+@media (prefers-reduced-motion:reduce){.anc-tool.anc-plus{animation:none}}
 /* Pitch is a portrait-only control and only exists where the engine can
    actually stretch audio without changing tempo (the Android app). */
 .portrait-tool{display:none}

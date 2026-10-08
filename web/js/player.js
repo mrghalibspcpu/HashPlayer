@@ -1274,12 +1274,12 @@
     document.body.classList.toggle('can-pitch', !!(window.HashNative && window.HashNative.nPitch));
     syncToggles(); updateSpeedLabel(); updatePitchLabel(); setCCUI(false, false); setSkipSilenceUI(!!S.skipSilence);
     /* restore persistent ANC / Enhancer state without toasts */
-    $('#t-anc').classList.toggle('on', !!S.anc);
-    $('#t-anc').setAttribute('aria-pressed', S.anc ? 'true' : 'false');
+    P.syncAncUI();
     $('#t-enhance').classList.toggle('on', !!S.enhance);
     $('#t-enhance').setAttribute('aria-pressed', S.enhance ? 'true' : 'false');
     document.body.classList.toggle('enhanced', !!S.enhance);
-    if (S.anc && E().ready) E().applyAll();
+    if (S.ancMode > 0 && E().ready) E().applyAll();
+    if (HP.Anc) HP.Anc.sync(playingNow());
   }
 
   /* ============================================================
@@ -1671,15 +1671,59 @@
      presence lift + compressor); here we just drive it and mirror
      the state onto the native ExoPlayer engine.
      ------------------------------------------------------------ */
-  P.setAnc = function (on, quiet) {
-    S.anc = !!on; HP.save();
+  /* ------------------------------------------------------------
+     ANC — three positions:
+
+       0  off
+       1  ANC   the fixed clarity curve: rumble, mud and hiss down, the
+                speech band up, compressor riding so dialogue stays forward.
+       2  ANC+  the same curve *plus* a meter of the room, so the shape and a
+                level lift follow the noise around you — a voice stays the same
+                distance above a fan as it is above a quiet room.
+
+     Honest note: cancelling the noise itself the way an earbud does is not
+     physically possible from a phone speaker — that needs a driver millimetres
+     from your eardrum playing the inverted wave. What ANC+ does instead is the
+     other half of the trick, the one adaptive-volume earbuds and hearing aids
+     use: measure the room and keep the programme clearly above it.
+     ------------------------------------------------------------ */
+  P.setAnc = function (mode, quiet) {
+    /* Older callers still pass true/false; treat them as on/off. */
+    const m = mode === true ? 1 : mode === false ? 0 :
+      Math.max(0, Math.min(2, parseInt(mode, 10) || 0));
+    S.ancMode = m; S.anc = m > 0; HP.save();
     if (E().ready) E().applyAll();
     else ensureAudio().then(() => E().applyAll()).catch(() => { E().pushNative && E().pushNative(); });
-    const btn = $('#t-anc');
-    if (btn) { btn.classList.toggle('on', S.anc); btn.setAttribute('aria-pressed', S.anc ? 'true' : 'false'); }
-    if (!quiet) HP.toast(S.anc ? 'ANC on — noise down, voices clear' : 'ANC off');
+    P.syncAncUI();
+    if (HP.Anc) HP.Anc.sync(playingNow());
+    if (quiet) return;
+    HP.toast(m === 2 ? 'ANC+ — listening to the room, voices held clear above the noise'
+      : m === 1 ? 'ANC on — noise down, voices clear' : 'ANC off', m ? 'ok' : null);
   };
-  P.toggleAnc = function () { P.setAnc(!S.anc); };
+  P.toggleAnc = function () { P.setAnc(S.ancMode >= 2 ? 0 : S.ancMode + 1); };
+
+  function playingNow() { return !!(P.active && !P.active.paused); }
+
+  /** Paint the ANC button and the Sound Lab chips from the stored mode. */
+  P.syncAncUI = function (level) {
+    const on = S.ancMode > 0, plus = S.ancMode === 2;
+    const btn = $('#t-anc');
+    if (btn) {
+      btn.classList.toggle('on', on);
+      btn.classList.toggle('anc-plus', plus);
+      btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+      btn.title = plus ? 'ANC+ — adapting to the room' : on ? 'ANC — voice clarity' : 'ANC off';
+    }
+    $$('#anc-modes .chip').forEach((c, i) => c.classList.toggle('active', i === S.ancMode));
+    const room = $('#anc-room');
+    if (room) {
+      const a = level || (E().adapt || {});
+      const db = Math.round(a.db || 0);
+      room.hidden = !plus || !db;
+      if (db) room.textContent = 'Room ' + db + ' dB · lift +' +
+        (Math.round((a.liftDb || 0) * 10) / 10) + ' dB';
+    }
+  };
   const landscapeToolIds = ['t-enhance', 't-anc', 't-silence', 't-pitch', 'v-yt'];
   const landscapeToolSlots = new Map();
   function syncLandscapeTools() {

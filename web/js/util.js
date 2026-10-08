@@ -64,7 +64,10 @@
     preamp: 0, bass: 0, treble: 0, reverb: 0, width: 100, balance: 0, boost: 100, crossfade: 0,
     mono: false, normalize: false, fade: true, pitch: true, pitchShift: 0, lastId: null, lastPos: 0, lyricsOn: false,
     perf: null, autoPip: true, autoScan: true, autoLandscape: true, ytSearch: true, skipSilence: false,
-    anc: false, enhance: false
+    /* ancMode: 0 off · 1 ANC (fixed clarity curve) · 2 ANC+ (adaptive — the room
+       is measured and the curve plus a level lift follow it). `anc` is kept as a
+       plain on/off mirror so older code paths keep working. */
+    anc: false, ancMode: 0, enhance: false
   };
   /* ---------- how much eye-candy can this device actually afford? ---------- */
   const ua = navigator.userAgent || '';
@@ -85,6 +88,9 @@
   try { S = Object.assign({}, DEFAULTS, JSON.parse(localStorage.getItem(LS) || '{}')); }
   catch (e) { S = Object.assign({}, DEFAULTS); }
   if (!Array.isArray(S.eqGains) || S.eqGains.length !== 10) S.eqGains = DEFAULTS.eqGains.slice();
+  /* Anyone who already had ANC switched on keeps it, at the static level. */
+  if (!S.ancMode && S.anc) S.ancMode = 1;
+  S.anc = S.ancMode > 0;
   if (S.perf === null || S.perf === undefined) S.perf = DEV.weak;    // first run: pick for them
   HP.S = S;
   HP.DEFAULTS = DEFAULTS;
@@ -117,7 +123,9 @@
       ytSearching: 'Searching YouTube for',
       ytOffline: 'YouTube search is not reachable right now',
       ttDownload: 'Save for offline',
-      anc: 'ANC', enhance: 'Enhance'
+      anc: 'ANC', enhance: 'Enhance',
+      ancTitle: 'Noise cancelling', ancOff: 'Off', ancStd: 'ANC', ancPlus: 'ANC+',
+      ancNote: 'ANC trims rumble, mud and hiss and lifts voices. ANC+ also listens to the room and keeps the sound the same distance above the noise, so a voice stays as clear next to a fan as it is in a quiet room.'
     },
     ur: {
       search: 'تلاش کریں…', library: 'لائبریری', playlists: 'پلے لسٹ', favorites: 'پسندیدہ', sound: 'آواز',
@@ -161,7 +169,9 @@
       ttSubs: 'سب ٹائٹل', ttSpeed: 'چلنے کی رفتار', ttLock: 'اسکرین لاک', ttPip: 'چھوٹی ونڈو',
       ttYt: 'یوٹیوب میں کھولیں', ttFull: 'پوری اسکرین',
       ttDownload: 'آف لائن کے لیے محفوظ کریں',
-      anc: 'اے این سی', enhance: 'اینہانس'
+      anc: 'اے این سی', enhance: 'اینہانس',
+      ancTitle: 'شور کم کرنا', ancOff: 'بند', ancStd: 'اے این سی', ancPlus: 'اے این سی +',
+      ancNote: 'اے این سی گرج، بھاری پن اور سیٹی کاٹ کر آواز صاف کرتا ہے۔ اے این سی + کمرے کا شور بھی سنتا ہے اور آواز کو اُسی فاصلے پر رکھتا ہے، تاکہ پنکھے کے پاس بھی آواز اتنی ہی صاف رہے جتنی خاموش کمرے میں۔'
     }
   };
   HP.t = k => (STR[S.lang] && STR[S.lang][k]) || STR.en[k] || k;

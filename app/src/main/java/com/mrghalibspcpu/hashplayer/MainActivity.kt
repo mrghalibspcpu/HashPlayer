@@ -24,6 +24,7 @@ import android.provider.OpenableColumns
 import android.provider.Settings
 import android.util.Log
 import android.util.Rational
+import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
@@ -79,6 +80,7 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         private const val TAG = "HashPlayer"
+        const val VERSION = "2.8.0"
         const val ORIGIN = "https://appassets.androidplatform.net"
         const val START_URL = "$ORIGIN/assets/www/index.html"
         private const val MEDIA_PREFIX = "/media/"
@@ -103,11 +105,25 @@ class MainActivity : AppCompatActivity() {
     private var customCallback: WebChromeClient.CustomViewCallback? = null
     private lateinit var nativePlayer: NativePlayback
 
+    /**
+     * True in the `tv` flavour, and also on a stock box running the phone build
+     * that reports Leanback — either way the remote gets D-pad navigation, the
+     * media keys and the light performance profile instead of touch gestures.
+     */
+    private val tvBuild: Boolean by lazy {
+        try { resources.getBoolean(R.bool.tv_build) } catch (e: Exception) { false } ||
+            packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK)
+    }
+
     /* The in-app YouTube browser: the real youtube.com in its own WebView on
        top of the player, used purely for browsing and searching. */
     private var ytLayer: View? = null
     private var ytWeb: WebView? = null
     private var ytPicked = ""
+
+    /* When we last handed a link to another app, so onResume knows the user is
+       coming back from there rather than from the home screen. */
+    private var handedOffAt = 0L
 
     /* The volume slider and the vertical swipe move the *device* media volume,
        the same thing the hardware keys do — so the UI has to follow the keys too. */
@@ -143,9 +159,25 @@ class MainActivity : AppCompatActivity() {
     private val notifPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
-    /** Only ever used to read our own audio session for the visualiser. */
+    /** What the RECORD_AUDIO dialog was opened for: the visualiser, or ANC+. */
+    private var micWantedForAnc = false
+
+    /**
+     * Only ever used to read our own audio session — the visualiser, and ANC+,
+     * which listens to the room so it can keep the programme above the noise.
+     * Nothing is ever recorded, stored or sent anywhere.
+     */
     private val micPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            if (micWantedForAnc) {
+                micWantedForAnc = false
+                /* Denied, ANC drops back to the static curve; either way the
+                   engine reports the mode it settled on, which is what repaints
+                   the button in the web UI. */
+                nativePlayer.setAncMode(if (granted) 2 else 1)
+                if (!granted) toast(getString(R.string.anc_needs_mic))
+                return@registerForActivityResult
+            }
             nativePlayer.setVisualiser(granted)
             if (!granted) toast(getString(R.string.vis_needs_mic))
         }
@@ -197,7 +229,7 @@ class MainActivity : AppCompatActivity() {
             cacheMode = WebSettings.LOAD_DEFAULT
             mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
             textZoom = 100
-            userAgentString = "$userAgentString HashPlayer/2.7.0"
+            userAgentString = "$userAgentString HashPlayer/$VERSION" + (if (tvBuild) "-TV" else "")
         }
 
         web.webViewClient = object : WebViewClient() {
@@ -225,9 +257,8 @@ class MainActivity : AppCompatActivity() {
             private fun external(u: Uri): Boolean {
                 if (u.host == "appassets.androidplatform.net") return false
                 if (u.host?.contains("youtube.com") == true || u.host == "youtu.be") return false
-                return try {
-                    startActivity(Intent(Intent.ACTION_VIEW, u)); true
-                } catch (e: Exception) { true }
+                openOutside(u, false)
+                return true                      // never let the WebView itself leave
             }
 
             override fun onPageFinished(view: WebView, url: String) {
@@ -315,7 +346,14 @@ class MainActivity : AppCompatActivity() {
                 if (customView != null) { web.webChromeClient?.onHideCustomView(); return }
                 if (ytLayer != null) {
                     val wv = ytWeb
-                    if (wv != null && wv.canGoBack()) wv.goBack() else closeYouTubeBrowser()
+                    /* Sitting on a video page means the clip is playing *inside*
+                       the browser. Back must then leave for HashPlayer instead of
+                       stepping through YouTube's own history — that history walk
+                       is what used to strand the user on YouTube's home screen
+                       with no way back to the library except Recents. */
+                    val watching = videoIdOf(wv?.url.orEmpty()) != null
+                    if (wv != null && wv.canGoBack() && !watching) wv.goBack()
+                    else closeYouTubeBrowser()
                     return
                 }
                 web.evaluateJavascript("window.HashBridge ? window.HashBridge.onBack() : false") { r ->
@@ -387,6 +425,14 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         web.resumeTimers(); web.onResume()
+        /* Coming back from another app — a YouTube hand-off, the file picker,
+           Recents. The video surface can have been released while we were
+           hidden, so let the web layer re-sync the route that is on screen;
+           it is the same hook the in-app browser already uses on close. */
+        if (handedOffAt > 0L) {
+            handedOffAt = 0L
+            js("window.HashBridge && window.HashBridge.onYtBrowser(false);")
+        }
     }
 
     /** Home / recents while a video is playing → slide into picture-in-picture. */
@@ -408,6 +454,42 @@ class MainActivity : AppCompatActivity() {
         nativePlayer.onConfigurationChanged()
         val land = newConfig.orientation == Configuration.ORIENTATION_LANDSCAPE
         js("window.HashBridge && window.HashBridge.onRotate($land);")
+    }
+
+    /**
+     * Remote-control keys on a TV.
+     *
+     * The D-pad is handed to the web layer's spatial navigator (tv.js) rather
+     * than left to the WebView's own focus/scroll, so the whole UI steers the
+     * same way; the media keys (play/pause/next/prev on a remote, or a BT
+     * headphone button) are mapped onto the player. BACK is deliberately *not*
+     * eaten here — the OnBackPressedCallback owns it.
+     */
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (tvBuild && event.action == KeyEvent.ACTION_DOWN) {
+            when (event.keyCode) {
+                KeyEvent.KEYCODE_DPAD_UP -> { js("window.HP && HP.TV && HP.TV.move('up')"); return true }
+                KeyEvent.KEYCODE_DPAD_DOWN -> { js("window.HP && HP.TV.move('down')"); return true }
+                KeyEvent.KEYCODE_DPAD_LEFT -> { js("window.HP && HP.TV.move('left')"); return true }
+                KeyEvent.KEYCODE_DPAD_RIGHT -> { js("window.HP && HP.TV.move('right')"); return true }
+                KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> {
+                    js("window.HP && HP.TV && HP.TV.center()"); return true
+                }
+                KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> { jsTransport("toggle"); return true }
+                KeyEvent.KEYCODE_MEDIA_PLAY -> { jsTransport("play"); return true }
+                KeyEvent.KEYCODE_MEDIA_PAUSE -> { jsTransport("pause"); return true }
+                KeyEvent.KEYCODE_MEDIA_NEXT -> { jsTransport("next"); return true }
+                KeyEvent.KEYCODE_MEDIA_PREVIOUS -> { jsTransport("prev"); return true }
+                KeyEvent.KEYCODE_MEDIA_STOP -> { jsTransport("toggle"); return true }
+                KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> { jsTransport("seek:10000"); return true }
+                KeyEvent.KEYCODE_MEDIA_REWIND -> { jsTransport("seek:-10000"); return true }
+            }
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
+    private fun jsTransport(action: String) {
+        js("window.HashBridge && window.HashBridge.onTransport(" + JSONObject.quote(action) + ");")
     }
 
     override fun onDestroy() {
@@ -607,7 +689,8 @@ class MainActivity : AppCompatActivity() {
 
         @android.webkit.JavascriptInterface
         fun openExternal(url: String) = runOnUiThread {
-            try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) } catch (e: Exception) { }
+            val u = Uri.parse(url)
+            openOutside(u, isYouTubeHost(u))
         }
 
         @android.webkit.JavascriptInterface
@@ -621,7 +704,11 @@ class MainActivity : AppCompatActivity() {
         fun toastMsg(msg: String) = runOnUiThread { toast(msg) }
 
         @android.webkit.JavascriptInterface
-        fun version(): String = "2.7.0"
+        fun version(): String = VERSION
+
+        /** The web layer checks this to switch on D-pad navigation and the TV profile. */
+        @android.webkit.JavascriptInterface
+        fun isTv(): Boolean = tvBuild
 
         /* ---------------- native ExoPlayer engine ---------------- */
 
@@ -666,6 +753,27 @@ class MainActivity : AppCompatActivity() {
                 o.optDouble("boost", 100.0).toFloat(),
                 o.optBoolean("anc", false)
             )
+            /* ANC+ arrives on the same payload: 0 off, 1 static curve, 2 adaptive. */
+            if (o.has("ancMode")) nAncMode(o.optInt("ancMode", 0))
+        }
+
+        /**
+         * ANC (1) or ANC+ (2). ANC+ measures the room through the microphone —
+         * the same one the visualiser taps — so it needs the same permission.
+         * Refused, the player simply stays on the static clarity curve.
+         */
+        @android.webkit.JavascriptInterface
+        fun nAncMode(mode: Int) = runOnUiThread {
+            val m = mode.coerceIn(0, 2)
+            if (m != 2 ||
+                ContextCompat.checkSelfPermission(this@MainActivity, "android.permission.RECORD_AUDIO")
+                == PackageManager.PERMISSION_GRANTED
+            ) {
+                nativePlayer.setAncMode(m)
+                return@runOnUiThread
+            }
+            micWantedForAnc = true
+            micPermission.launch("android.permission.RECORD_AUDIO")
         }
 
         /** Professional colour grade on/off for the native video surface. */
@@ -842,6 +950,51 @@ class MainActivity : AppCompatActivity() {
     private var sniffTitle = ""
     private var playBtn: TextView? = null
     private var signInBtn: TextView? = null
+
+    /* ====================================================== hand-off to another app */
+
+    /**
+     * Hand a link to another app (the real YouTube, a browser) in a way that
+     * always gives the user their way back.
+     *
+     * A plain ACTION_VIEW is dropped on top of whatever back stack the other app
+     * already had. Pressing back there closes the video but leaves *its* home
+     * screen in front, and HashPlayer stays buried behind it until the user digs
+     * it out of Recents. Making the watch screen the root of a fresh task means
+     * exactly one back press finishes that task and Android brings HashPlayer —
+     * library or home — straight back to the front.
+     *
+     * Returns true when something accepted the link.
+     */
+    private fun isYouTubeHost(u: Uri): Boolean =
+        u.host?.contains("youtube.com") == true || u.host == "youtu.be"
+
+    private fun openOutside(uri: Uri, clearTask: Boolean): Boolean {
+        val scheme = uri.scheme.orEmpty().lowercase()
+        if (scheme != "http" && scheme != "https") return false
+        if (clearTask) {
+            /* Watch screen becomes the root of a fresh task, so one back press
+               finishes it and Android brings HashPlayer straight back. */
+            val backToMe = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+            try {
+                startActivity(Intent(Intent.ACTION_VIEW, uri).addFlags(backToMe))
+                handedOffAt = System.currentTimeMillis()
+                return true
+            } catch (e: Exception) {
+                Log.w(TAG, "hand-off with clear-task refused", e)
+            }
+        }
+        /* A plain hand-off for non-video links (a lyrics web-search, a blog): the
+           browser opens normally and we do not touch its own back stack. */
+        return try {
+            startActivity(Intent(Intent.ACTION_VIEW, uri))
+            handedOffAt = System.currentTimeMillis()
+            true
+        } catch (e: Exception) {
+            toast("No app on this device can open that link")
+            false
+        }
+    }
 
     @SuppressLint("SetJavaScriptEnabled")
     private fun openYouTubeBrowser(query: String) {
@@ -1095,13 +1248,21 @@ class MainActivity : AppCompatActivity() {
         signInBtn = null
         sniffUrl = null
         try { CookieManager.getInstance().flush() } catch (e: Exception) { }
-        try {
-            wv?.stopLoading()
-            wv?.loadUrl("about:blank")
-            (wv?.parent as? ViewGroup)?.removeView(wv)
-            wv?.destroy()
-        } catch (e: Exception) { Log.w(TAG, "yt browser teardown", e) }
         root.removeView(layer)
+        /* takeVideo() can reach us from inside the WebView's own navigation
+           callback, and destroying the view from there is undefined behaviour
+           ("destroy() called while the WebView is in use"). Detaching now gets it
+           off screen in this same frame; the real teardown waits one turn. */
+        wv?.let { v ->
+            try { v.stopLoading() } catch (e: Exception) { }
+            root.post {
+                try {
+                    v.loadUrl("about:blank")
+                    (v.parent as? ViewGroup)?.removeView(v)
+                    v.destroy()
+                } catch (e: Exception) { Log.w(TAG, "yt browser teardown", e) }
+            }
+        }
         // Let the web layer decide whether the picture comes back (it knows
         // which route is on screen); never force the surface over the library.
         web.evaluateJavascript("window.HashBridge && window.HashBridge.onYtBrowser(false);", null)
@@ -1124,6 +1285,8 @@ class MainActivity : AppCompatActivity() {
 
     @SuppressLint("NewApi")
     private fun enterPip(): Boolean {
+        /* A picture-in-picture corner makes no sense on a ten-foot screen. */
+        if (tvBuild) return false
         if (Build.VERSION.SDK_INT < 26) { toast("Picture-in-picture needs Android 8 or newer"); return false }
         if (!packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)) {
             toast("This device does not support picture-in-picture"); return false

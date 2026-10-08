@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!--
+      Android TV overlay — merged on top of the shared manifest by the `tv`
+      flavour only.
+
+      A build that never shows up on a TV's home screen is the single most common
+      TV-port failure: the launcher only lists apps that declare a LEANBACK
+      launcher entry, and it draws them with the 320x180 banner set here. The
+      phone manifest keeps its normal LAUNCHER, so the two simply add up.
+    -->
+    <uses-feature android:name="android.software.leanback" android:required="true" />
+
+    <application android:banner="@drawable/tv_banner">
+
+        <activity
+            android:name=".MainActivity"
+            android:screenOrientation="landscape"
+            tools:replace="android:screenOrientation">
+
+            <!-- The Leanback home screen picks this up. -->
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+    </application>
+</manifest>

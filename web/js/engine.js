@@ -216,7 +216,11 @@
     /* With a device master every engine stays at unity, so the two levels can
        never multiply into a muffled half-volume. Mute still happens in-app. */
     const inApp = useDevice ? (S.muted ? 0 : 1) : level;
-    const boosted = clamp(inApp * ((S.boost || 100) / 100), 0, 3);
+    /* ANC+ holds the programme a fixed distance above the room: the meter says
+       how many dB that takes, and the compressor already in the chain keeps the
+       extra gain from turning into clipping. */
+    const lift = S.ancMode === 2 ? db2gain((E.adapt && E.adapt.liftDb) || 0) : 1;
+    const boosted = clamp(inApp * ((S.boost || 100) / 100) * lift, 0, 3);
     if (E.ready) ramp(E.master.gain, boosted, 60);
 
     const P = HP.Player;
@@ -230,6 +234,23 @@
     }
     HP.emit('volume', S.volume);
   };
+
+  /* ---------- ANC+ : what the room meter last said ----------
+     `s` is how loud the room is (0…1), `liftDb` how far the programme is being
+     held above it. Inside the Android app the native shell fills these from its
+     own microphone meter; in a plain browser anc.js does the same job. */
+  E.adapt = { s: 0, liftDb: 0, db: 0, listening: false };
+  /** How hard the clarity curve should work right now (1 = the full ANC shape). */
+  E.adaptiveK = function () {
+    const s = (E.adapt && E.adapt.s) || 0;
+    return S.ancMode === 2 ? 0.5 + 0.5 * s : 1;
+  };
+  E.setAdapt = function (a) {
+    if (!a) return;
+    E.adapt = { s: +a.s || 0, liftDb: +a.liftDb || 0, db: +a.db || 0, listening: !!a.listening };
+    applyAll();
+  };
+
   E.applyAll = applyAll;
   function applyAll() {
     if (!E.ready) return;
@@ -242,12 +263,15 @@
     if (E.pan) ramp(E.pan.pan, clamp((S.balance || 0) / 100, -1, 1), 90);
     /* ANC: rumble filter + mud cut + presence lift + hiss trim. While it is
        on, the compressor rides along so dialogue stays level and forward;
-       switching it off restores whatever Night mode the user had chosen. */
-    const anc = !!S.anc;
-    ramp(E.ancHp.frequency, anc ? 130 : 10, 140);
-    ramp(E.ancMud.gain, anc ? -4.5 : 0, 140);
-    ramp(E.ancPres.gain, anc ? 5 : 0, 140);
-    ramp(E.ancHiss.gain, anc ? -2.5 : 0, 140);
+       switching it off restores whatever Night mode the user had chosen.
+       ANC+ scales the whole shape with the room the meter just measured, so a
+       quiet room gets a light touch and a noisy one gets the full treatment. */
+    const anc = S.ancMode > 0;
+    const k = E.adaptiveK();
+    ramp(E.ancHp.frequency, anc ? 90 + 60 * k : 10, 140);
+    ramp(E.ancMud.gain, anc ? -4.5 * k : 0, 140);
+    ramp(E.ancPres.gain, anc ? 5 * k : 0, 140);
+    ramp(E.ancHiss.gain, anc ? -2.5 * k : 0, 140);
     const compOn = S.normalize || anc;
     ramp(E.compWet.gain, compOn ? 1 : 0, 150);
     ramp(E.compDry.gain, compOn ? 0 : 1, 150);

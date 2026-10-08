@@ -342,7 +342,8 @@
    * Mirror the rest of the Sound Lab onto ExoPlayer. The web graph cannot
    * touch native audio, so every knob is re-created with device effects:
    * preamp + volume-boost → LoudnessEnhancer, treble → top EQ bands,
-   * reverb → PresetReverb, ANC → a vocal-focused EQ shape + loudness.
+   * reverb → PresetReverb, ANC → a vocal-focused EQ shape + loudness, and
+   * ANC+ (ancMode 2) → the same shape scaled by the room the shell measures.
    */
   N.pushFx = function () {
     const n = bridge(); if (!n || !n.nFx) return;
@@ -354,7 +355,9 @@
         bass: +(S.bass || 0),
         reverb: +(S.reverb || 0),
         boost: +(S.boost == null ? 100 : S.boost),
-        anc: !!S.anc
+        anc: S.ancMode > 0,
+        /* 0 off · 1 static curve · 2 ANC+, which listens to the room natively */
+        ancMode: S.ancMode | 0
       }));
     } catch (e) { }
   };

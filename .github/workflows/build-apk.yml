@@ -59,21 +59,35 @@ jobs:
         run: gradle --no-daemon assembleRelease
         continue-on-error: true
 
-      - name: Verify the web player is packed inside the APK
+      - name: Verify the web player is packed inside the APKs
         run: |
-          APK=app/build/outputs/apk/debug/app-debug.apk
-          unzip -l "$APK" | grep -q "assets/www/index.html" \
-            || { echo "::error::web assets are missing from the APK"; exit 1; }
-          echo "Packed web files:"
-          unzip -l "$APK" | grep "assets/www/" | awk '{print $4, $1" bytes"}'
+          for APK in \
+            app/build/outputs/apk/phone/debug/app-phone-debug.apk \
+            app/build/outputs/apk/tv/debug/app-tv-debug.apk; do
+            [ -f "$APK" ] || { echo "::error::missing $APK"; exit 1; }
+            unzip -l "$APK" | grep -q "assets/www/index.html" \
+              || { echo "::error::web assets are missing from $APK"; exit 1; }
+            echo "$APK packs the web player:"
+            unzip -l "$APK" | grep -c "assets/www/"
+          done
+          # the TV build must carry its Leanback launcher entry + banner
+          aapt2=$(ls $ANDROID_HOME/build-tools/*/aapt2 2>/dev/null | head -1)
+          if [ -n "$aapt2" ]; then
+            "$aapt2" dump badging app/build/outputs/apk/tv/debug/app-tv-debug.apk \
+              | grep -Ei "leanback|banner" && echo "TV manifest OK" || true
+          fi
 
       - name: Rename artifacts
         run: |
           mkdir -p dist
           if [ "$GITHUB_REF_TYPE" = "tag" ]; then V="$GITHUB_REF_NAME"; else V="build${{ github.run_number }}"; fi
-          cp app/build/outputs/apk/debug/app-debug.apk "dist/HashPlayer-$V-debug.apk"
-          if [ -f app/build/outputs/apk/release/app-release.apk ]; then
-            cp app/build/outputs/apk/release/app-release.apk "dist/HashPlayer-$V-release.apk"
+          cp app/build/outputs/apk/phone/debug/app-phone-debug.apk "dist/HashPlayer-$V-debug.apk"
+          cp app/build/outputs/apk/tv/debug/app-tv-debug.apk "dist/HashPlayer-TV-$V-debug.apk"
+          if [ -f app/build/outputs/apk/phone/release/app-phone-release.apk ]; then
+            cp app/build/outputs/apk/phone/release/app-phone-release.apk "dist/HashPlayer-$V-release.apk"
+          fi
+          if [ -f app/build/outputs/apk/tv/release/app-tv-release.apk ]; then
+            cp app/build/outputs/apk/tv/release/app-tv-release.apk "dist/HashPlayer-TV-$V-release.apk"
           fi
           ls -lh dist
 

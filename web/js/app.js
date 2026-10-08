@@ -6,7 +6,7 @@
   'use strict';
   const HP = w.HP, S = HP.S, $ = HP.$, $$ = HP.$$, el = HP.el, icon = HP.icon, clamp = HP.clamp;
   const L = HP.Lib, P = HP.Player, E = HP.Engine, UI = {};
-  const APP_VERSION = '2.7.0';
+  const APP_VERSION = '2.8.0';
 
   /* =========================================================
      views & navigation
@@ -462,7 +462,28 @@
   }
   UI.drawCurve = drawCurve;
 
+  /**
+   * The three ANC positions as chips in the Sound Lab. The same state lives on
+   * the player's ANC button — one tap there cycles through these.
+   */
+  function buildAnc() {
+    const box = $('#anc-modes');
+    if (!box) return;
+    box.innerHTML = '';
+    [['ancOff', 'Off'], ['ancStd', 'ANC'], ['ancPlus', 'ANC+']].forEach(([key, label], i) => {
+      const c = el('button', {
+        class: 'chip' + (S.ancMode === i ? ' active' : ''),
+        'data-anc': i, 'data-i18n': key, text: label
+      });
+      c.addEventListener('click', () => P.setAnc(i));
+      box.appendChild(c);
+    });
+    HP.applyI18n();                        // the chips are brand new markup
+    P.syncAncUI();
+  }
+
   function bindFX() {
+    buildAnc();
     const map = [
       ['#fx-preamp', 'preamp', v => v + ' dB'], ['#fx-bass', 'bass', v => '+' + v + ' dB'],
       ['#fx-treble', 'treble', v => (v > 0 ? '+' : '') + v + ' dB'], ['#fx-reverb', 'reverb', v => v + '%'],
@@ -863,8 +884,19 @@
     },
     /** ExoPlayer state for the track currently playing natively. */
     onNative(json) {
-      if (!P.n) return;
       let s; try { s = JSON.parse(json); } catch (e) { return; }
+      /* ANC+ room reading. Not a playback event — it repaints the ANC button and
+         tells us which mode the engine actually settled on (a refused microphone
+         drops it back to the static curve). Checked before the P.n guard because
+         it can arrive before anything at all has been played. */
+      if (s && s.e === 'anc') {
+        if (typeof s.mode === 'number' && s.mode !== S.ancMode) {
+          S.ancMode = s.mode; S.anc = s.mode > 0; HP.save();
+        }
+        P.syncAncUI({ db: s.db || 0, liftDb: s.lift || 0, listening: !!s.listening });
+        return;
+      }
+      if (!P.n) return;
       P.n.onState(s);
     },
 
@@ -992,6 +1024,9 @@
     HP.applyI18n();
     P.init();
     buildEQ(); bindFX(); bindSettings(); bindFiles(); bindKeys(); buildKeys();
+    /* The browser-side room meter (anc.js) repaints the ANC readout as it goes.
+       Inside the Android app the same numbers arrive through onNative instead. */
+    HP.on('ambient', lv => P.syncAncUI(lv));
     $('#app-version').textContent = 'v' + APP_VERSION;
     $('#about-env').textContent = HP.isAndroidApp ? 'Android app' : (matchMedia('(display-mode: standalone)').matches ? 'installed PWA' : 'web');
 

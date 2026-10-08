@@ -11,9 +11,33 @@ android {
         applicationId "com.mrghalibspcpu.hashplayer"
         minSdk 23
         targetSdk 34
-        versionCode 11
-        versionName "2.7.0"
+        versionCode 12
+        versionName "2.8.0"
         resourceConfigurations += ["en", "ur"]
+    }
+
+    /* ------------------------------------------------------------------
+       Two builds out of one code base:
+
+         phone — the touch app everyone installs (com.mrghalibspcpu.hashplayer)
+         tv    — the same player tuned for the big screen and a D-pad
+                 (com.mrghalibspcpu.hashplayer.tv), with its own Leanback
+                 launcher entry, banner, landscape lock and remote-control
+                 navigation.
+
+       They are separate applicationIds on purpose, so a TV and a phone can
+       hold both without one replacing the other.
+       ------------------------------------------------------------------ */
+    flavorDimensions += 'device'
+    productFlavors {
+        phone {
+            dimension 'device'
+        }
+        tv {
+            dimension 'device'
+            applicationIdSuffix '.tv'
+            versionNameSuffix '-tv'
+        }
     }
 
     buildTypes {
