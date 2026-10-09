@@ -40,7 +40,8 @@
     if (P.n) { bind(P.n); document.body.classList.add('has-native-engine'); }
     P.a.volume = 1; P.b.volume = 1;
     HP.Vis.init($('#vis'));
-    HP.Vis.visible = () => $('#np').classList.contains('on') && !document.body.classList.contains('yt-mode');
+    HP.Vis.visible = () => $('#np').classList.contains('on') && !document.body.classList.contains('yt-mode') &&
+      !document.body.classList.contains('tv');   // TV: the visualiser is skipped to keep 60fps
     HP.Vis.Energy.attach($('#energy'));
     HP.Vis.setMode(S.vis);
     bindUI();
@@ -1220,13 +1221,7 @@
     $('#v-pip').addEventListener('click', () => P.pip());
     $('#v-full').addEventListener('click', () => P.toggleFullscreen());
     const ytOut = $('#v-yt');
-    if (ytOut) ytOut.addEventListener('click', () => {
-      const t = P.current;
-      if (!t || t.source !== 'yt') return;
-      const u = 'https://www.youtube.com/watch?v=' + t.ytId;
-      if (window.HashNative && window.HashNative.openExternal) window.HashNative.openExternal(u);
-      else window.open(u, '_blank', 'noopener');
-    });
+    if (ytOut) ytOut.addEventListener('click', () => P.copyYouTubeLink());
     $('#v-cc').addEventListener('click', () => P.toggleCC());
     $('#t-cc').addEventListener('click', () => P.toggleCC());
     $('#t-silence').addEventListener('click', () => P.toggleSkipSilence());
@@ -1732,9 +1727,21 @@
       v.classList.remove('show');
       if (left) left.classList.remove('show');
       document.body.classList.remove('ui-show');
+      /* Controls faded away: a remote's focus must not stay on an invisible button. */
+      const a = document.activeElement;
+      if (a && a.closest && (a.closest('#vtools') || a.closest('#landscape-tools') ||
+          (document.body.classList.contains('cinema') && a.closest('#np')))) a.blur();
     }, 5000);
   }
   P.toggleVideoUI = toggleVideoUI;
+
+  /** 🔗 — copy the active YouTube video's link. Shown only in landscape video. */
+  P.copyYouTubeLink = function () {
+    const t = P.current;
+    if (!t || t.source !== 'yt' || !t.ytId) { HP.toast(HP.t('ytNoLink'), 'err'); return; }
+    const url = 'https://www.youtube.com/watch?v=' + encodeURIComponent(t.ytId);
+    HP.copyText(url).then(ok => HP.toast(HP.t(ok ? 'linkCopied' : 'linkCopyFail'), ok ? 'ok' : 'err'));
+  };
 
   HP.Player = P;
 })(window);

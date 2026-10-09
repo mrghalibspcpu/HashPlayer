@@ -3,29 +3,61 @@ plugins {
     id 'org.jetbrains.kotlin.android'
 }
 
+/* ------------------------------------------------------------------
+   Signing — one stable certificate for every build.
+
+   Android only installs an update over an existing app when it carries the
+   SAME signature. A certificate that changes from build to build (CI runners
+   create a fresh debug key every time) is what produces "App not installed /
+   Signature mismatch" on the TV. So the release key is supplied from outside
+   the repository, through environment variables (CI secrets):
+
+     HASHPLAYER_KEYSTORE_PATH       path to the .jks / .keystore file
+     HASHPLAYER_KEYSTORE_PASSWORD   store password
+     HASHPLAYER_KEY_ALIAS           key alias
+     HASHPLAYER_KEY_PASSWORD        key password
+
+   Without them the build falls back to the debug key (local development only).
+   Never commit the keystore itself.
+   ------------------------------------------------------------------ */
+def stableKeystore = System.getenv('HASHPLAYER_KEYSTORE_PATH')
+
 android {
     namespace 'com.mrghalibspcpu.hashplayer'
     compileSdk 34
+
+    signingConfigs {
+        if (stableKeystore) {
+            hashplayer {
+                storeFile file(stableKeystore)
+                storePassword System.getenv('HASHPLAYER_KEYSTORE_PASSWORD')
+                keyAlias System.getenv('HASHPLAYER_KEY_ALIAS')
+                keyPassword System.getenv('HASHPLAYER_KEY_PASSWORD')
+            }
+        }
+    }
 
     defaultConfig {
         applicationId "com.mrghalibspcpu.hashplayer"
         minSdk 23
         targetSdk 34
-        versionCode 11
-        versionName "2.7.0"
+        // Must rise on every release: Android refuses to install an older code.
+        // 2.8.0 = 24 (2.7.0 was 11).
+        versionCode 24
+        versionName "2.8.0"
         resourceConfigurations += ["en", "ur"]
     }
 
     buildTypes {
         debug {
             minifyEnabled false
+            signingConfig(stableKeystore ? signingConfigs.hashplayer : signingConfigs.debug)
         }
         release {
             minifyEnabled false
             shrinkResources false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
-            // unsigned by default; CI signs with a throwaway key so the APK installs
-            signingConfig signingConfigs.debug
+            signingConfig(stableKeystore ? signingConfigs.hashplayer : signingConfigs.debug)
         }
     }
 

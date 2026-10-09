@@ -277,6 +277,9 @@
   /** A video was tapped inside that browser — play it here. */
   L.pickYt = async function (id, title, author) {
     if (!id) return;
+    /* The YouTube page stays alive behind the player: closing the player
+       (Back) brings that same page back, scroll position and search included. */
+    HP.ytReturn = true;
     await L.playYt({ id: String(id), title: title || '', author: author || '', thumb: '' });
   };
 

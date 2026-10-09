@@ -115,6 +115,8 @@
       pitch2: 'Pitch', pitchTitle: 'Pitch', original: 'Original',
       pitchSub: 'Shifts the key up or down in semitones. The speed stays exactly where you left it.',
       ytSearching: 'Searching YouTube for',
+      copyLink: 'Copy link', ttCopyLink: 'Copy YouTube link',
+      linkCopied: 'YouTube link copied to clipboard', linkCopyFail: 'Could not copy the link', ytNoLink: 'Play a YouTube video first',
       ytOffline: 'YouTube search is not reachable right now',
       ttDownload: 'Save for offline',
       anc: 'ANC', enhance: 'Enhance'
@@ -153,13 +155,14 @@
       findLyrics: 'آن لائن بول تلاش کریں', scan: 'ڈیوائس اسکین کریں',
       addUrlSub2: 'یوٹیوب لنک یا آڈیو/ویڈیو فائل کا براہِ راست لنک۔',
       ytOpen: 'یوٹیوب کھولیں', pitch2: 'پچ', pitchTitle: 'پچ', original: 'اصل',
+      copyLink: 'لنک کاپی کریں', linkCopied: 'یوٹیوب لنک کلپ بورڈ پر کاپی ہو گیا', linkCopyFail: 'لنک کاپی نہیں ہو سکا', ytNoLink: 'پہلے کوئی یوٹیوب ویڈیو چلائیں',
       pitchSub: 'آواز کی پچ سیمی ٹون میں اوپر نیچے کریں۔ رفتار جہاں ہے وہیں رہے گی۔', ytResults: 'یوٹیوب سے',
       ytSearch: 'تلاش میں یوٹیوب کے نتائج بھی دکھائیں (انٹرنیٹ درکار)',
       ytSearching: 'یوٹیوب پر تلاش جاری ہے', ytOffline: 'یوٹیوب تلاش فی الحال دستیاب نہیں',
       tapToUnlock: 'ان لاک کرنے کے لیے ٹیپ کریں',
       ttAspect: 'تناسب / زوم', ttRotate: 'گھمائیں', ttMirror: 'آئینہ', ttShot: 'اسکرین شاٹ',
       ttSubs: 'سب ٹائٹل', ttSpeed: 'چلنے کی رفتار', ttLock: 'اسکرین لاک', ttPip: 'چھوٹی ونڈو',
-      ttYt: 'یوٹیوب میں کھولیں', ttFull: 'پوری اسکرین',
+      ttCopyLink: 'یوٹیوب لنک کاپی کریں', ttFull: 'پوری اسکرین',
       ttDownload: 'آف لائن کے لیے محفوظ کریں',
       anc: 'اے این سی', enhance: 'اینہانس'
     }
@@ -261,5 +264,27 @@
   HP.clamp = clamp; HP.uid = uid; HP.esc = esc; HP.debounce = debounce; HP.throttle = throttle;
   HP.toast = toast; HP.applyI18n = applyI18n; HP.paletteFrom = paletteFrom; HP.STR = STR;
   HP.isAndroidApp = !!(w.HashNative);
+
+  /* Copy text to the clipboard: the Android bridge first (always works inside
+     the WebView), then the web APIs. Resolves true when it was copied. */
+  HP.copyText = function (text) {
+    const s = String(text || '');
+    const n = w.HashNative;
+    try { if (n && typeof n.copyText === 'function' && n.copyText(s)) return Promise.resolve(true); } catch (e) { }
+    const fallback = () => {
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = s; ta.setAttribute('readonly', ''); ta.style.position = 'fixed'; ta.style.opacity = '0';
+        document.body.appendChild(ta); ta.select();
+        const ok = document.execCommand('copy');
+        ta.remove();
+        return !!ok;
+      } catch (e) { return false; }
+    };
+    if (w.navigator && navigator.clipboard && navigator.clipboard.writeText) {
+      return navigator.clipboard.writeText(s).then(() => true, () => fallback());
+    }
+    return Promise.resolve(fallback());
+  };
   HP.supportsFS = typeof w.showOpenFilePicker === 'function';
 })(window);

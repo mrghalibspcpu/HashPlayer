@@ -6,7 +6,17 @@
   'use strict';
   const HP = w.HP, S = HP.S, $ = HP.$, $$ = HP.$$, el = HP.el, icon = HP.icon, clamp = HP.clamp;
   const L = HP.Lib, P = HP.Player, E = HP.Engine, UI = {};
-  const APP_VERSION = '2.7.0';
+  const APP_VERSION = '2.8.0';
+
+  /* Android TV / Google TV / Fire TV (and smart-TV browsers, which report no
+     pointer and no hover): the UI is driven by a D-pad remote. */
+  const TV = (function () {
+    try {
+      if (w.HashNative && typeof w.HashNative.isTv === 'function' && w.HashNative.isTv()) return true;
+      return !!(w.matchMedia && matchMedia('(pointer: none)').matches && matchMedia('(hover: none)').matches);
+    } catch (e) { return false; }
+  })();
+  HP.TV = TV;
 
   /* =========================================================
      views & navigation
@@ -114,6 +124,12 @@
     if (P.setPlayerViewActive) P.setPlayerViewActive(show);
 
     if (!show) {
+      /* Closing the player after a YouTube pick brings back the very YouTube
+         page the user was browsing (kept alive behind the player). */
+      if (HP.ytReturn) {
+        HP.ytReturn = false;
+        try { w.HashNative && w.HashNative.resumeYouTube && w.HashNative.resumeYouTube(); } catch (e) { }
+      }
       const route = routeStack.length ? routeStack.pop() : null;
       const view = route && route.name === 'player' ? route.view : (document.body.dataset.view || 'library');
       const active = $('.view.active');
@@ -512,7 +528,10 @@
       .replace(/theme-\w+/g, '').replace(/surface-\w+/g, '').trim();
     document.body.classList.add('theme-' + S.theme, 'surface-' + S.surface);
     document.body.classList.toggle('no-motion', !S.motion);
-    document.body.classList.toggle('perf', !!S.perf);
+    /* TV hardware is usually low-RAM: smooth mode is forced there, and the
+       class lets CSS drop the heaviest effects entirely. */
+    document.body.classList.toggle('perf', !!S.perf || TV);
+    document.body.classList.toggle('tv', TV);
     document.body.classList.toggle('mode-simple', !!S.simple);
     document.body.classList.toggle('mode-pro', !S.simple);
     const meta = $('meta[name=theme-color]');
@@ -985,13 +1004,123 @@
   }
 
   /* =========================================================
+     Android TV — D-pad remote
+     Arrow keys move a visible focus ring between controls; OK presses the
+     focused one. With nothing focused, the arrows keep their player meaning
+     (seek / volume), so a film still plays with the remote alone. Text
+     fields keep every key, and the remote's media keys always work.
+     ========================================================= */
+  const DPAD = { ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0] };
+  const REMOTE_MEDIA = {
+    MediaPlayPause: () => P.toggle(), MediaPlay: () => P.toggle(), MediaPause: () => P.toggle(),
+    MediaTrackNext: () => P.next(), MediaTrackPrevious: () => P.prev(),
+    MediaFastForward: () => P.seekBy(30), MediaRewind: () => P.seekBy(-30)
+  };
+  const FOCUS_SEL = 'button, a[href], input, select, textarea, [tabindex="0"], .card, .yt-row, .chip, .nav-item';
+
+  /** The layer the D-pad is confined to: a menu, a sheet, the queue, the player or the page. */
+  function focusScope() {
+    const ctx = $('#ctx');
+    if (ctx && !ctx.hidden) return ctx;
+    const sheet = document.querySelector('.sheet:not([hidden])');
+    if (sheet) return sheet;
+    const queue = $('#queue-panel');
+    if (queue && queue.classList.contains('on')) return queue;
+    if ($('#np').classList.contains('on')) return $('#np');
+    return document.body;
+  }
+
+  /** Controls that are really on screen (not hidden, faded out or inert). */
+  function visibleFocusables(scope) {
+    return [...scope.querySelectorAll(FOCUS_SEL)].filter(n => {
+      if (n.disabled || n.closest('[hidden],[inert],[aria-hidden="true"]')) return false;
+      const r = n.getBoundingClientRect();
+      if (r.width < 2 || r.height < 2) return false;
+      for (let a = n; a && a !== document.body; a = a.parentElement) {
+        const cs = getComputedStyle(a);
+        if (cs.display === 'none' || cs.visibility === 'hidden' || cs.pointerEvents === 'none' || +cs.opacity < 0.05) return false;
+      }
+      return true;
+    });
+  }
+
+  const midpoint = n => { const r = n.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; };
+
+  /** Move focus to the nearest control in the pressed direction. */
+  function moveFocus(dir) {
+    const list = visibleFocusables(focusScope());
+    if (!list.length) return;
+    const cur = document.activeElement;
+    let next = null;
+    if (!list.includes(cur)) {
+      // nothing focused in this layer yet: start at the top-left control
+      next = list.slice().sort((a, b) => {
+        const A = a.getBoundingClientRect(), B = b.getBoundingClientRect();
+        return (Math.round(A.top / 24) - Math.round(B.top / 24)) || (A.left - B.left);
+      })[0];
+    } else {
+      const [cx, cy] = midpoint(cur);
+      let best = Infinity;
+      list.forEach(n => {
+        if (n === cur) return;
+        const [x, y] = midpoint(n);
+        const dx = x - cx, dy = y - cy;
+        const along = dir[0] * dx + dir[1] * dy;
+        if (along <= 2) return;                           // not in the pressed direction
+        const across = Math.abs(dir[0] ? dy : dx);
+        const score = along + across * 2;                 // prefer the row / column we are in
+        if (score < best) { best = score; next = n; }
+      });
+    }
+    if (next) {
+      next.focus({ preventScroll: true });
+      next.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    }
+  }
+
+  function bindDpad() {
+    if (!TV) return;
+    document.addEventListener('pointerdown', () => document.body.classList.remove('dpad'), { passive: true });
+    document.addEventListener('keydown', e => {
+      const k = e.key;
+      const tag = (e.target.tagName || '').toLowerCase();
+      // text entry keeps every arrow key; sliders and buttons do not
+      const typing = tag === 'textarea' || tag === 'select' || !!e.target.isContentEditable ||
+        (tag === 'input' && /^(text|search|url|email|password|number|tel|)$/i.test(e.target.type || ''));
+      if (typing || e.ctrlKey || e.metaKey || e.altKey || P.locked) return;
+      const media = REMOTE_MEDIA[k];
+      if (media) { e.preventDefault(); e.stopPropagation(); media(); return; }
+      const npOn = $('#np').classList.contains('on');
+      const focused = e.target !== document.body && e.target !== document.documentElement;
+      const dir = DPAD[k];
+      if (!dir) {
+        // OK in the player with nothing focused: play / pause and show the controls
+        if (k === 'Enter' && npOn && !focused) {
+          e.preventDefault(); e.stopPropagation();
+          P.toggle();
+          if (P.toggleVideoUI) P.toggleVideoUI();
+        }
+        return;
+      }
+      document.body.classList.add('dpad');
+      if (npOn && !focused) {                              // seek / volume — bindKeys handles it
+        if (P.toggleVideoUI) P.toggleVideoUI();
+        return;
+      }
+      if (e.target.type === 'range' && (k === 'ArrowLeft' || k === 'ArrowRight')) return;
+      e.preventDefault(); e.stopPropagation();
+      moveFocus(dir);
+    }, true);
+  }
+
+  /* =========================================================
      boot
      ========================================================= */
   async function boot() {
     applyTheme();
     HP.applyI18n();
     P.init();
-    buildEQ(); bindFX(); bindSettings(); bindFiles(); bindKeys(); buildKeys();
+    buildEQ(); bindFX(); bindSettings(); bindFiles(); bindKeys(); bindDpad(); buildKeys();
     $('#app-version').textContent = 'v' + APP_VERSION;
     $('#about-env').textContent = HP.isAndroidApp ? 'Android app' : (matchMedia('(display-mode: standalone)').matches ? 'installed PWA' : 'web');
 

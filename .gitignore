@@ -6,6 +6,8 @@ local.properties
 *.apk
 *.aab
 *.keystore
+*.jks
+keystore.properties
 # editors / os
 .idea/
 .vscode/

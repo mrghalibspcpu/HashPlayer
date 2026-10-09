@@ -514,3 +514,20 @@ body.yt-mode .yt-warn{display:flex}
    They sit under your own library, never mixed into it, and
    only appear while a search is actually typed.
    ============================================================ */
+
+/* ============================================================
+   Android TV — low-RAM, 60fps
+   The TV build is driven by a remote on a box with little memory and a weak
+   GPU. Decorative layers that cost a full-screen blur or an animation every
+   frame are removed entirely; the player and lists stay fluid.
+   ============================================================ */
+body.tv .aurora,body.tv .grain,body.tv .scanline,body.tv #vis{display:none !important}
+body.tv *,body.tv *::before,body.tv *::after{
+  backdrop-filter:none !important;-webkit-backdrop-filter:none !important;
+  text-shadow:none !important;box-shadow:none !important}
+body.tv :focus{box-shadow:0 0 0 4px color-mix(in srgb,var(--a1) 30%,transparent) !important}
+body.tv .card,body.tv .view,body.tv .empty,body.tv .toast,body.tv .art-disc,body.tv .empty-art{animation:none !important}
+body.tv .card{content-visibility:auto}
+body.tv .card:hover{transform:none}
+body.tv *{transition-duration:.12s !important}
+body.tv .nav-item,body.tv .tool,body.tv .btn{min-height:44px}

@@ -108,6 +108,11 @@ class MainActivity : AppCompatActivity() {
     private var ytLayer: View? = null
     private var ytWeb: WebView? = null
     private var ytPicked = ""
+    /* ytVisible: the page is on screen. A page that is only hidden (because a
+       video was picked and the player is showing) keeps its WebView, scroll
+       position, search and history — it is simply not drawn. */
+    private var ytVisible = false
+    private var ytIsYouTube = false
 
     /* The volume slider and the vertical swipe move the *device* media volume,
        the same thing the hardware keys do — so the UI has to follow the keys too. */
@@ -197,7 +202,7 @@ class MainActivity : AppCompatActivity() {
             cacheMode = WebSettings.LOAD_DEFAULT
             mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
             textZoom = 100
-            userAgentString = "$userAgentString HashPlayer/2.7.0"
+            userAgentString = "$userAgentString HashPlayer/2.8.0"
         }
 
         web.webViewClient = object : WebViewClient() {
@@ -313,9 +318,9 @@ class MainActivity : AppCompatActivity() {
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
                 if (customView != null) { web.webChromeClient?.onHideCustomView(); return }
-                if (ytLayer != null) {
+                if (ytVisible) {
                     val wv = ytWeb
-                    if (wv != null && wv.canGoBack()) wv.goBack() else closeYouTubeBrowser()
+                    if (wv != null && wv.canGoBack()) wv.goBack() else suspendYouTubeBrowser()
                     return
                 }
                 web.evaluateJavascript("window.HashBridge ? window.HashBridge.onBack() : false") { r ->
@@ -382,11 +387,13 @@ class MainActivity : AppCompatActivity() {
     override fun onPause() {
         super.onPause()
         if (!isPlaying) { web.onPause(); web.pauseTimers() }   // keep audio alive in the background
+        if (ytVisible) ytWeb?.onPause()
     }
 
     override fun onResume() {
         super.onResume()
         web.resumeTimers(); web.onResume()
+        if (ytVisible) ytWeb?.onResume()
     }
 
     /** Home / recents while a video is playing → slide into picture-in-picture. */
@@ -578,6 +585,25 @@ class MainActivity : AppCompatActivity() {
             if (u.startsWith("http")) openBrowser(u, youtube = false)
         }
 
+        /** The player closed: bring back the YouTube page the user picked from. */
+        @android.webkit.JavascriptInterface
+        fun resumeYouTube() = runOnUiThread { showYouTubeBrowser() }
+
+        /** Copy text (the YouTube link) to the system clipboard. */
+        @android.webkit.JavascriptInterface
+        fun copyText(text: String?): Boolean = try {
+            val cm = getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+            cm.setPrimaryClip(android.content.ClipData.newPlainText("HashPlayer", text.orEmpty()))
+            true
+        } catch (e: Exception) {
+            Log.w(TAG, "clipboard", e)
+            false
+        }
+
+        /** Android TV / Google TV / Fire TV: the web UI switches to D-pad focus. */
+        @android.webkit.JavascriptInterface
+        fun isTv(): Boolean = isTelevision()
+
         @android.webkit.JavascriptInterface
         fun canDownload(): Boolean = true
 
@@ -621,7 +647,7 @@ class MainActivity : AppCompatActivity() {
         fun toastMsg(msg: String) = runOnUiThread { toast(msg) }
 
         @android.webkit.JavascriptInterface
-        fun version(): String = "2.7.0"
+        fun version(): String = "2.8.0"
 
         /* ---------------- native ExoPlayer engine ---------------- */
 
@@ -849,12 +875,22 @@ class MainActivity : AppCompatActivity() {
             if (query.isBlank()) "https://m.youtube.com/"
             else "https://m.youtube.com/results?search_query=" +
                 java.net.URLEncoder.encode(query, "UTF-8")
-        openBrowser(url, youtube = true)
+        openBrowser(url, youtube = true, navigate = query.isNotBlank())
     }
 
     @SuppressLint("SetJavaScriptEnabled")
-    private fun openBrowser(startUrl: String, youtube: Boolean) {
-        ytWeb?.let { it.loadUrl(startUrl); return }
+    private fun openBrowser(startUrl: String, youtube: Boolean, navigate: Boolean = true) {
+        /* The same kind of page is still alive (hidden behind the player or
+           not): show it exactly where the user left it. Only a new search or a
+           new link navigates it. */
+        if (ytLayer != null && ytWeb != null && ytIsYouTube == youtube) {
+            if (navigate) ytWeb?.loadUrl(startUrl)
+            showYouTubeBrowser()
+            return
+        }
+        // A different kind of page replaces the one that was open.
+        if (ytLayer != null) closeYouTubeBrowser()
+        ytIsYouTube = youtube
         ytPicked = ""
         sniffUrl = null
         sniffTitle = ""
@@ -944,6 +980,7 @@ class MainActivity : AppCompatActivity() {
         }
         CookieManager.getInstance().setAcceptCookie(true)
         CookieManager.getInstance().setAcceptThirdPartyCookies(wv, true)
+        if (youtube) wv.addJavascriptInterface(YtPickBridge(), "HashYt")
 
         wv.webChromeClient = object : WebChromeClient() {
             override fun onReceivedTitle(view: WebView?, title: String?) {
@@ -974,6 +1011,7 @@ class MainActivity : AppCompatActivity() {
             override fun onPageFinished(view: WebView, url: String?) {
                 CookieManager.getInstance().flush()   // keep the sign-in across restarts
                 paintSignIn()
+                if (youtube) view.evaluateJavascript(YT_PICK_JS, null)
             }
         }
 
@@ -989,6 +1027,7 @@ class MainActivity : AppCompatActivity() {
         )
         ytLayer = column
         ytWeb = wv
+        ytVisible = true
         nativePlayer.setVideoVisible(false)           // the player's picture stays out of the way
         wv.loadUrl(startUrl)
     }
@@ -1061,12 +1100,30 @@ class MainActivity : AppCompatActivity() {
     /** `true` when this url was a video and has been handed to the player. */
     private fun takeVideo(url: String): Boolean {
         val id = videoIdOf(url) ?: return false
-        if (id == ytPicked) return true
+        takeVideoId(id)
+        return true
+    }
+
+    /** A video was chosen on the YouTube page: hand it to the player, keep the page. */
+    private fun takeVideoId(id: String) {
+        if (id == ytPicked) return
         ytPicked = id
-        closeYouTubeBrowser()
+        suspendYouTubeBrowser()
         val js = "window.HashBridge && window.HashBridge.onYtPick(" + JSONObject.quote(id) + ");"
         web.evaluateJavascript(js, null)
-        return true
+    }
+
+    /**
+     * Lets the YouTube page hand a tapped video to the player WITHOUT the page
+     * navigating, so its scroll position, search results and history are untouched.
+     */
+    inner class YtPickBridge {
+        @android.webkit.JavascriptInterface
+        fun pick(id: String?) {
+            val vid = id.orEmpty()
+            if (vid.length !in 8..20 || !vid.all { it.isLetterOrDigit() || it == '-' || it == '_' }) return
+            runOnUiThread { takeVideoId(vid) }
+        }
     }
 
     private fun videoIdOf(url: String): String? {
@@ -1086,11 +1143,43 @@ class MainActivity : AppCompatActivity() {
         return if (id.length in 8..20 && id.all { it.isLetterOrDigit() || it == '-' || it == '_' }) id else null
     }
 
+    /**
+     * Hide the browser but keep it alive. Scroll position, search and history
+     * survive, so the same page comes back when the player is closed.
+     */
+    private fun suspendYouTubeBrowser() {
+        val layer = ytLayer ?: return
+        val wv = ytWeb
+        // An in-page (single-page app) navigation to a video: step back so the
+        // page we return to is the list the user was browsing.
+        if (wv != null && wv.canGoBack() && videoIdOf(wv.url.orEmpty()) != null) wv.goBack()
+        ytVisible = false
+        layer.visibility = View.GONE
+        wv?.onPause()
+        try { CookieManager.getInstance().flush() } catch (e: Exception) { }
+        web.evaluateJavascript("window.HashBridge && window.HashBridge.onYtBrowser(false);", null)
+    }
+
+    /** Bring the kept-alive page back on top, exactly as it was left. */
+    private fun showYouTubeBrowser() {
+        val layer = ytLayer ?: return
+        val wv = ytWeb ?: return
+        ytVisible = true
+        ytPicked = ""
+        layer.visibility = View.VISIBLE
+        layer.bringToFront()
+        wv.onResume()
+        nativePlayer.setVideoVisible(false)
+        web.evaluateJavascript("window.HashBridge && window.HashBridge.onYtBrowser(true);", null)
+    }
+
+    /** Tear the browser down completely (the ✕ button, or a different site). */
     private fun closeYouTubeBrowser() {
         val layer = ytLayer ?: return
         val wv = ytWeb
         ytLayer = null
         ytWeb = null
+        ytVisible = false
         playBtn = null
         signInBtn = null
         sniffUrl = null
@@ -1108,6 +1197,32 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun toast(s: String) = Toast.makeText(this, s, Toast.LENGTH_SHORT).show()
+
+    private fun isTelevision(): Boolean =
+        packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK) ||
+            (resources.configuration.uiMode and Configuration.UI_MODE_TYPE_MASK) ==
+            Configuration.UI_MODE_TYPE_TELEVISION
+
+    /** Injected into the YouTube page: a tap on a video link goes to the player,
+     *  without the page navigating (so it keeps its exact place). */
+    private val YT_PICK_JS = """
+        (function () {
+          if (window.__hpYtPick) return;
+          window.__hpYtPick = true;
+          document.addEventListener('click', function (e) {
+            var t = e.target;
+            var a = t && t.closest ? t.closest('a[href]') : null;
+            if (!a || !window.HashYt) return;
+            var h = String(a.href || '');
+            var m = h.match(/[?&]v=([\w-]{8,20})/) || h.match(/youtu\.be\/([\w-]{8,20})/) ||
+                    h.match(/\/(?:shorts|live)\/([\w-]{8,20})/);
+            if (!m) return;
+            e.preventDefault();
+            e.stopPropagation();
+            try { window.HashYt.pick(m[1]); } catch (err) { }
+          }, true);
+        })();
+    """.trimIndent()
 
     private fun js(code: String) = runOnUiThread {
         if (pageReady) web.evaluateJavascript(code, null) else pending.add(code)
@@ -1453,10 +1568,12 @@ class MainActivity : AppCompatActivity() {
 
     /** A shared/opened web link (YouTube page, direct mp4, radio stream…). */
     private fun openLink(url: String) {
+        if (ytVisible) suspendYouTubeBrowser()
         js("window.HashBridge && window.HashBridge.onOpenLink(${JSONObject.quote(url)});")
     }
 
     private fun openUris(uris: List<Uri>) {
+        if (ytVisible) suspendYouTubeBrowser()
         val arr = JSONArray()
         uris.forEach { data ->
             try {

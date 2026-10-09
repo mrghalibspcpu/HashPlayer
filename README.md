@@ -17,6 +17,24 @@ Install it as an app on your phone or desktop, or build a real Android APK — s
 
 ---
 
+## 🆕 Naya kya hai — 2.8
+
+| Masla / feature | Ab kya hota hai |
+|---|---|
+| **YouTube browsing wahi rehti hai** | YouTube browser me video tap karne par page band ya reload nahi hota. Video player me chali jati hai, aur player ke **Back** par YouTube wahi scroll position, search aur history ke saath wapas aata hai. Page sirf chhupta hai, destroy nahi hota. (✕ button se browser poori tarah band hota hai.) |
+| **Android TV / Google TV remote** | D-pad (↑ ↓ ← →) se har button, bottom bar, side panel aur player control par **focus ring** dikhta hai; **OK** dabane se wo chalta hai. Remote ke Play/Pause, Next, Previous, FF, Rewind keys bhi kaam karte hain. Player me koi control focus na ho to ← → seek aur ↑ ↓ volume hi karte hain. |
+| **TV par halke chalne wala UI** | TV par Smooth mode khud on hota hai, backdrop blur, aurora, grain aur visualiser band hote hain. Leanback launcher me app ka banner bhi dikhta hai. |
+| **🔗 Copy link** | Sirf **landscape** video me, sirf **left control panel** me dikhta hai (portrait me hidden). Tap karne par active YouTube video ka link clipboard par copy hota hai aur toast aata hai. |
+| **Version** | `versionCode 24`, `versionName "2.8.0"`. |
+
+**Signing (update ke liye zaroori):** Android sirf usi certificate wali nayi APK ko purani app ke upar install karta hai. Har build ko ek hi key se sign karne ke liye repo me key nahi rakhi gayi; ise GitHub secrets se ayega:
+
+1. Ek dafa keystore banayein: `keytool -genkeypair -v -keystore hashplayer.jks -alias hashplayer -keyalg RSA -keysize 2048 -validity 10000`
+2. Repo settings → Secrets → Actions me add karein: `HASHPLAYER_KEYSTORE_BASE64` (`base64 -w0 hashplayer.jks` ka output), `HASHPLAYER_KEYSTORE_PASSWORD`, `HASHPLAYER_KEY_ALIAS`, `HASHPLAYER_KEY_PASSWORD`.
+3. Is ke baad har build usi key se sign hogi. **Note:** agar TV par pehle se koi aisi build hai jo is key se sign nahi hui, to ek dafa uninstall karna padega (Android ye allow nahi karta); uske baad updates bina data khoye install hongi. Key kho gayi to nayi key se dobara uninstall lagega. Keystore ko kabhi commit na karein.
+
+---
+
 ## 🆕 Naya kya hai — 2.7
 
 | Masla / feature | Ab kya hota hai |
