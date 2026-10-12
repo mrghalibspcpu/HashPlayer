@@ -75,7 +75,7 @@
             <ImageView
                 android:layout_width="35dp"
                 android:layout_height="35dp"
-                android:src="@drawable/hashplayer_icon"
+                android:src="@mipmap/ic_launcher"
                 android:scaleType="centerCrop"
                 android:background="@drawable/widget_button_background"
                 android:contentDescription="HashPlayer" />
@@ -114,15 +114,76 @@
                     android:maxLines="1"
                     android:ellipsize="end" />
             </LinearLayout>
+        </LinearLayout>
+
+        <!-- Dedicated transport row: each button targets its own action, NOT a generic
+             launcher intent. This is the whole point of the widget fix. -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="44dp"
+            android:layout_marginTop="7dp"
+            android:orientation="horizontal"
+            android:gravity="center"
+            android:weightSum="5">
+
+            <ImageButton
+                android:id="@+id/widget_prev"
+                android:layout_width="0dp"
+                android:layout_height="40dp"
+                android:layout_weight="1"
+                android:layout_marginEnd="3dp"
+                android:background="@drawable/widget_button_background"
+                android:src="@drawable/widget_prev_icon"
+                android:scaleType="center"
+                android:contentDescription="Previous"
+                android:padding="8dp" />
+
+            <ImageButton
+                android:id="@+id/widget_eq"
+                android:layout_width="0dp"
+                android:layout_height="40dp"
+                android:layout_weight="1"
+                android:layout_marginEnd="3dp"
+                android:background="@drawable/widget_button_background"
+                android:src="@drawable/widget_eq_icon"
+                android:scaleType="center"
+                android:contentDescription="Equalizer"
+                android:padding="8dp" />
+
             <ImageButton
                 android:id="@+id/widget_play_last"
-                android:layout_width="34dp"
-                android:layout_height="34dp"
+                android:layout_width="0dp"
+                android:layout_height="44dp"
+                android:layout_weight="1"
+                android:layout_marginEnd="3dp"
                 android:background="@drawable/widget_play_background"
                 android:src="@drawable/widget_play_icon"
                 android:scaleType="center"
-                android:contentDescription="Play last track"
-                android:padding="9dp" />
+                android:contentDescription="Play / Pause"
+                android:padding="10dp" />
+
+            <ImageButton
+                android:id="@+id/widget_anc"
+                android:layout_width="0dp"
+                android:layout_height="40dp"
+                android:layout_weight="1"
+                android:layout_marginEnd="3dp"
+                android:background="@drawable/widget_button_background"
+                android:src="@drawable/widget_anc_icon"
+                android:scaleType="center"
+                android:contentDescription="ANC"
+                android:padding="8dp" />
+
+            <ImageButton
+                android:id="@+id/widget_next"
+                android:layout_width="0dp"
+                android:layout_height="40dp"
+                android:layout_weight="1"
+                android:background="@drawable/widget_button_background"
+                android:src="@drawable/widget_next_icon"
+                android:scaleType="center"
+                android:contentDescription="Next"
+                android:padding="8dp" />
         </LinearLayout>
     </LinearLayout>
 </FrameLayout>

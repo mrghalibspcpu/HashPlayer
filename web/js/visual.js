@@ -89,6 +89,9 @@
       an.getByteFrequencyData(freq);
       an.getByteTimeDomainData(time);
     }
+    /* expose the current spectrum so external visualisers (e.g. Minimal Mode)
+       can re-use it without re-querying the audio graph */
+    V._lastFFT = freq;
     switch (V.mode) {
       case 'mirror': mirror(); break;
       case 'wave': wave(); break;

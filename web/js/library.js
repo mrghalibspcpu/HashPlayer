@@ -24,11 +24,41 @@
   L.load = async function () {
     let rows = [];
     try { rows = (await DB.all('tracks')) || []; } catch (e) { console.warn(e); }
-    rows.forEach(t => L.tracks.set(t.id, t));
+    // Auto-purge "Watched Online" history older than 24 hours so the section
+    // never accumulates forever; local library tracks are never touched.
+    const DAY = 24 * 60 * 60 * 1000;
+    const now = Date.now();
+    const keep = [];
+    rows.forEach(t => {
+      const isOnline = t && (t.source === 'yt' || t.source === 'url' || t.online);
+      if (isOnline) {
+        const ts = t.lastPlayed || t.added || 0;
+        if (now - ts > DAY) return;                       // drop from library
+      }
+      keep.push(t);
+      L.tracks.set(t.id, t);
+    });
+    if (keep.length !== rows.length) {
+      await DB.bulkPut('tracks', keep.map(dehydrate));
+    }
     try { L.playlists = (await DB.all('playlists')) || []; } catch (e) { }
     L.ready = true;
     L.countRelink();
     HP.emit('library');
+    // Periodic purge while the app stays open (every 20 minutes).
+    clearInterval(L._purgeTimer);
+    L._purgeTimer = setInterval(() => {
+      let dirty = false;
+      const DAY2 = DAY, now2 = Date.now();
+      L.tracks.forEach(t => {
+        const isOnline = t && (t.source === 'yt' || t.source === 'url' || t.online);
+        if (isOnline) {
+          const ts = t.lastPlayed || t.added || 0;
+          if (now2 - ts > DAY2) { L.tracks.delete(t.id); dirty = true; }
+        }
+      });
+      if (dirty) { DB.bulkPut('tracks', Array.from(L.tracks.values()).map(dehydrate)); L.countRelink(); HP.emit('library'); }
+    }, 20 * 60 * 1000);
   };
 
   L.countRelink = function () {
@@ -182,7 +212,7 @@
         source: 'yt', ytId: yt.id, thumb: HP.YT.thumb(yt.id), file: null, handle: null,
         nativeUri: null, url: yt.url, cover: null, folder: '', added: Date.now(),
         plays: 0, lastPlayed: 0, fav: false, pos: yt.start || 0, lrc: null, sub: null,
-        bookmarks: [], tagged: true
+        bookmarks: [], tagged: true, online: true
       };
       L.tracks.set(t.id, t);
       await saveTrack(t);
@@ -204,7 +234,7 @@
       album: '', genre: '', year: '', trackNo: '', duration: 0, size: 0, mime: '', kind,
       source: 'url', file: null, handle: null, nativeUri: null, url, cover: null, folder: '',
       added: Date.now(), plays: 0, lastPlayed: 0, fav: false, pos: 0, lrc: null, sub: null,
-      bookmarks: [], tagged: true
+      bookmarks: [], tagged: true, online: true
     };
     L.tracks.set(t.id, t);
     await saveTrack(t);
@@ -256,7 +286,7 @@
       album: '', genre: '', year: '', trackNo: '', duration: 0, size: 0, mime: '',
       kind: 'video', source: 'url', file: null, handle: null, nativeUri: url,
       url, cover: null, folder: '', added: Date.now(), plays: 0, lastPlayed: 0,
-      fav: false, pos: 0, lrc: null, sub: null, bookmarks: [], tagged: true
+      fav: false, pos: 0, lrc: null, sub: null, bookmarks: [], tagged: true, online: true
     };
     L.tracks.set(t.id, t);
     await saveTrack(t);
@@ -329,7 +359,7 @@
       source: 'yt', ytId: row.id, thumb: row.thumb || HP.YT.thumb(row.id), file: null, handle: null,
       nativeUri: null, url: 'https://www.youtube.com/watch?v=' + row.id, cover: null, folder: '',
       added: Date.now(), plays: 0, lastPlayed: 0, fav: false, pos: 0, lrc: null, sub: null,
-      bookmarks: [], tagged: true, live: !!row.live
+      bookmarks: [], tagged: true, live: !!row.live, online: true
     };
     L.tracks.set(t.id, t);
     await saveTrack(t);
@@ -595,7 +625,11 @@
     let list = Array.from(L.tracks.values());
     const q = (L.search || '').trim().toLowerCase();
     const f = L.view === 'favorites' ? 'fav' : (S.filter || 'all');
-    if (f === 'audio' || f === 'video') list = list.filter(t => t.kind === f);
+    const isOnline = t => !!(t && (t.source === 'yt' || t.source === 'url' || t.online));
+    const isLocal = t => !!(t && (t.source === 'file' || t.source === 'handle' || t.source === 'native'));
+    if (f === 'audio') list = list.filter(t => t.kind === 'audio' && !isOnline(t));
+    else if (f === 'video') list = list.filter(t => t.kind === 'video' && isLocal(t));
+    else if (f === 'online') list = list.filter(t => isOnline(t));
     else if (f === 'fav') list = list.filter(t => t.fav);
     else if (f === 'recent') list = list.filter(t => t.lastPlayed).sort((a, b) => b.lastPlayed - a.lastPlayed).slice(0, 60);
     else if (f === 'most') list = list.filter(t => t.plays).sort((a, b) => b.plays - a.plays).slice(0, 60);
@@ -613,6 +647,8 @@
         size: (a, b) => (b.size || 0) - (a.size || 0)
       }[s] || ((a, b) => b.added - a.added);
       list.sort(cmp);
+      // Watched Online tab: most recent play first, regardless of the global sort
+      if (f === 'online') list.sort((a, b) => (b.lastPlayed || 0) - (a.lastPlayed || 0));
     }
     return list;
   };

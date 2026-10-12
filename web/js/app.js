@@ -905,7 +905,12 @@
         P.seek((parseInt(action.slice(5), 10) || 0) / 1000);
         return;
       }
-      ({ play: () => P.play(), pause: () => P.pause(), next: () => P.next(), prev: () => P.prev(), toggle: () => P.toggle() }[action] || (() => { }))();
+      const act = {
+        play: () => P.play(), pause: () => P.pause(), next: () => P.next(),
+        prev: () => P.prev(), toggle: () => P.toggle(),
+        anc: () => P.toggleAnc && P.toggleAnc()
+      };
+      (act[action] || (() => { }))();
     },
 
     /**

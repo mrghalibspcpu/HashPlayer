@@ -175,6 +175,11 @@
             android:label="@string/widget_name">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="com.mrghalibspcpu.hashplayer.widget.TOGGLE" />
+                <action android:name="com.mrghalibspcpu.hashplayer.widget.NEXT" />
+                <action android:name="com.mrghalibspcpu.hashplayer.widget.PREV" />
+                <action android:name="com.mrghalibspcpu.hashplayer.widget.EQ" />
+                <action android:name="com.mrghalibspcpu.hashplayer.widget.ANC" />
             </intent-filter>
             <meta-data
                 android:name="android.appwidget.provider"

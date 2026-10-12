@@ -12,7 +12,9 @@
     queue: [], order: [], index: -1, context: 'Library',
     ab: { a: null, b: null }, sleep: null, wake: null, lyrics: null, lrcIndex: -1,
     pendingSrc: null, crossing: false, speedHold: false, brightness: 1,
-    videoFit: 'contain'
+    videoFit: 'contain',
+    srActive: false, srPrevSpeed: 1, srPrevPitch: 0, minimalMode: false, minimalLocked: false,
+    mmRaf: 0
   };
   const VIDEO_FITS = ['contain', 'cover', 'fill'];
 
@@ -173,6 +175,13 @@
     if (ids && ids.length) { P.queue = ids.slice(); buildOrder(); }
     if (P.queue.indexOf(id) < 0) { P.queue.push(id); buildOrder(); }
     P.index = P.queue.indexOf(id);
+    // Touch lastPlayed so the "Watched Online" 24-hour TTL refreshes every time
+    // the user actually watches/plays an online item (YouTube/stream).
+    if (t && (t.source === 'yt' || t.source === 'url')) {
+      t.online = true;
+      t.lastPlayed = Date.now();
+      try { L().saveTrack(t); } catch (e) { }
+    }
     await load(t, true, startAt);
     renderQueue();
   };
@@ -493,6 +502,7 @@
   function onPlay() {
     document.body.classList.add('playing');
     $$('#btn-play use, #mini-play use').forEach(u => u.setAttribute('href', '#i-pause'));
+    const mp = $('#mm-play'); if (mp) { const u = mp.querySelector('use'); if (u) u.setAttribute('href', '#i-pause'); }
     HP.Vis.start();
     if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
     keepAwake(true);
@@ -502,6 +512,7 @@
   function onPause() {
     document.body.classList.remove('playing');
     $$('#btn-play use, #mini-play use').forEach(u => u.setAttribute('href', '#i-play'));
+    const mp = $('#mm-play'); if (mp) { const u = mp.querySelector('use'); if (u) u.setAttribute('href', '#i-play'); }
     if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
     keepAwake(false);
     savePos();
@@ -553,6 +564,9 @@
   };
   P.setSpeed = function (v) {
     S.speed = clamp(v, .25, 4); HP.save();
+    // If the user deliberately changes speed while S+R was on, exit the preset
+    // so the buttons never appear stuck.
+    if (P.srActive && Math.abs(S.speed - 0.8) > 0.01) { P.srActive = false; updateSRButton(); }
     // P.n is the native ExoPlayer engine — it used to be left out, so speed
     // silently did nothing for device files and YouTube on Android.
     [P.a, P.b, P.y, P.n].forEach(m => {
@@ -568,8 +582,14 @@
   };
   P.setPitch = function (st, quiet) {
     S.pitchShift = clamp(Math.round(+st || 0), -12, 12); HP.save();
+    if (P.srActive) { P.srActive = false; updateSRButton(); }
+    if (P._pitchFactor) P._pitchFactor = null;
     const factor = Math.pow(2, S.pitchShift / 12);
     if (P.n && P.n.setPitch) P.n.setPitch(factor);
+    [P.a, P.b, P.y].forEach(m => {
+      if (!m) return;
+      try { if ('preservesPitch' in m) m.preservesPitch = !!S.pitch; } catch (e) { }
+    });
     updatePitchLabel();
     if (!quiet && S.pitchShift !== 0) HP.toast('Pitch ' + (S.pitchShift > 0 ? '+' : '') + S.pitchShift + ' semitones');
   };
@@ -611,6 +631,9 @@
     const r = $('#btn-rep'), s = $('#btn-shuf');
     if (r) { r.classList.toggle('on', S.repeat !== 'off'); r.querySelector('use').setAttribute('href', S.repeat === 'one' ? '#i-repeat1' : '#i-repeat'); }
     if (s) s.classList.toggle('on', S.shuffle);
+    const mShuf = $('#mm-shuf'), mRep = $('#mm-rep');
+    if (mShuf) mShuf.classList.toggle('on', !!S.shuffle);
+    if (mRep) mRep.classList.toggle('on', S.repeat !== 'off');
   }
   P.syncToggles = syncToggles;
 
@@ -739,6 +762,26 @@
           t.artist || (t.kind === 'video' ? 'Video' : 'Audio'));
     } catch (e) { }
     syncLandscapeTools();
+    /* Keep Minimal Mode labels and buttons in step with the playing track */
+    if (P.minimalMode) {
+      const mt = $('#mm-title'), ma = $('#mm-artist');
+      if (mt) mt.textContent = t.title || t.name;
+      if (ma) ma.textContent = t.artist || (t.kind === 'video' ? 'Video' : '');
+    }
+    const mPlay = $('#mm-play');
+    if (mPlay) {
+      const u = mPlay.querySelector('use');
+      if (u) u.setAttribute('href', P.active && !P.active.paused ? '#i-pause' : '#i-play');
+    }
+    const mShuf = $('#mm-shuf'), mRep = $('#mm-rep'), mMute = $('#mm-mute');
+    if (mShuf) mShuf.classList.toggle('on', !!S.shuffle);
+    if (mRep) mRep.classList.toggle('on', S.repeat !== 'off');
+    if (mMute) {
+      mMute.classList.toggle('on', !!S.muted);
+      const u = mMute.querySelector('use');
+      if (u) u.setAttribute('href', S.muted ? '#i-mute' : '#i-vol');
+    }
+    updateSRButton();
   }
 
   let tintTimer;
@@ -1258,6 +1301,38 @@
 
     $('#t-pitch').addEventListener('click', () => HP.UI.sheet('sheet-pitch'));
 
+    /* ---- S+R (Speed + Rate) quick-toggle ----
+       One tap = 0.8x speed AND 0.8x pitch simultaneously (slow & relaxed mode).
+       Tap again = restore previous speed/pitch. */
+    const srBtn = $('#t-sr');
+    if (srBtn) srBtn.addEventListener('click', P.toggleSR);
+    P.updateSRButton && P.updateSRButton();
+
+    /* ---- Minimal Mode (car / driving UI) ---- */
+    const mmBtn = $('#t-minimal');
+    if (mmBtn) mmBtn.addEventListener('click', () => P.toggleMinimal());
+    ['mm-prev','mm-next','mm-play','mm-shuf','mm-rep','mm-mute','mm-exit','mm-lock-btn']
+      .forEach(id => {
+        const b = $('#' + id);
+        if (!b) return;
+        b.addEventListener('click', e => {
+          e.stopPropagation();
+          if (P.minimalLocked && id !== 'mm-lock-btn' && id !== 'mm-exit') return;
+          if (id === 'mm-prev') P.prev();
+          else if (id === 'mm-next') P.next();
+          else if (id === 'mm-play') P.toggle();
+          else if (id === 'mm-shuf') P.toggleShuffle();
+          else if (id === 'mm-rep') P.cycleRepeat();
+          else if (id === 'mm-mute') {
+            S.muted = !S.muted; HP.save(); E().applyVolume();
+            const ic = b.querySelector('use'); if (ic) ic.setAttribute('href', S.muted ? '#i-mute' : '#i-vol');
+            b.classList.toggle('on', S.muted);
+          }
+          else if (id === 'mm-exit') P.setMinimal(false);
+          else if (id === 'mm-lock-btn') P.setMinimalLock(!P.minimalLocked);
+        });
+      });
+
     $('#t-ab').addEventListener('click', () => P.markAB());
     $('#t-mark').addEventListener('click', () => P.addBookmark());
     $('#t-queue').addEventListener('click', () => HP.UI.toggleQueue());
@@ -1329,6 +1404,154 @@
   };
 
   P.toggleLock = function () { P.setLock(!P.locked); };
+
+  /* =========================================================
+     S+R — one-tap 0.8x speed AND 0.8x pitch (slow/relaxed preset)
+     Toggling off restores the previous user values.
+     ========================================================= */
+  P.toggleSR = function () {
+    if (!P.srActive) {
+      P.srPrevSpeed = S.speed;
+      P.srPrevPitch = S.pitchShift || 0;
+      P.setSpeed(0.8);
+      P.setPitchFactor(0.8);
+      P.srActive = true;
+      HP.toast('S+R on · 0.8× slow mode', 'ok');
+    } else {
+      P.setSpeed(P.srPrevSpeed || 1);
+      P.setPitchFactor(null);                           // restore remembered pitch shift
+      P.setPitch(P.srPrevPitch || 0);
+      P.srActive = false;
+      HP.toast('S+R off · back to normal');
+    }
+    updateSRButton();
+  };
+  function updateSRButton() {
+    const b = $('#t-sr'), l = $('#sr-label');
+    if (!b) return;
+    b.classList.toggle('on', P.srActive);
+    b.setAttribute('aria-pressed', P.srActive ? 'true' : 'false');
+    if (l) l.textContent = P.srActive ? '0.8×' : 'S+R';
+  }
+  P.updateSRButton = updateSRButton;
+
+  /** Raw pitch factor multiplier (0.8x etc.). Accepts null to leave alone. */
+  P.setPitchFactor = function (factor) {
+    if (factor != null) {
+      P._pitchFactor = factor;
+      const f = Math.max(0.5, Math.min(2, +factor));
+      if (P.n && P.n.setPitch) P.n.setPitch(f);
+      // Web Audio path: use detune on the source via preservesPitch=false trick
+      // (HTMLMediaElement doesn't expose detune, but when preservesPitch is off
+      //  pitch follows rate — we handle combined speed+pitch at the rate level).
+      [P.a, P.b, P.y].forEach(m => {
+        if (!m) return;
+        try { if ('preservesPitch' in m) m.preservesPitch = false; } catch (e) { }
+      });
+      // Semitone-approx label so the Pitch tool doesn't lie.
+      const st = Math.round(12 * Math.log2(factor));
+      S.pitchShift = clamp(st, -12, 12);
+      HP.save();
+      updatePitchLabel();
+    } else {
+      P._pitchFactor = null;
+      const st = S.pitchShift || 0;
+      const factor2 = Math.pow(2, st / 12);
+      if (P.n && P.n.setPitch) P.n.setPitch(factor2);
+      [P.a, P.b, P.y].forEach(m => {
+        if (!m) return;
+        try { if ('preservesPitch' in m) m.preservesPitch = !!S.pitch; } catch (e) { }
+      });
+      updatePitchLabel();
+    }
+  };
+
+  /* =========================================================
+     Minimal Mode — matt-black driving UI with 3D vinyl ring
+     ========================================================= */
+  P.toggleMinimal = function () { P.setMinimal(!P.minimalMode); };
+  P.setMinimal = function (on) {
+    on = !!on;
+    P.minimalMode = on;
+    document.body.classList.toggle('minimal-mode', on);
+    const layer = $('#minimal-mode');
+    if (layer) layer.hidden = !on;
+    if (on) {
+      P.setMinimalLock(false);
+      mmPaint();
+      const t = P.current;
+      if (t) {
+        const mt = $('#mm-title'), ma = $('#mm-artist');
+        if (mt) mt.textContent = t.title || t.name;
+        if (ma) ma.textContent = t.artist || (t.kind === 'video' ? 'Video' : '');
+      }
+    } else {
+      P.setMinimalLock(false);
+      cancelAnimationFrame(P.mmRaf);
+    }
+    HP.toast(on ? 'Minimal mode — safe for driving' : 'Back to normal player', 'ok');
+  };
+  P.setMinimalLock = function (on) {
+    on = !!on;
+    P.minimalLocked = on;
+    document.body.classList.toggle('mm-locked', on);
+    const btn = $('#mm-lock-btn'), lbl = $('#mm-lock-label'), ic = btn && btn.querySelector('use');
+    const hint = $('#mm-locked-hint');
+    if (btn) {
+      btn.classList.toggle('locked', on);
+      if (ic) ic.setAttribute('href', on ? '#i-lock' : '#i-unlock');
+    }
+    if (lbl) lbl.textContent = on ? 'Tap to unlock' : 'Lock screen';
+    if (hint) { hint.hidden = !on; if (on) { hint.style.animation = 'none'; void hint.offsetWidth; hint.style.animation = ''; } }
+  };
+  function mmPaint() {
+    if (!P.minimalMode) return;
+    P.mmRaf = requestAnimationFrame(mmPaint);
+    const c = $('#mm-vis');
+    if (!c) return;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const rect = c.getBoundingClientRect();
+    const targetW = Math.max(1, Math.round(rect.width * dpr));
+    const targetH = Math.max(1, Math.round(rect.height * dpr));
+    if (c.width !== targetW || c.height !== targetH) { c.width = targetW; c.height = targetH; }
+    const ctx = c.getContext('2d'), W = c.width, H = c.height, cx = W/2, cy = H/2, R = Math.min(W,H)/2 - 6*dpr;
+    ctx.clearRect(0,0,W,H);
+    // Get frequency data from the visualiser
+    const levels = new Array(64).fill(0);
+    if (HP.Vis && HP.Vis._lastFFT) {
+      const src = HP.Vis._lastFFT;
+      for (let i=0;i<64;i++) levels[i] = Math.min(1, (src[i]||0) / 200);
+    } else if (P.active && !P.active.paused) {
+      // synthetic beat fallback when no FFT available — pulses with volume
+      const t = performance.now()/400;
+      for (let i=0;i<64;i++) levels[i] = 0.25 + 0.45*Math.abs(Math.sin(t + i*0.15));
+    }
+    const playing = P.active && !P.active.paused;
+    ctx.save();
+    ctx.translate(cx,cy);
+    const bars = 64;
+    ctx.lineWidth = Math.max(1*dpr, R*0.01);
+    for (let i=0;i<bars;i++) {
+      const a0 = (i/bars) * Math.PI*2 - Math.PI/2;
+      const a1 = a0 + (Math.PI*2/bars) - 0.04;
+      const v = levels[i] * (playing?1:0.15);
+      const rIn = R*0.58, rOut = R*0.78 + v*R*0.22;
+      const grad = ctx.createLinearGradient(
+        Math.cos(a0)*rIn, Math.sin(a0)*rIn,
+        Math.cos(a0)*rOut, Math.sin(a0)*rOut
+      );
+      const hue = (i/bars)*360;
+      grad.addColorStop(0,'rgba(0,229,255,0.0)');
+      grad.addColorStop(0.5,'rgba(0,229,255,'+(0.5+v*0.5)+')');
+      grad.addColorStop(1,'rgba(182,27,255,'+(0.5+v*0.5)+')');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(0,0,rOut,a0,a1);
+      ctx.arc(0,0,rIn,a1,a0,true);
+      ctx.closePath();ctx.fill();
+    }
+    ctx.restore();
+  }
 
   P.toggleLyrics = function (force) {
     const box = $('#lyrics');
@@ -1672,6 +1895,9 @@
     else ensureAudio().then(() => E().applyAll()).catch(() => { E().pushNative && E().pushNative(); });
     const btn = $('#t-anc');
     if (btn) { btn.classList.toggle('on', S.anc); btn.setAttribute('aria-pressed', S.anc ? 'true' : 'false'); }
+    // Mirror state back to the native widget so its ANC button reflects reality.
+    try { if (window.HashNative && window.HashNative.setWidgetAnc) window.HashNative.setWidgetAnc(S.anc); }
+    catch (e) { }
     if (!quiet) HP.toast(S.anc ? 'ANC on — noise down, voices clear' : 'ANC off');
   };
   P.toggleAnc = function () { P.setAnc(!S.anc); };

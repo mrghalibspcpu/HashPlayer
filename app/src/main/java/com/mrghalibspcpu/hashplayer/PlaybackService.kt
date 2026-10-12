@@ -31,8 +31,10 @@ class PlaybackService : Service() {
         const val ACTION_NEXT = "hashplayer.next"
         const val ACTION_PREV = "hashplayer.prev"
         const val ACTION_STOP = "hashplayer.stop"
+        const val ACTION_TOGGLE_ANC = "hashplayer.anc"
 
         @Volatile var running = false
+        @Volatile var ancOn = false
 
         /** Set by MainActivity: forwards notification / lock-screen taps into the web app. */
         var transport: ((String) -> Unit)? = null
@@ -71,6 +73,10 @@ class PlaybackService : Service() {
     override fun onCreate() {
         super.onCreate()
         createChannel()
+        // Restore last ANC state from widget prefs so the widget button is
+        // already correct when the service starts.
+        ancOn = getSharedPreferences("hashplayer_widget", Context.MODE_PRIVATE)
+            .getBoolean("anc_on", false)
         session = MediaSessionCompat(this, "HashPlayer").apply {
             setCallback(object : MediaSessionCompat.Callback() {
                 override fun onPlay() { transport?.invoke("play") }
@@ -90,6 +96,16 @@ class PlaybackService : Service() {
             ACTION_NEXT -> { transport?.invoke("next"); return START_STICKY }
             ACTION_PREV -> { transport?.invoke("prev"); return START_STICKY }
             ACTION_STOP -> { transport?.invoke("pause"); stopSelf(); return START_NOT_STICKY }
+            ACTION_TOGGLE_ANC -> {
+                ancOn = !ancOn
+                // Persist ANC state so the widget button can show the active tint
+                // and a reload of the app can pick up the last known state.
+                getSharedPreferences("hashplayer_widget", Context.MODE_PRIVATE).edit()
+                    .putBoolean("anc_on", ancOn).apply()
+                HashPlayerWidget.setAnc(this, ancOn)
+                transport?.invoke("anc")
+                return START_STICKY
+            }
         }
 
         playing = intent?.getBooleanExtra("playing", playing) ?: playing

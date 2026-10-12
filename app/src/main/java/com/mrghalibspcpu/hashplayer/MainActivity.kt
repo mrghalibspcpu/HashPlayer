@@ -444,6 +444,7 @@ class MainActivity : AppCompatActivity() {
                 this@MainActivity, playing, title ?: "", artist ?: "",
                 nativePlayer.positionMs(), nativePlayer.durationMs()
             )
+            HashPlayerWidget.setPlaying(this@MainActivity, playing)
         }
 
         /** Keep the tiny home-screen widget in sync with the player's last item. */
@@ -456,6 +457,13 @@ class MainActivity : AppCompatActivity() {
                 artist.orEmpty().ifBlank { "Audio / video" },
                 key
             )
+        }
+
+        /** Web player reports ANC state so the widget button highlights correctly. */
+        @android.webkit.JavascriptInterface
+        fun setWidgetAnc(on: Boolean) = runOnUiThread {
+            PlaybackService.ancOn = on
+            HashPlayerWidget.setAnc(this@MainActivity, on)
         }
 
         /** The web player tells us whether the current track is a video, and its shape. */
@@ -1533,6 +1541,11 @@ class MainActivity : AppCompatActivity() {
             HashPlayerWidget.ACTION_PLAY_LAST -> {
                 intent.action = null
                 playWidgetLastTrack()
+                return
+            }
+            HashPlayerWidget.ACTION_EQ -> {
+                intent.action = null
+                js("setTimeout(function(){if(window.HP&&window.HP.UI){window.HP.UI.nav('eq');if(window.HP&&window.HP.Player)window.HP.Player.syncMiniPlayer&&window.HP.Player.syncMiniPlayer();}},650);")
                 return
             }
         }

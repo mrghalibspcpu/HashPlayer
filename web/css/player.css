@@ -263,6 +263,13 @@ body.playing .play-btn{animation:playGlow 3.4s ease-in-out infinite}
    actually stretch audio without changing tempo (the Android app). */
 .portrait-tool{display:none}
 body.can-pitch .portrait-tool{display:flex}
+/* S+R and Minimal Mode are portrait-only (driving / car UI). They show on
+   every portrait playback, regardless of the pitch engine. */
+.sr-tool, #t-minimal{display:none}
+@media (orientation:portrait){
+  .sr-tool{display:flex}
+  #t-minimal{display:flex}
+}
 /* These live in the bottom control panel, not the video side palette. */
 .video-tool{display:none}
 body.has-video .video-tool{display:flex}

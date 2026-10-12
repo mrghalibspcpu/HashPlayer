@@ -17,6 +17,7 @@
 <link rel="stylesheet" href="css/base.css">
 <link rel="stylesheet" href="css/app.css">
 <link rel="stylesheet" href="css/player.css">
+<link rel="stylesheet" href="css/minimal.css">
 </head>
 <body class="theme-neon mode-pro" data-view="library">
 
@@ -156,6 +157,7 @@
         <button class="chip active" data-filter="all" data-i18n="all">All</button>
         <button class="chip" data-filter="audio"><svg class="ic"><use href="#i-music"/></svg><span data-i18n="audio">Audio</span></button>
         <button class="chip" data-filter="video"><svg class="ic"><use href="#i-video"/></svg><span data-i18n="video">Video</span></button>
+        <button class="chip" data-filter="online"><svg class="ic"><use href="#i-globe"/></svg><span data-i18n="watchedOnline">Watched Online</span></button>
         <button class="chip" data-filter="recent"><svg class="ic"><use href="#i-clock"/></svg><span data-i18n="recent">Recent</span></button>
         <button class="chip" data-filter="most"><svg class="ic"><use href="#i-sparkle"/></svg><span data-i18n="mostPlayed">Most played</span></button>
       </div>
@@ -513,6 +515,8 @@
         <button class="tool video-tool" id="t-silence" aria-pressed="false"><svg class="ic"><use href="#i-silence"/></svg><span data-i18n="skipSilence">Skip silence</span></button>
         <button class="tool video-tool" id="t-cc" aria-pressed="false" hidden><svg class="ic"><use href="#i-cc"/></svg><span data-i18n="captions">Captions</span></button>
         <button class="tool portrait-tool" id="t-pitch" data-pro><b id="pitch-label">0</b><span data-i18n="pitch2">Pitch</span></button>
+        <button class="tool portrait-tool sr-tool" id="t-sr" aria-pressed="false"><b id="sr-label">S+R</b><span>Slow</span></button>
+        <button class="tool portrait-tool" id="t-minimal"><svg class="ic"><use href="#i-disc"/></svg><span>Minimal</span></button>
         <button class="tool" id="t-sleep"><svg class="ic"><use href="#i-timer"/></svg><span data-i18n="sleep">Sleep</span></button>
         <button class="tool" id="t-mark" data-pro><svg class="ic"><use href="#i-mark"/></svg><span data-i18n="bookmark">Bookmark</span></button>
         <button class="tool" id="t-vis" data-pro><svg class="ic"><use href="#i-wave"/></svg><span data-i18n="visualizer">Visualizer</span></button>
@@ -526,6 +530,45 @@
     <button class="lock-release" id="lock-release" hidden>
       <svg class="ic"><use href="#i-unlock"/></svg><span data-i18n="tapToUnlock">Tap to unlock</span>
     </button>
+  </div>
+
+  <!-- ════ Minimal Mode (car/driving UI) ════ -->
+  <div class="minimal-mode" id="minimal-mode" hidden>
+    <div class="minimal-bg"></div>
+    <div class="minimal-center">
+      <div class="mm-disc">
+        <div class="mm-ring"></div>
+        <div class="mm-inner">
+          <canvas id="mm-vis" width="420" height="420"></canvas>
+        </div>
+        <div class="mm-core"></div>
+      </div>
+    </div>
+    <div class="mm-title" id="mm-title">Nothing playing</div>
+    <div class="mm-artist" id="mm-artist">—</div>
+
+    <!-- Primary lock/unlock button directly under the visualizer -->
+    <button class="mm-lock-btn" id="mm-lock-btn">
+      <svg class="ic"><use href="#i-lock"/></svg><span id="mm-lock-label">Lock screen</span>
+    </button>
+
+    <!-- Unlocked state: essential high-contrast controls -->
+    <div class="mm-controls" id="mm-controls">
+      <button class="mm-btn" id="mm-prev" title="Previous"><svg class="ic"><use href="#i-prev"/></svg></button>
+      <button class="mm-btn mm-play" id="mm-play" title="Play/Pause"><svg class="ic"><use href="#i-play"/></svg></button>
+      <button class="mm-btn" id="mm-next" title="Next"><svg class="ic"><use href="#i-next"/></svg></button>
+    </div>
+    <div class="mm-controls mm-controls-2" id="mm-controls-2">
+      <button class="mm-btn small" id="mm-shuf" title="Shuffle"><svg class="ic"><use href="#i-shuffle"/></svg></button>
+      <button class="mm-btn small" id="mm-rep" title="Repeat"><svg class="ic"><use href="#i-repeat"/></svg></button>
+      <button class="mm-btn small mm-vol-btn" id="mm-mute" title="Mute"><svg class="ic"><use href="#i-vol"/></svg></button>
+      <button class="mm-btn small mm-exit" id="mm-exit" title="Back to normal">
+        <svg class="ic"><use href="#i-collapse"/></svg><span>Exit</span>
+      </button>
+    </div>
+
+    <!-- Locked state overlay message -->
+    <div class="mm-locked-hint" id="mm-locked-hint" hidden>Screen locked — tap the button to unlock</div>
   </div>
 </section>
 

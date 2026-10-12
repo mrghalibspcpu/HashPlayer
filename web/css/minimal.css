@@ -1,0 +1,128 @@
+/* ============================================================
+   HashPlayer — Minimal Mode (Car/Driving UI)
+   Matt black background · 3D glossy vinyl centerpiece with
+   neon audio-spectrum ring · screen lock · essential controls.
+   ============================================================ */
+
+.minimal-mode{
+  position:absolute;inset:0;z-index:110;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:18px;padding:22px 18px calc(22px + env(safe-area-inset-bottom));
+  background:
+    radial-gradient(ellipse at 50% 35%, rgba(0,229,255,.06) 0%, rgba(182,27,255,.05) 35%, transparent 65%),
+    radial-gradient(ellipse at 50% 90%, rgba(255,61,61,.04), transparent 50%),
+    #080808;
+  animation:mmIn .4s var(--ease);overflow:hidden;
+}
+@keyframes mmIn{from{opacity:0;transform:scale(.98)}to{opacity:1;transform:none}}
+.minimal-bg{position:absolute;inset:0;pointer-events:none;
+  background:
+    radial-gradient(circle at 30% 20%, rgba(255,255,255,.015), transparent 40%),
+    radial-gradient(circle at 80% 80%, rgba(255,255,255,.01), transparent 40%);
+}
+
+.minimal-center{position:relative;display:grid;place-items:center;flex:0 0 auto;
+  width:min(72vw,320px);aspect-ratio:1;margin:10px 0 4px}
+
+.mm-disc{
+  position:relative;width:100%;height:100%;border-radius:50%;
+  display:grid;place-items:center;
+  background:
+    radial-gradient(circle at 30% 28%, rgba(255,255,255,.18) 0%, rgba(255,255,255,.04) 18%, transparent 45%),
+    radial-gradient(circle at 70% 80%, rgba(0,0,0,.55), transparent 55%),
+    linear-gradient(145deg,#1a1a1e,#050505 60%,#111);
+  box-shadow:
+    0 30px 80px rgba(0,0,0,.85),
+    inset 0 2px 2px rgba(255,255,255,.08),
+    inset 0 -30px 60px rgba(0,0,0,.7),
+    0 0 60px rgba(0,229,255,.12),
+    0 0 120px rgba(182,27,255,.08);
+  animation:mmSpin 18s linear infinite;
+}
+body.playing .mm-disc{animation-duration:12s}
+body:not(.playing) .mm-disc{animation-play-state:paused}
+@keyframes mmSpin{to{transform:rotate(360deg)}}
+
+.mm-ring{
+  position:absolute;inset:-6px;border-radius:50%;
+  background:conic-gradient(from 0deg,
+    rgba(0,229,255,.9) 0deg,
+    rgba(182,27,255,.85) 120deg,
+    rgba(0,229,255,.3) 220deg,
+    rgba(0,229,255,0) 260deg,
+    rgba(0,229,255,.9) 360deg);
+  -webkit-mask:radial-gradient(circle, transparent 62%, #000 63%, #000 72%, transparent 73%);
+          mask:radial-gradient(circle, transparent 62%, #000 63%, #000 72%, transparent 73%);
+  filter:drop-shadow(0 0 18px rgba(0,229,255,.55)) drop-shadow(0 0 26px rgba(182,27,255,.35));
+  animation:mmPulse 2.4s ease-in-out infinite;
+  opacity:.9;
+}
+@keyframes mmPulse{
+  0%,100%{opacity:.75;transform:scale(1)}
+  50%{opacity:1;transform:scale(1.03)}
+}
+
+.mm-inner{
+  position:relative;width:82%;height:82%;border-radius:50%;overflow:hidden;
+  background:radial-gradient(circle at 30% 30%, #1c1c22 0%, #080808 70%);
+  box-shadow:inset 0 0 30px rgba(0,0,0,.9), inset 0 2px 3px rgba(255,255,255,.06);
+  display:grid;place-items:center;
+}
+#mm-vis{width:100%;height:100%;display:block;opacity:.85;mix-blend-mode:screen}
+.mm-core{
+  position:absolute;width:18%;height:18%;border-radius:50%;
+  background:radial-gradient(circle at 35% 30%, #2a2a30, #050505 70%);
+  box-shadow:0 0 0 3px rgba(255,255,255,.05), 0 4px 14px rgba(0,0,0,.8),
+             inset 0 2px 2px rgba(255,255,255,.1);
+  z-index:2;
+}
+body.playing .mm-core{animation:mmCorePulse 1.2s ease-in-out infinite}
+@keyframes mmCorePulse{0%,100%{box-shadow:0 0 0 3px rgba(255,255,255,.05),0 4px 14px rgba(0,0,0,.8),inset 0 2px 2px rgba(255,255,255,.1),0 0 24px rgba(0,229,255,.3)}50%{box-shadow:0 0 0 3px rgba(255,255,255,.07),0 4px 20px rgba(0,0,0,.85),inset 0 2px 3px rgba(255,255,255,.14),0 0 38px rgba(0,229,255,.55)}}
+
+.mm-title{font-size:19px;font-weight:800;letter-spacing:-.2px;text-align:center;
+  max-width:92%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#fff;padding:0 8px}
+.mm-artist{font-size:12.5px;color:#8f96a6;letter-spacing:.4px;text-transform:uppercase;
+  margin-top:-10px;font-weight:600}
+
+.mm-lock-btn{
+  display:inline-flex;align-items:center;gap:9px;padding:13px 26px;border-radius:999px;
+  background:linear-gradient(135deg,rgba(255,255,255,.08),rgba(255,255,255,.03));
+  border:1px solid rgba(255,255,255,.12);color:#fff;font-size:14px;font-weight:700;
+  margin-top:6px;backdrop-filter:blur(10px);transition:all .2s var(--ease);
+}
+.mm-lock-btn .ic{width:20px;height:20px}
+.mm-lock-btn:active{transform:scale(.96)}
+.mm-lock-btn.locked{background:linear-gradient(135deg,#ff3d55,#b3121f);border-color:transparent;
+  box-shadow:0 10px 30px rgba(255,61,85,.45)}
+
+.mm-controls{display:flex;align-items:center;gap:22px;margin-top:8px}
+.mm-controls-2{gap:14px;margin-top:2px}
+.mm-btn{width:62px;height:62px;border-radius:50%;display:grid;place-items:center;
+  background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);color:#fff;
+  transition:all .18s var(--ease);backdrop-filter:blur(8px)}
+.mm-btn .ic{width:26px;height:26px}
+.mm-btn:active{transform:scale(.92);background:rgba(255,255,255,.12)}
+.mm-btn.mm-play{width:78px;height:78px;
+  background:linear-gradient(135deg,#00e5ff,#b61bff);color:#050505;
+  box-shadow:0 12px 34px rgba(0,229,255,.35),0 12px 34px rgba(182,27,255,.25);
+  border-color:transparent;
+}
+.mm-btn.mm-play .ic{width:32px;height:32px;fill:currentColor}
+.mm-btn.small{width:48px;height:48px}
+.mm-btn.small .ic{width:20px;height:20px}
+.mm-btn.on{color:#00e5ff;background:rgba(0,229,255,.12);border-color:rgba(0,229,255,.35)}
+.mm-exit{width:auto;padding:0 18px;border-radius:999px;gap:7px;font-size:12px;font-weight:700;letter-spacing:.4px;text-transform:uppercase}
+.mm-exit .ic{width:16px;height:16px}
+
+.mm-locked-hint{position:absolute;bottom:calc(22px + env(safe-area-inset-bottom));
+  font-size:12px;color:#5a6070;letter-spacing:.6px;text-transform:uppercase;font-weight:700;
+  animation:fadeOut 4s forwards;animation-delay:1s;pointer-events:none}
+@keyframes fadeOut{to{opacity:0}}
+
+/* when controls are locked, hide them */
+body.mm-locked .mm-controls,
+body.mm-locked .mm-controls-2{opacity:0;pointer-events:none;transform:scale(.9);transition:.3s}
+body.mm-locked .mm-title,body.mm-locked .mm-artist{opacity:.55;transition:.3s}
+
+/* minimal mode only shows in portrait on phones */
+@media (orientation:landscape){.minimal-mode{display:none !important}}
+@media (min-width:860px){.minimal-mode{display:none !important}}
