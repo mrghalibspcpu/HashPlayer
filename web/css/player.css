@@ -173,9 +173,9 @@ body:not(.has-video) .lrc-empty{padding-top:38%}
 .vtools{position:absolute;z-index:5;right:10px;top:50%;transform:translateY(-50%);
   display:none;flex-direction:column;gap:2px;padding:5px;border-radius:19px;
   background:rgba(4,6,12,.5);backdrop-filter:blur(14px);border:1px solid rgba(255,255,255,.1);
-  opacity:0;transition:opacity .3s}
+  opacity:0;pointer-events:none;transition:opacity .3s}
 body.has-video .vtools{display:flex}
-body.has-video .vtools.show,.stage:hover .vtools{opacity:1}
+body.has-video .vtools.show,.stage:hover .vtools{opacity:1;pointer-events:auto}
 .vtools .icon-btn{width:36px;height:36px;color:#fff;position:relative}
 .vtools .icon-btn .ic{width:18px;height:18px}
 .vtools .icon-btn.on{color:var(--a1)}
@@ -534,3 +534,49 @@ body.nv-mode .np-ctrl{background:linear-gradient(to top,rgba(7,8,12,.85),rgba(7,
   background:rgba(0,0,0,.42);padding:4px 12px;border-radius:10px;white-space:pre-line;
 }
 body:not(.nv-mode) .nv-cc{display:none}
+
+/* ============================================================
+   Overlay controls must always receive the touch
+   ------------------------------------------------------------
+   Every floating widget in the player (mini player, video tools,
+   landscape tool palette, portrait tool row, minimal mode) sits on
+   top of layers that fade in and out. A visible overlay must never
+   swallow its own buttons, so the interactive parts opt back into
+   pointer events explicitly and skip the mobile double-tap delay.
+   ============================================================ */
+#minibar .icon-btn,
+#minibar .mini-art,
+#minibar .mini-meta,
+#minibar input[type=range],
+.vtools.show .icon-btn,
+.landscape-tools.show .tool,
+#np .np-tools .tool,
+#np .transport button,
+.minimal-mode .mm-btn,
+.minimal-mode .mm-lock-btn{
+  pointer-events:auto;
+  touch-action:manipulation;
+  -webkit-tap-highlight-color:transparent;
+}
+/* Stacking order stays as authored (video tools z5 < landscape palette z7 <
+   topbar z60 < mini player z70 < minimal mode z110); the rule above only
+   guarantees that a *visible* overlay hands the touch to its own buttons. */
+
+/* ============================================================
+   BGM — background music (portrait bottom panel only)
+   ------------------------------------------------------------
+   Deliberately NOT a .portrait-tool: those only appear where the
+   native engine can stretch pitch, which would hide BGM on the web
+   build. BGM belongs in the portrait tool row for audio *and* video,
+   and nowhere else — landscape keeps its playback-only overlay.
+   ============================================================ */
+#np .np-tools .bgm-tool{display:none}
+@media (orientation:portrait){
+  #np .np-tools .bgm-tool{display:flex}
+}
+.bgm-state{padding:10px 14px;border-radius:14px;font-size:13px;font-weight:650;
+  background:color-mix(in srgb,var(--a1) 12%,transparent);
+  border:1px solid color-mix(in srgb,var(--a1) 30%,transparent)}
+.bgm-actions{width:100%;margin-left:0;justify-content:flex-start}
+body[dir=rtl] .bgm-actions{margin-right:0}
+#sheet-bgm input[type=url]{width:100%}

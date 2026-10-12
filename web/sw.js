@@ -1,10 +1,10 @@
 /* ============================================================
    HashPlayer · service worker — offline shell
    ============================================================ */
-const VERSION = 'hashplayer-v2.8.0';
+const VERSION = 'hashplayer-v2.8.2';   /* bumped: BGM + minimal-mode/widget fixes */
 const SHELL = [
   './', './index.html', './manifest.webmanifest',
-  './css/base.css', './css/app.css', './css/player.css',
+  './css/base.css', './css/app.css', './css/player.css', './css/minimal.css',
   './js/util.js', './js/db.js', './js/meta.js', './js/engine.js',
   './js/visual.js', './js/yt.js', './js/native.js', './js/library.js', './js/player.js', './js/app.js',
   './icons/icon-192.png', './icons/icon-512.png', './icons/maskable-512.png',

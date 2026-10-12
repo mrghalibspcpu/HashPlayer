@@ -94,8 +94,11 @@ body.playing .mm-core{animation:mmCorePulse 1.2s ease-in-out infinite}
 .mm-lock-btn.locked{background:linear-gradient(135deg,#ff3d55,#b3121f);border-color:transparent;
   box-shadow:0 10px 30px rgba(255,61,85,.45)}
 
-.mm-controls{display:flex;align-items:center;gap:22px;margin-top:8px}
-.mm-controls-2{gap:14px;margin-top:2px}
+.mm-controls{display:flex;align-items:center;justify-content:center;gap:22px;margin-top:8px}
+/* The second row mixes round icon buttons with the wide Exit pill, so it is
+   centred as one flex line and may wrap on narrow phones instead of pushing
+   the pill out of the row. */
+.mm-controls-2{gap:14px;margin-top:2px;flex-wrap:wrap;row-gap:10px}
 .mm-btn{width:62px;height:62px;border-radius:50%;display:grid;place-items:center;
   background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);color:#fff;
   transition:all .18s var(--ease);backdrop-filter:blur(8px)}
@@ -110,8 +113,20 @@ body.playing .mm-core{animation:mmCorePulse 1.2s ease-in-out infinite}
 .mm-btn.small{width:48px;height:48px}
 .mm-btn.small .ic{width:20px;height:20px}
 .mm-btn.on{color:#00e5ff;background:rgba(0,229,255,.12);border-color:rgba(0,229,255,.35)}
-.mm-exit{width:auto;padding:0 18px;border-radius:999px;gap:7px;font-size:12px;font-weight:700;letter-spacing:.4px;text-transform:uppercase}
-.mm-exit .ic{width:16px;height:16px}
+/* Exit is a pill, not a circle. `.mm-btn.small` above wins on specificity
+   (two classes vs one), so its 48×48 box used to clamp this button and the
+   `display:grid` from `.mm-btn` stacked the icon over the label — the pill
+   looked pushed out of line with the round buttons next to it. This rule is
+   more specific, lays icon + label out on one centred line and lets the
+   button size itself to its content. */
+.mm-controls-2 .mm-btn.small.mm-exit{
+  display:inline-flex;align-items:center;justify-content:center;
+  width:auto;min-width:96px;height:48px;flex:0 0 auto;padding:0 16px;
+  border-radius:999px;gap:7px;font-size:12px;font-weight:700;
+  letter-spacing:.4px;text-transform:uppercase;line-height:1;white-space:nowrap;
+}
+.mm-exit .ic{width:16px;height:16px;flex:none}
+.mm-exit span{white-space:nowrap}
 
 .mm-locked-hint{position:absolute;bottom:calc(22px + env(safe-area-inset-bottom));
   font-size:12px;color:#5a6070;letter-spacing:.6px;text-transform:uppercase;font-weight:700;

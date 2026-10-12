@@ -517,6 +517,8 @@
         <button class="tool portrait-tool" id="t-pitch" data-pro><b id="pitch-label">0</b><span data-i18n="pitch2">Pitch</span></button>
         <button class="tool portrait-tool sr-tool" id="t-sr" aria-pressed="false"><b id="sr-label">S+R</b><span>Slow</span></button>
         <button class="tool portrait-tool" id="t-minimal"><svg class="ic"><use href="#i-disc"/></svg><span>Minimal</span></button>
+        <!-- BGM: portrait bottom panel only (audio and video), see .bgm-tool in player.css -->
+        <button class="tool bgm-tool" id="t-bgm" aria-pressed="false" title="Background music"><svg class="ic"><use href="#i-music"/></svg><span>BGM</span></button>
         <button class="tool" id="t-sleep"><svg class="ic"><use href="#i-timer"/></svg><span data-i18n="sleep">Sleep</span></button>
         <button class="tool" id="t-mark" data-pro><svg class="ic"><use href="#i-mark"/></svg><span data-i18n="bookmark">Bookmark</span></button>
         <button class="tool" id="t-vis" data-pro><svg class="ic"><use href="#i-wave"/></svg><span data-i18n="visualizer">Visualizer</span></button>
@@ -639,6 +641,26 @@
   </div>
 </div>
 
+<div class="sheet" id="sheet-bgm" hidden>
+  <h3>Background music (BGM)</h3>
+  <p class="muted">Plays on loop behind your audio or video and follows the main player — it pauses the moment your media pauses, and resumes with it.</p>
+  <div class="bgm-state" id="bgm-state" hidden></div>
+  <div class="head-actions bgm-actions">
+    <button class="btn small primary" id="bgm-file"><svg class="ic"><use href="#i-file"/></svg><span>Choose audio / video file</span></button>
+    <button class="btn small ghost danger" id="bgm-stop" hidden><svg class="ic"><use href="#i-x"/></svg><span>Stop BGM</span></button>
+  </div>
+  <input type="url" id="bgm-url" placeholder="https://site.com/background.mp3 — online audio / video URL" spellcheck="false">
+  <div class="knob-row">
+    <label for="bgm-vol">BGM volume</label>
+    <input type="range" id="bgm-vol" min="0" max="100" step="1" value="20"><output id="bgm-vol-out">20%</output>
+  </div>
+  <p class="muted">Deliberately low by default (20%) so podcasts, speeches and khutbat stay clearly audible on top of the music.</p>
+  <div class="sheet-foot">
+    <button class="btn ghost" data-close>Close</button>
+    <button class="btn primary" id="bgm-url-add">Load URL</button>
+  </div>
+</div>
+
 <div class="sheet" id="sheet-playlist" hidden>
   <h3 id="pl-dlg-title" data-i18n="newPlaylist">New playlist</h3>
   <input type="text" id="pl-input" placeholder="My late-night mix" maxlength="60">
@@ -686,6 +708,7 @@
 <input type="file" id="file-input" multiple accept="audio/*,video/*,.mp3,.m4a,.flac,.wav,.ogg,.opus,.aac,.mp4,.mkv,.webm,.mov,.m4v,.avi,.lrc,.srt,.vtt" hidden>
 <input type="file" id="folder-input" webkitdirectory directory multiple hidden>
 <input type="file" id="side-input" accept=".lrc,.txt,.srt,.vtt" hidden>
+<input type="file" id="bgm-input" accept="audio/*,video/*,.mp3,.m4a,.aac,.ogg,.opus,.wav,.flac,.mp4,.webm,.m4v,.m3u8" hidden>
 <input type="file" id="import-input" accept="application/json,.json" hidden>
 
 <script src="js/util.js"></script>

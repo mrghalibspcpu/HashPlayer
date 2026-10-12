@@ -1522,6 +1522,20 @@ class MainActivity : AppCompatActivity() {
         js("""(function(){var tries=0;function run(){var h=window.HP;if(h&&h.Lib&&h.Player){var t=h.Lib.get($safeId);if(t){h.Player.playTrack(t.id,h.Lib.contextIds());return;}}if(++tries<24)setTimeout(run,350);else if(h&&h.toast)h.toast('Last played item is no longer in your library','err');}setTimeout(run,500);})();""")
     }
 
+    /**
+     * Replay a widget transport tap (Play/Pause, Next, Previous, ANC) inside the
+     * web player. js() already queues until the page is ready; the short retry
+     * covers the gap between "page loaded" and "HashBridge is on window".
+     */
+    private fun replayTransport(command: String) {
+        val c = JSONObject.quote(command)
+        js(
+            "(function(){var c=$c;var tries=0;function run(){" +
+                "if(window.HashBridge&&window.HashBridge.onTransport){window.HashBridge.onTransport(c);return;}" +
+                "if(++tries<24)setTimeout(run,350);}setTimeout(run,500);})();"
+        )
+    }
+
     /* ====================================================== incoming intents */
 
     @SuppressLint("NewApi")
@@ -1546,6 +1560,20 @@ class MainActivity : AppCompatActivity() {
             HashPlayerWidget.ACTION_EQ -> {
                 intent.action = null
                 js("setTimeout(function(){if(window.HP&&window.HP.UI){window.HP.UI.nav('eq');if(window.HP&&window.HP.Player)window.HP.Player.syncMiniPlayer&&window.HP.Player.syncMiniPlayer();}},650);")
+                return
+            }
+            /* The widget hands a transport tap back to us when the player was
+               not running, so the button still does something visible. */
+            HashPlayerWidget.ACTION_TOGGLE, HashPlayerWidget.ACTION_NEXT,
+            HashPlayerWidget.ACTION_PREV, HashPlayerWidget.ACTION_ANC -> {
+                val command = when (intent.action) {
+                    HashPlayerWidget.ACTION_NEXT -> "next"
+                    HashPlayerWidget.ACTION_PREV -> "prev"
+                    HashPlayerWidget.ACTION_ANC -> "anc"
+                    else -> "toggle"
+                }
+                intent.action = null
+                replayTransport(command)
                 return
             }
         }

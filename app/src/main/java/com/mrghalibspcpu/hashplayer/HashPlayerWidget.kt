@@ -11,9 +11,17 @@ import android.widget.RemoteViews
 /**
  * Compact home-screen widget with dedicated transport controls.
  *
- * Every button now fires a specific PendingIntent directly at the service or
- * activity rather than wrapping the whole widget in a generic launcher tap,
- * so Play/Pause, Skip, Previous, EQ and ANC each execute their own action.
+ * Every button fires a specific action rather than wrapping the whole widget in
+ * a generic launcher tap, so Play/Pause, Skip, Previous, EQ and ANC each execute
+ * their own action.
+ *
+ * The transport buttons are delivered as broadcasts to this receiver instead of
+ * `PendingIntent.getService(...)`. A widget tap happens while the app is in the
+ * background, and on Android 8+ `startService()` from there throws
+ * "Not allowed to start service ... app is in background", which the launcher
+ * swallows — the button looks completely dead. A broadcast to our own receiver
+ * is always allowed, and from here the command is handed straight to the live
+ * player (or the app is opened to replay it) without any service start.
  */
 class HashPlayerWidget : AppWidgetProvider() {
     override fun onUpdate(context: Context, manager: AppWidgetManager, ids: IntArray) {
@@ -21,11 +29,16 @@ class HashPlayerWidget : AppWidgetProvider() {
     }
 
     override fun onReceive(context: Context, intent: Intent) {
+        val action = intent.action
         super.onReceive(context, intent)
-        // Any widget button press refreshes the widget so the play/pause glyph stays honest.
-        if (intent.action?.startsWith("com.mrghalibspcpu.hashplayer.widget.") == true) {
-            refresh(context)
+        when (action) {
+            ACTION_TOGGLE -> transport(context, "toggle", ACTION_TOGGLE)
+            ACTION_NEXT   -> transport(context, "next",   ACTION_NEXT)
+            ACTION_PREV   -> transport(context, "prev",   ACTION_PREV)
+            ACTION_ANC    -> toggleAnc(context)
         }
+        // Any widget button press refreshes the widget so the play/pause glyph stays honest.
+        if (action?.startsWith(PREFIX) == true) refresh(context)
     }
 
     companion object {
@@ -38,6 +51,7 @@ class HashPlayerWidget : AppWidgetProvider() {
         const val ACTION_EQ          = "com.mrghalibspcpu.hashplayer.widget.EQ"
         const val ACTION_ANC         = "com.mrghalibspcpu.hashplayer.widget.ANC"
 
+        private const val PREFIX = "com.mrghalibspcpu.hashplayer.widget."
         private const val PREFS = "hashplayer_widget"
         private const val KEY_TITLE = "last_title"
         private const val KEY_ARTIST = "last_artist"
@@ -90,12 +104,13 @@ class HashPlayerWidget : AppWidgetProvider() {
                 setOnClickPendingIntent(R.id.widget_playlists,   activity(context, ACTION_PLAYLISTS, 2))
                 setOnClickPendingIntent(R.id.widget_track_preview, activity(context, ACTION_PLAY_LAST, 4))
 
-                // Direct service actions — these never open the launcher activity.
-                setOnClickPendingIntent(R.id.widget_play_last,   service(context, PlaybackService.ACTION_TOGGLE, 10))
-                setOnClickPendingIntent(R.id.widget_prev,        service(context, PlaybackService.ACTION_PREV,   11))
-                setOnClickPendingIntent(R.id.widget_next,        service(context, PlaybackService.ACTION_NEXT,   12))
-                setOnClickPendingIntent(R.id.widget_eq,          activity(context, ACTION_EQ,       13))
-                setOnClickPendingIntent(R.id.widget_anc,         service(context, PlaybackService.ACTION_TOGGLE_ANC, 14))
+                // Direct transport actions — delivered to this receiver, never to
+                // a background startService(), so they fire on every Android version.
+                setOnClickPendingIntent(R.id.widget_play_last,   broadcast(context, ACTION_TOGGLE, 10))
+                setOnClickPendingIntent(R.id.widget_prev,        broadcast(context, ACTION_PREV,   11))
+                setOnClickPendingIntent(R.id.widget_next,        broadcast(context, ACTION_NEXT,   12))
+                setOnClickPendingIntent(R.id.widget_eq,          activity(context, ACTION_EQ,      13))
+                setOnClickPendingIntent(R.id.widget_anc,         broadcast(context, ACTION_ANC,    14))
 
                 // Flip the play/pause glyph so the widget reflects what is actually happening.
                 setImageViewResource(
@@ -119,14 +134,48 @@ class HashPlayerWidget : AppWidgetProvider() {
             )
         }
 
-        /** Fire an action straight at the PlaybackService — no activity launch. */
-        private fun service(context: Context, action: String, requestCode: Int): PendingIntent {
-            val intent = Intent(context, PlaybackService::class.java).setAction(action)
-            return PendingIntent.getService(
+        /** A tap on a transport button, delivered to this receiver. */
+        private fun broadcast(context: Context, action: String, requestCode: Int): PendingIntent {
+            val intent = Intent(context, HashPlayerWidget::class.java).setAction(action)
+            return PendingIntent.getBroadcast(
                 context, requestCode, intent,
                 PendingIntent.FLAG_UPDATE_CURRENT or
                     (if (android.os.Build.VERSION.SDK_INT >= 23) PendingIntent.FLAG_IMMUTABLE else 0)
             )
+        }
+
+        /**
+         * Hand a transport command to the running player. If the player is not
+         * alive there is nothing to control, so open the app with the same
+         * action and let MainActivity replay it once the WebView is ready.
+         */
+        private fun transport(context: Context, command: String, replay: String) {
+            val handler = PlaybackService.transport
+            if (handler != null) {
+                try { handler(command); return } catch (e: Exception) { /* fall through */ }
+            }
+            openApp(context, replay)
+        }
+
+        private fun toggleAnc(context: Context) {
+            val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            val on = !prefs.getBoolean("anc_on", false)
+            prefs.edit().putBoolean("anc_on", on).apply()
+            PlaybackService.ancOn = on
+            transport(context, "anc", ACTION_ANC)
+        }
+
+        private fun openApp(context: Context, action: String) {
+            try {
+                context.startActivity(
+                    Intent(context, MainActivity::class.java)
+                        .setAction(action)
+                        .addFlags(
+                            Intent.FLAG_ACTIVITY_NEW_TASK or
+                                Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                        )
+                )
+            } catch (e: Exception) { /* no activity to open — the tap is a no-op */ }
         }
     }
 }
