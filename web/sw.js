@@ -1,7 +1,7 @@
 /* ============================================================
    HashPlayer · service worker — offline shell
    ============================================================ */
-const VERSION = 'hashplayer-v2.8.2';   /* bumped: BGM + minimal-mode/widget fixes */
+const VERSION = 'hashplayer-v2.8.3';   /* bumped: BGM library picker + widget refresh */
 const SHELL = [
   './', './index.html', './manifest.webmanifest',
   './css/base.css', './css/app.css', './css/player.css', './css/minimal.css',

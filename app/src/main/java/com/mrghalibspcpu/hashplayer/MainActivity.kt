@@ -343,6 +343,10 @@ class MainActivity : AppCompatActivity() {
         volumeControlStream = AudioManager.STREAM_MUSIC
         watchVolume()
 
+        /* Rebuild the home-screen widget on every launch so its PendingIntents
+           are never stale after an update (stale PendingIntents = dead buttons). */
+        HashPlayerWidget.forceRefresh(this)
+
         if (savedInstanceState == null) web.loadUrl(START_URL) else web.restoreState(savedInstanceState)
         handleIntent(intent)
     }

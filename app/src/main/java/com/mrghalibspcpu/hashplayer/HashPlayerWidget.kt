@@ -29,6 +29,12 @@ class HashPlayerWidget : AppWidgetProvider() {
     }
 
     override fun onReceive(context: Context, intent: Intent) {
+        // After an app update the home screen still holds the old RemoteViews
+        // with the old (dead) PendingIntents, so rebuild the widget right away.
+        if (intent.action == Intent.ACTION_MY_PACKAGE_REPLACED) {
+            refresh(context)
+            return
+        }
         val action = intent.action
         super.onReceive(context, intent)
         when (action) {
@@ -88,6 +94,10 @@ class HashPlayerWidget : AppWidgetProvider() {
             val ids = manager.getAppWidgetIds(component)
             ids.forEach { manager.updateAppWidget(it, views(context)) }
         }
+
+        /** Public wrapper so the app can rebuild the widget's PendingIntents on
+         *  launch / after an update, never leaving dead buttons on the screen. */
+        fun forceRefresh(context: Context) { refresh(context) }
 
         private fun views(context: Context): RemoteViews {
             val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)

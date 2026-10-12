@@ -580,3 +580,24 @@ body:not(.nv-mode) .nv-cc{display:none}
 .bgm-actions{width:100%;margin-left:0;justify-content:flex-start}
 body[dir=rtl] .bgm-actions{margin-right:0}
 #sheet-bgm input[type=url]{width:100%}
+
+/* ---- BGM sheet: picker + always-visible labels ---- */
+/* app.css hides .head-actions button labels on phones; the BGM controls are
+   nothing without their words, so put them back inside this sheet. */
+@media (max-width:859px){
+  .bgm-actions .btn span{display:inline}
+}
+.bgm-pick-title{margin-top:2px}
+.bgm-list{display:flex;flex-direction:column;gap:6px;max-height:34vh;overflow-y:auto;
+  padding:2px;border-radius:14px;scrollbar-width:thin}
+.bgm-item{display:flex;align-items:center;gap:10px;width:100%;text-align:left;
+  padding:9px 11px;border-radius:12px;border:1px solid var(--line);
+  background:var(--panel);color:var(--text);cursor:pointer}
+.bgm-item .ic{width:18px;height:18px;flex:none;color:var(--dim)}
+.bgm-item .bgm-item-t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  font-size:13px;font-weight:650}
+.bgm-item .bgm-item-k{flex:none;font-size:10px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:var(--dim)}
+.bgm-item.now{border-color:color-mix(in srgb,var(--a1) 55%,transparent);color:var(--a1)}
+.bgm-item.now .ic,.bgm-item.now .bgm-item-k{color:var(--a1)}
+.bgm-empty{padding:10px 12px;border-radius:12px;background:var(--panel);font-size:12.5px;color:var(--dim)}
+.bgm-actions #bgm-onoff.on{box-shadow:0 0 0 1px color-mix(in srgb,var(--a1) 60%,transparent),0 6px 18px color-mix(in srgb,var(--a1) 30%,transparent)}

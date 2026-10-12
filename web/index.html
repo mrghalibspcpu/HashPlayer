@@ -646,15 +646,17 @@
   <p class="muted">Plays on loop behind your audio or video and follows the main player — it pauses the moment your media pauses, and resumes with it.</p>
   <div class="bgm-state" id="bgm-state" hidden></div>
   <div class="head-actions bgm-actions">
-    <button class="btn small primary" id="bgm-file"><svg class="ic"><use href="#i-file"/></svg><span>Choose audio / video file</span></button>
-    <button class="btn small ghost danger" id="bgm-stop" hidden><svg class="ic"><use href="#i-x"/></svg><span>Stop BGM</span></button>
+    <button class="btn small primary" id="bgm-onoff" aria-pressed="false"><svg class="ic"><use href="#i-music"/></svg><span id="bgm-onoff-label">BGM on</span></button>
+    <button class="btn small" id="bgm-file"><svg class="ic"><use href="#i-file"/></svg><span>Device file</span></button>
+    <button class="btn small ghost danger" id="bgm-stop" hidden><svg class="ic"><use href="#i-x"/></svg><span>Stop &amp; remove</span></button>
   </div>
+  <div class="panel-title bgm-pick-title"><svg class="ic"><use href="#i-grid"/></svg><span>Pick from your library</span></div>
+  <div class="bgm-list" id="bgm-list"></div>
   <input type="url" id="bgm-url" placeholder="https://site.com/background.mp3 — online audio / video URL" spellcheck="false">
   <div class="knob-row">
     <label for="bgm-vol">BGM volume</label>
     <input type="range" id="bgm-vol" min="0" max="100" step="1" value="20"><output id="bgm-vol-out">20%</output>
   </div>
-  <p class="muted">Deliberately low by default (20%) so podcasts, speeches and khutbat stay clearly audible on top of the music.</p>
   <div class="sheet-foot">
     <button class="btn ghost" data-close>Close</button>
     <button class="btn primary" id="bgm-url-add">Load URL</button>

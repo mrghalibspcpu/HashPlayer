@@ -175,6 +175,7 @@
             android:label="@string/widget_name">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
                 <action android:name="com.mrghalibspcpu.hashplayer.widget.TOGGLE" />
                 <action android:name="com.mrghalibspcpu.hashplayer.widget.NEXT" />
                 <action android:name="com.mrghalibspcpu.hashplayer.widget.PREV" />

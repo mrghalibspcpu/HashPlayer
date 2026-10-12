@@ -1584,7 +1584,7 @@
      your audio/video plays it loops quietly underneath, the moment the
      main media pauses or stops it pauses with it.
      ========================================================= */
-  const BGM = { el: null, ready: false, playing: false, blobUrl: null, _probe: 0 };
+  const BGM = { m: null, kind: null, ready: false, playing: false, blobUrl: null, el: null, ytm: null };
   P.BGM = BGM;
 
   function bgmElement() {
@@ -1592,14 +1592,33 @@
     const a = el('audio', { loop: '', preload: 'auto', playsinline: '' });
     a.style.display = 'none';
     a.volume = clamp(+S.bgmVol || 0, 0, 1);
-    /* A few streams ignore `loop`, so restart by hand when one does end. */
     a.addEventListener('ended', () => {
       try { a.currentTime = 0; } catch (e) { }
-      if (BGM.playing) { const p = a.play(); if (p && p.catch) p.catch(() => { }); }
+      if (BGM.playing && BGM.kind === 'el') bgmPlay();
     });
     document.body.appendChild(a);
     BGM.el = a;
     return a;
+  }
+  function bgmYt() {
+    if (BGM.ytm) return BGM.ytm;
+    if (!HP.YT || !HP.YT.media) return null;
+    const mount = el('div'); mount.style.display = 'none'; document.body.appendChild(mount);
+    const m = HP.YT.media(mount);
+    m.addEventListener('ended', () => {
+      if (BGM.playing && BGM.kind === 'yt') { try { m.currentTime = 0; bgmPlay(); } catch (e) { } }
+    });
+    BGM.ytm = m;
+    return m;
+  }
+  function bgmPlay() { if (!BGM.m) return; const p = BGM.m.play && BGM.m.play(); if (p && p.catch) p.catch(() => { }); }
+  function bgmPause() { if (BGM.m) BGM.m.pause(); }
+  function bgmPaused() { return !BGM.m || !!BGM.m.paused; }
+  function bgmSetVol(v) { if (BGM.m) { try { BGM.m.volume = v; } catch (e) { } } }
+  function bgmTearCurrent() {
+    if (BGM.kind === 'el' && BGM.el) { try { BGM.el.pause(); BGM.el.removeAttribute('src'); BGM.el.load(); } catch (e) { } }
+    if (BGM.kind === 'yt' && BGM.ytm) { try { BGM.ytm.stop(); } catch (e) { } }
+    if (BGM.blobUrl) { try { URL.revokeObjectURL(BGM.blobUrl); } catch (e) { } BGM.blobUrl = null; }
   }
 
   function bgmPaint() {
@@ -1610,11 +1629,14 @@
       btn.setAttribute('aria-pressed', on ? 'true' : 'false');
       btn.title = on ? 'Background music on' : 'Background music';
     }
+    const onoff = $('#bgm-onoff'), lbl = $('#bgm-onoff-label');
+    if (onoff) { onoff.classList.toggle('on', on); onoff.setAttribute('aria-pressed', on ? 'true' : 'false'); }
+    if (lbl) lbl.textContent = on ? 'BGM on' : 'BGM off';
     const state = $('#bgm-state');
     if (state) {
       state.textContent = BGM.ready
         ? (S.bgmOn ? 'Looping behind your media · ' : 'Loaded, waiting for playback · ') + (S.bgmName || 'BGM')
-        : 'No background music loaded yet — pick a file or paste a link.';
+        : 'No background music yet — pick a track below, a device file, or paste a link.';
       state.hidden = false;
     }
     const stop = $('#bgm-stop');
@@ -1623,31 +1645,77 @@
     const pct = Math.round(clamp(+S.bgmVol || 0, 0, 1) * 100);
     if (vol) { vol.value = pct; rangeFill(vol); }
     if (out) out.textContent = pct + '%';
+    if ($('#sheet-bgm') && !$('#sheet-bgm').hidden) renderBGMList();
   }
   BGM.paint = bgmPaint;
 
-  /** Quiet by default: 20% keeps speech on top of the music. */
+  /* ---- library picker: choose BGM from your own tracks ---- */
+  function renderBGMList() {
+    const box = $('#bgm-list'); if (!box) return;
+    box.innerHTML = '';
+    const items = [];
+    const lib = L();
+    if (lib && lib.tracks) lib.tracks.forEach(t => items.push(t));
+    if (!items.length) {
+      box.appendChild(el('div', { class: 'bgm-empty', text: 'Library is empty — add a song or video first, or paste a link below.' }));
+      return;
+    }
+    items.sort((a, b) => (b.added || 0) - (a.added || 0));
+    items.slice(0, 60).forEach(t => {
+      const title = t.title || t.name || 'Untitled';
+      const kind = t.source === 'yt' ? 'YouTube' : (t.kind === 'video' ? 'Video' : 'Audio');
+      const row = el('button', { class: 'bgm-item' + (S.bgmName === title ? ' now' : '') }, [
+        icon(t.source === 'yt' ? 'yt' : (t.kind === 'video' ? 'video' : 'music')),
+        el('span', { class: 'bgm-item-t', text: title }),
+        el('span', { class: 'bgm-item-k', text: kind })
+      ]);
+      row.addEventListener('click', () => bgmPickTrack(t));
+      box.appendChild(row);
+    });
+  }
+  BGM.renderList = renderBGMList;
+
+  async function bgmPickTrack(t) {
+    const src = await L().resolveSrc(t);
+    if (!src) { HP.toast('That item is unavailable — re-open it from your device', 'err'); return; }
+    BGM.setSource(src, t.title || t.name || 'BGM', t.source !== 'file');
+    HP.toast('BGM ready · ' + Math.round(clamp(S.bgmVol, 0, 1) * 100) + '% under your media', 'ok');
+  }
+
   BGM.setVolume = function (v) {
     S.bgmVol = clamp(+v || 0, 0, 1);
     HP.save();
-    if (BGM.el) BGM.el.volume = S.bgmVol;
+    bgmSetVol(S.bgmVol);
     bgmPaint();
   };
 
-  /** @param {string} src object URL of a picked file, or an online URL */
+  /** @param {string} src object URL, http(s) URL, or 'yt:<id>' */
   BGM.setSource = function (src, name, persistable) {
-    const a = bgmElement();
-    if (BGM.blobUrl) { try { URL.revokeObjectURL(BGM.blobUrl); } catch (e) { } BGM.blobUrl = null; }
-    if (/^blob:/i.test(src)) BGM.blobUrl = src;
-    a.src = src;
-    a.volume = clamp(+S.bgmVol || 0, 0, 1);
-    try { a.load(); } catch (e) { }
+    const isYt = String(src).indexOf('yt:') === 0;
+    bgmTearCurrent();
+    if (isYt) {
+      const m = bgmYt();
+      if (!m) { HP.toast('YouTube playback is unavailable here', 'err'); return; }
+      BGM.kind = 'yt'; BGM.m = m;
+    } else {
+      const a = bgmElement();
+      if (/^blob:/i.test(src)) BGM.blobUrl = src;
+      a.src = src;
+      try { a.load(); } catch (e) { }
+      BGM.kind = 'el'; BGM.m = a;
+    }
+    bgmSetVol(clamp(+S.bgmVol || 0, 0, 1));
     BGM.ready = true;
     S.bgmName = name || 'BGM';
-    /* Only an online link survives a reload — a picked file is a blob URL. */
     S.bgmSrc = persistable ? src : '';
     S.bgmOn = true;
     HP.save();
+    if (isYt) {
+      try {
+        const pr = BGM.m.setVideo(String(src).slice(3), 0, !!(P.active && !P.active.paused));
+        if (pr && pr.catch) pr.catch(() => { HP.toast('YouTube BGM needs an internet connection', 'err'); });
+      } catch (e) { }
+    }
     BGM.sync(!!(P.active && !P.active.paused));
     bgmPaint();
   };
@@ -1663,6 +1731,7 @@
 
   BGM.loadUrl = function (url) {
     const u = String(url || '').trim();
+    if (HP.YT && HP.YT.parse && HP.YT.parse(u)) { const id = HP.YT.parse(u).id; BGM.setSource('yt:' + id, '', true); return true; }
     if (!/^(https?:)?\/\//i.test(u)) { HP.toast('Enter an http(s) audio or video link', 'err'); return false; }
     const name = decodeURIComponent(u.split('/').pop().split('?')[0]) || 'Online BGM';
     BGM.setSource(u, name, true);
@@ -1672,19 +1741,18 @@
 
   /** Follow the main media: playing → loop underneath, paused/stopped → pause. */
   BGM.sync = function (mainPlaying) {
-    if (!BGM.el) return;
+    if (!BGM.m) return;
     if (!BGM.ready || !S.bgmOn) {
-      if (!BGM.el.paused) { try { BGM.el.pause(); } catch (e) { } }
+      if (!bgmPaused()) bgmPause();
       BGM.playing = false;
       return;
     }
     if (mainPlaying) {
-      if (!BGM.el.paused) { BGM.playing = true; return; }
-      const p = BGM.el.play();
-      if (p && p.catch) p.catch(() => { /* autoplay policy: the next tap resumes it */ });
+      if (!bgmPaused()) { BGM.playing = true; return; }
+      bgmPlay();
       BGM.playing = true;
-    } else if (!BGM.el.paused) {
-      try { BGM.el.pause(); } catch (e) { }
+    } else if (!bgmPaused()) {
+      bgmPause();
       BGM.playing = false;
     }
   };
@@ -1697,11 +1765,7 @@
 
   BGM.stop = function () {
     S.bgmOn = false; S.bgmSrc = ''; S.bgmName = ''; HP.save();
-    if (BGM.el) {
-      try { BGM.el.pause(); } catch (e) { }
-      try { BGM.el.removeAttribute('src'); BGM.el.load(); } catch (e) { }
-    }
-    if (BGM.blobUrl) { try { URL.revokeObjectURL(BGM.blobUrl); } catch (e) { } BGM.blobUrl = null; }
+    bgmTearCurrent();
     BGM.ready = false; BGM.playing = false;
     bgmPaint();
     HP.toast('BGM stopped');
@@ -1712,36 +1776,27 @@
 
     if (btn) btn.addEventListener('click', e => {
       e.stopPropagation();
-      if (BGM.ready) { HP.UI.sheet('sheet-bgm'); return; }
-      /* Nothing loaded yet → straight to the file picker. If the picker is
-         dismissed, fall back to the panel so an online URL still works. */
-      if (!fileIn) { HP.UI.sheet('sheet-bgm'); return; }
-      fileIn.click();
-      clearTimeout(BGM._probe);
-      const onFocus = () => {
-        window.removeEventListener('focus', onFocus);
-        BGM._probe = setTimeout(() => {
-          if (!BGM.ready && HP.UI) HP.UI.sheet('sheet-bgm');
-        }, 1100);
-      };
-      window.addEventListener('focus', onFocus);
+      renderBGMList();
+      HP.UI.sheet('sheet-bgm');
     });
 
     if (fileIn) fileIn.addEventListener('change', () => {
       const f = fileIn.files && fileIn.files[0];
       if (!f) return;
       BGM.loadFile(f);
-      fileIn.value = '';                       // allow picking the same file again
-      HP.UI.sheet('sheet-bgm');                // expose the volume slider at once
+      fileIn.value = '';
     });
 
     const pick = $('#bgm-file');
     if (pick) pick.addEventListener('click', () => { if (fileIn) fileIn.click(); });
 
+    const onoff = $('#bgm-onoff');
+    if (onoff) onoff.addEventListener('click', () => BGM.setOn(!S.bgmOn));
+
     const urlAdd = $('#bgm-url-add');
     if (urlAdd) urlAdd.addEventListener('click', () => {
       const inp = $('#bgm-url');
-      if (BGM.loadUrl(inp && inp.value)) { if (inp) inp.value = ''; HP.UI.closeAll(); }
+      if (BGM.loadUrl(inp && inp.value)) { if (inp) inp.value = ''; }
     });
     const urlIn = $('#bgm-url');
     if (urlIn) urlIn.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); urlAdd && urlAdd.click(); } });
@@ -1752,14 +1807,12 @@
     const stop = $('#bgm-stop');
     if (stop) stop.addEventListener('click', () => BGM.stop());
 
-    /* The one hook into the rest of the player: follow the main transport. */
     HP.on('playing', on => BGM.sync(!!on));
 
-    /* An online BGM link can come back after a reload; a picked file cannot. */
-    if (S.bgmOn && S.bgmSrc) BGM.setSource(S.bgmSrc, S.bgmName || 'Online BGM', true);
+    /* An online / YouTube BGM link can come back after a reload. */
+    if (S.bgmOn && S.bgmSrc) BGM.setSource(S.bgmSrc, S.bgmName || 'BGM', true);
     bgmPaint();
   }
-  P.bindBGM = bindBGM;
 
   P.toggleLyrics = function (force) {
     const box = $('#lyrics');

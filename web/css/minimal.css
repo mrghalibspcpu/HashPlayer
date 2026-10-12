@@ -7,18 +7,14 @@
 .minimal-mode{
   position:absolute;inset:0;z-index:110;display:flex;flex-direction:column;
   align-items:center;justify-content:center;gap:18px;padding:22px 18px calc(22px + env(safe-area-inset-bottom));
-  background:
-    radial-gradient(ellipse at 50% 35%, rgba(0,229,255,.06) 0%, rgba(182,27,255,.05) 35%, transparent 65%),
-    radial-gradient(ellipse at 50% 90%, rgba(255,61,61,.04), transparent 50%),
-    #080808;
+  /* Pure-black driving theme — no ambient colour at all. The vinyl disc is
+     the only accent on screen. */
+  background:#000;
   animation:mmIn .4s var(--ease);overflow:hidden;
 }
 @keyframes mmIn{from{opacity:0;transform:scale(.98)}to{opacity:1;transform:none}}
-.minimal-bg{position:absolute;inset:0;pointer-events:none;
-  background:
-    radial-gradient(circle at 30% 20%, rgba(255,255,255,.015), transparent 40%),
-    radial-gradient(circle at 80% 80%, rgba(255,255,255,.01), transparent 40%);
-}
+/* The matt-black theme needs no ambient layer at all. */
+.minimal-bg{position:absolute;inset:0;pointer-events:none;display:none}
 
 .minimal-center{position:relative;display:grid;place-items:center;flex:0 0 auto;
   width:min(72vw,320px);aspect-ratio:1;margin:10px 0 4px}
@@ -30,12 +26,12 @@
     radial-gradient(circle at 30% 28%, rgba(255,255,255,.18) 0%, rgba(255,255,255,.04) 18%, transparent 45%),
     radial-gradient(circle at 70% 80%, rgba(0,0,0,.55), transparent 55%),
     linear-gradient(145deg,#1a1a1e,#050505 60%,#111);
+  /* Neutral depth only — the earlier cyan/magenta glows tinted the black
+     background, which the matt-black theme must not have. */
   box-shadow:
     0 30px 80px rgba(0,0,0,.85),
     inset 0 2px 2px rgba(255,255,255,.08),
-    inset 0 -30px 60px rgba(0,0,0,.7),
-    0 0 60px rgba(0,229,255,.12),
-    0 0 120px rgba(182,27,255,.08);
+    inset 0 -30px 60px rgba(0,0,0,.7);
   animation:mmSpin 18s linear infinite;
 }
 body.playing .mm-disc{animation-duration:12s}
