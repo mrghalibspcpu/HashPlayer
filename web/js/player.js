@@ -1577,25 +1577,54 @@
   /* =========================================================
      BGM — background music behind the main media
      ---------------------------------------------------------
-     A second, fully independent <audio> element. It is never routed
-     through the Web Audio graph, so the EQ, enhancer, boost, mono and
-     crossfade of the main player cannot colour it — and it cannot
-     colour them either. It simply follows the main transport: while
-     your audio/video plays it loops quietly underneath, the moment the
-     main media pauses or stops it pauses with it.
+     A second, fully independent player. It is never routed through the
+     Web Audio graph, so the EQ, enhancer, boost, mono and crossfade of
+     the main player cannot colour it — and it cannot colour them either.
+     It simply follows the main transport: while your audio/video plays
+     it loops quietly underneath, the moment the main media pauses or
+     stops it pauses with it, and it resumes when you resume.
+
+     Three engines, picked per source:
+       • native  — inside the Android app: a second ExoPlayer that opens
+                   content:// files, http(s) streams and YouTube audio and
+                   never asks for audio focus (so it cannot pause the main
+                   media the way a WebView <audio> tag did);
+       • el      — a hidden <audio> element (web build, blob/http sources);
+       • yt      — a hidden YouTube embed (web build only).
+
+     Volume is RELATIVE to the media: the slider is "% of the media's
+     level" (default 10 %), so BGM always sits underneath and follows the
+     main volume / mute.
      ========================================================= */
-  const BGM = { m: null, kind: null, ready: false, playing: false, blobUrl: null, el: null, ytm: null };
+  const BGM = { m: null, kind: null, ready: false, playing: false, blobUrl: null, el: null, ytm: null, nat: false, pauseT: 0 };
   P.BGM = BGM;
+
+  const bgmBridge = () => w.HashNative;
+  function bgmNativeOK() {
+    const n = bgmBridge();
+    try { return !!(n && n.bgmEngine && n.bgmEngine() && n.nBgmLoad); } catch (e) { return false; }
+  }
+  /* The main player's in-app level: with a device master (Android) every
+     engine runs at unity so BGM% is directly "% of the media"; on the web the
+     slider level is the master, so we scale under it. Mute mutes both. */
+  function bgmMainLevel() {
+    if (S.muted) return 0;
+    const dev = HP.Device && HP.Device.volume;
+    if (dev && dev.available()) return 1;
+    return clamp(+S.volume || 0, 0, 1);
+  }
+  function bgmEffVol() { return clamp((+S.bgmVol || 0) * bgmMainLevel(), 0, 1); }
 
   function bgmElement() {
     if (BGM.el) return BGM.el;
     const a = el('audio', { loop: '', preload: 'auto', playsinline: '' });
     a.style.display = 'none';
-    a.volume = clamp(+S.bgmVol || 0, 0, 1);
+    a.volume = bgmEffVol();
     a.addEventListener('ended', () => {
       try { a.currentTime = 0; } catch (e) { }
       if (BGM.playing && BGM.kind === 'el') bgmPlay();
     });
+    a.addEventListener('error', () => { if (BGM.kind === 'el') { HP.toast('BGM file could not be played', 'err'); } });
     document.body.appendChild(a);
     BGM.el = a;
     return a;
@@ -1611,14 +1640,30 @@
     BGM.ytm = m;
     return m;
   }
-  function bgmPlay() { if (!BGM.m) return; const p = BGM.m.play && BGM.m.play(); if (p && p.catch) p.catch(() => { }); }
-  function bgmPause() { if (BGM.m) BGM.m.pause(); }
-  function bgmPaused() { return !BGM.m || !!BGM.m.paused; }
-  function bgmSetVol(v) { if (BGM.m) { try { BGM.m.volume = v; } catch (e) { } } }
+  function bgmPlay() {
+    if (BGM.kind === 'native') { try { bgmBridge().nBgmPlay(); } catch (e) { } return; }
+    if (!BGM.m) return;
+    const p = BGM.m.play && BGM.m.play(); if (p && p.catch) p.catch(() => { });
+  }
+  function bgmPause() {
+    if (BGM.kind === 'native') { try { bgmBridge().nBgmPause(); } catch (e) { } return; }
+    if (BGM.m) BGM.m.pause();
+  }
+  function bgmPaused() {
+    if (BGM.kind === 'native') return !BGM.nat;
+    return !BGM.m || !!BGM.m.paused;
+  }
+  function bgmSetVol(v) {
+    if (BGM.kind === 'native') { try { bgmBridge().nBgmVolume(v); } catch (e) { } return; }
+    if (BGM.m) { try { BGM.m.volume = v; } catch (e) { } }
+  }
   function bgmTearCurrent() {
+    clearTimeout(BGM.pauseT); BGM.pauseT = 0;
+    if (BGM.kind === 'native') { try { bgmBridge().nBgmStop(); } catch (e) { } BGM.nat = false; }
     if (BGM.kind === 'el' && BGM.el) { try { BGM.el.pause(); BGM.el.removeAttribute('src'); BGM.el.load(); } catch (e) { } }
     if (BGM.kind === 'yt' && BGM.ytm) { try { BGM.ytm.stop(); } catch (e) { } }
     if (BGM.blobUrl) { try { URL.revokeObjectURL(BGM.blobUrl); } catch (e) { } BGM.blobUrl = null; }
+    BGM.m = null; BGM.kind = null;
   }
 
   function bgmPaint() {
@@ -1630,12 +1675,15 @@
       btn.title = on ? 'Background music on' : 'Background music';
     }
     const onoff = $('#bgm-onoff'), lbl = $('#bgm-onoff-label');
-    if (onoff) { onoff.classList.toggle('on', on); onoff.setAttribute('aria-pressed', on ? 'true' : 'false'); }
+    if (onoff) { onoff.classList.toggle('on', on); onoff.setAttribute('aria-pressed', on ? 'true' : 'false'); onoff.disabled = !BGM.ready; }
     if (lbl) lbl.textContent = on ? 'BGM on' : 'BGM off';
     const state = $('#bgm-state');
     if (state) {
+      const live = BGM.playing && !bgmPaused();
       state.textContent = BGM.ready
-        ? (S.bgmOn ? 'Looping behind your media · ' : 'Loaded, waiting for playback · ') + (S.bgmName || 'BGM')
+        ? (S.bgmOn
+          ? (live ? 'Playing behind your media · ' : 'Ready — plays when your media plays · ')
+          : 'Off · ') + (S.bgmName || 'BGM')
         : 'No background music yet — pick a track below, a device file, or paste a link.';
       state.hidden = false;
     }
@@ -1661,10 +1709,10 @@
       return;
     }
     items.sort((a, b) => (b.added || 0) - (a.added || 0));
-    items.slice(0, 60).forEach(t => {
+    items.slice(0, 80).forEach(t => {
       const title = t.title || t.name || 'Untitled';
       const kind = t.source === 'yt' ? 'YouTube' : (t.kind === 'video' ? 'Video' : 'Audio');
-      const row = el('button', { class: 'bgm-item' + (S.bgmName === title ? ' now' : '') }, [
+      const row = el('button', { class: 'bgm-item' + (BGM.ready && BGM.trackId === t.id ? ' now' : '') }, [
         icon(t.source === 'yt' ? 'yt' : (t.kind === 'video' ? 'video' : 'music')),
         el('span', { class: 'bgm-item-t', text: title }),
         el('span', { class: 'bgm-item-k', text: kind })
@@ -1678,45 +1726,60 @@
   async function bgmPickTrack(t) {
     const src = await L().resolveSrc(t);
     if (!src) { HP.toast('That item is unavailable — re-open it from your device', 'err'); return; }
+    BGM.trackId = t.id;
     BGM.setSource(src, t.title || t.name || 'BGM', t.source !== 'file');
     HP.toast('BGM ready · ' + Math.round(clamp(S.bgmVol, 0, 1) * 100) + '% under your media', 'ok');
   }
 
   BGM.setVolume = function (v) {
     S.bgmVol = clamp(+v || 0, 0, 1);
+    S.bgmVolSet = true;
     HP.save();
-    bgmSetVol(S.bgmVol);
+    bgmSetVol(bgmEffVol());
     bgmPaint();
   };
+  /** The main volume / mute moved — keep the BGM proportional to it. */
+  BGM.refreshVolume = function () { if (BGM.ready) bgmSetVol(bgmEffVol()); };
 
-  /** @param {string} src object URL, http(s) URL, or 'yt:<id>' */
+  const mainPlaying = () => !!(P.active && !P.active.paused);
+
+  /** @param {string} src object URL, content/http(s) URL, or 'yt:<id>' */
   BGM.setSource = function (src, name, persistable) {
-    const isYt = String(src).indexOf('yt:') === 0;
+    src = String(src || '');
+    const isYt = src.indexOf('yt:') === 0;
+    const isBlob = /^blob:/i.test(src);
     bgmTearCurrent();
-    if (isYt) {
+    BGM.ready = false; BGM.playing = false;
+    if (bgmNativeOK() && !isBlob) {
+      /* Android app: the native BGM engine opens everything but in-memory blobs. */
+      BGM.kind = 'native'; BGM.m = { native: true }; BGM.nat = false;
+      const uri = isYt ? ('hpyt:' + src.slice(3)) : src;
+      try { bgmBridge().nBgmLoad(uri, bgmEffVol(), mainPlaying()); }
+      catch (e) { HP.toast('BGM could not be started', 'err'); BGM.kind = null; BGM.m = null; bgmPaint(); return; }
+    } else if (isYt) {
       const m = bgmYt();
-      if (!m) { HP.toast('YouTube playback is unavailable here', 'err'); return; }
+      if (!m) { HP.toast('YouTube playback is unavailable here', 'err'); bgmPaint(); return; }
       BGM.kind = 'yt'; BGM.m = m;
     } else {
       const a = bgmElement();
-      if (/^blob:/i.test(src)) BGM.blobUrl = src;
+      if (isBlob) BGM.blobUrl = src;
       a.src = src;
       try { a.load(); } catch (e) { }
       BGM.kind = 'el'; BGM.m = a;
     }
-    bgmSetVol(clamp(+S.bgmVol || 0, 0, 1));
     BGM.ready = true;
     S.bgmName = name || 'BGM';
     S.bgmSrc = persistable ? src : '';
     S.bgmOn = true;
     HP.save();
-    if (isYt) {
+    bgmSetVol(bgmEffVol());
+    if (BGM.kind === 'yt') {
       try {
-        const pr = BGM.m.setVideo(String(src).slice(3), 0, !!(P.active && !P.active.paused));
+        const pr = BGM.m.setVideo(src.slice(3), 0, mainPlaying());
         if (pr && pr.catch) pr.catch(() => { HP.toast('YouTube BGM needs an internet connection', 'err'); });
       } catch (e) { }
     }
-    BGM.sync(!!(P.active && !P.active.paused));
+    BGM.sync(mainPlaying());
     bgmPaint();
   };
 
@@ -1725,13 +1788,15 @@
     let url;
     try { url = URL.createObjectURL(file); }
     catch (e) { HP.toast('That file could not be read', 'err'); return; }
+    BGM.trackId = null;
     BGM.setSource(url, String(file.name || 'BGM').replace(/\.[a-z0-9]+$/i, ''), false);
     HP.toast('BGM ready · ' + Math.round(clamp(S.bgmVol, 0, 1) * 100) + '% under your media', 'ok');
   };
 
   BGM.loadUrl = function (url) {
     const u = String(url || '').trim();
-    if (HP.YT && HP.YT.parse && HP.YT.parse(u)) { const id = HP.YT.parse(u).id; BGM.setSource('yt:' + id, '', true); return true; }
+    BGM.trackId = null;
+    if (HP.YT && HP.YT.parse && HP.YT.parse(u)) { const id = HP.YT.parse(u).id; BGM.setSource('yt:' + id, 'YouTube · ' + id, true); return true; }
     if (!/^(https?:)?\/\//i.test(u)) { HP.toast('Enter an http(s) audio or video link', 'err'); return false; }
     const name = decodeURIComponent(u.split('/').pop().split('?')[0]) || 'Online BGM';
     BGM.setSource(u, name, true);
@@ -1739,34 +1804,74 @@
     return true;
   };
 
+  /** Device file inside the Android app → a real content uri the native engine can open. */
+  BGM.pickNative = function (json) {
+    let o; try { o = typeof json === 'string' ? JSON.parse(json) : json; } catch (e) { return; }
+    if (!o || !o.uri) return;
+    BGM.trackId = null;
+    BGM.setSource(o.uri, String(o.name || 'BGM').replace(/\.[a-z0-9]+$/i, ''), true);
+    HP.toast('BGM ready · ' + Math.round(clamp(S.bgmVol, 0, 1) * 100) + '% under your media', 'ok');
+  };
+
+  /** State from the native BGM engine (Android). */
+  BGM.onNative = function (json) {
+    let s; try { s = typeof json === 'string' ? JSON.parse(json) : json; } catch (e) { return; }
+    if (!s || BGM.kind !== 'native') return;
+    switch (s.state) {
+      case 'play': BGM.nat = true; break;
+      case 'pause': BGM.nat = false; break;
+      case 'ready':
+        BGM.nat = !!s.playing;
+        /* The main media may have started while the file was still opening. */
+        if (S.bgmOn && mainPlaying() && !BGM.nat) bgmPlay();
+        break;
+      case 'error':
+        BGM.nat = false;
+        HP.toast(/YT/.test(s.detail || '') ? 'YouTube BGM could not be streamed' : 'BGM could not be played', 'err');
+        break;
+    }
+    bgmPaint();
+  };
+
   /** Follow the main media: playing → loop underneath, paused/stopped → pause. */
-  BGM.sync = function (mainPlaying) {
+  BGM.sync = function (mainOn) {
     if (!BGM.m) return;
+    clearTimeout(BGM.pauseT); BGM.pauseT = 0;
     if (!BGM.ready || !S.bgmOn) {
-      if (!bgmPaused()) bgmPause();
+      bgmPause();
       BGM.playing = false;
       return;
     }
-    if (mainPlaying) {
-      if (!bgmPaused()) { BGM.playing = true; return; }
-      bgmPlay();
+    if (mainOn) {
       BGM.playing = true;
-    } else if (!bgmPaused()) {
-      bgmPause();
-      BGM.playing = false;
+      bgmPlay();
+    } else if (BGM.playing || !bgmPaused()) {
+      /* A short grace so a track change (pause → next → play) does not
+         chop the BGM; a real pause lands here within a blink anyway. */
+      BGM.pauseT = setTimeout(() => {
+        BGM.pauseT = 0;
+        if (mainPlaying() && S.bgmOn) return;
+        bgmPause();
+        BGM.playing = false;
+        bgmPaint();
+      }, 180);
     }
   };
 
-  BGM.setOn = function (on) {
+  function bgmApplyOn(on) {
     S.bgmOn = !!on; HP.save();
-    BGM.sync(!!(P.active && !P.active.paused));
+    BGM.sync(mainPlaying());
     bgmPaint();
+  }
+  BGM.setOn = function (on) {
+    bgmApplyOn(on);
+    HP.toast(S.bgmOn ? 'BGM on' : 'BGM off');
   };
 
   BGM.stop = function () {
     S.bgmOn = false; S.bgmSrc = ''; S.bgmName = ''; HP.save();
     bgmTearCurrent();
-    BGM.ready = false; BGM.playing = false;
+    BGM.ready = false; BGM.playing = false; BGM.trackId = null;
     bgmPaint();
     HP.toast('BGM stopped');
   };
@@ -1788,10 +1893,17 @@
     });
 
     const pick = $('#bgm-file');
-    if (pick) pick.addEventListener('click', () => { if (fileIn) fileIn.click(); });
+    if (pick) pick.addEventListener('click', () => {
+      const n = bgmBridge();
+      if (bgmNativeOK() && n && n.pickBgm) { try { n.pickBgm(); return; } catch (e) { } }
+      if (fileIn) fileIn.click();
+    });
 
     const onoff = $('#bgm-onoff');
-    if (onoff) onoff.addEventListener('click', () => BGM.setOn(!S.bgmOn));
+    if (onoff) onoff.addEventListener('click', () => {
+      if (!BGM.ready) { HP.toast('Pick a background track first'); return; }
+      BGM.setOn(!S.bgmOn);
+    });
 
     const urlAdd = $('#bgm-url-add');
     if (urlAdd) urlAdd.addEventListener('click', () => {
@@ -1808,9 +1920,18 @@
     if (stop) stop.addEventListener('click', () => BGM.stop());
 
     HP.on('playing', on => BGM.sync(!!on));
+    /* Main volume / mute moved → keep BGM at its share of the media level. */
+    HP.on('volume', () => BGM.refreshVolume());
 
-    /* An online / YouTube BGM link can come back after a reload. */
-    if (S.bgmOn && S.bgmSrc) BGM.setSource(S.bgmSrc, S.bgmName || 'BGM', true);
+    /* First run: BGM sits at 10 % of the media until the user moves the slider. */
+    if (!S.bgmVolSet) S.bgmVol = 0.1;
+
+    /* An online / YouTube / device BGM can come back after a reload. */
+    if (S.bgmSrc && !/^blob:/i.test(S.bgmSrc)) {
+      const on = !!S.bgmOn;
+      BGM.setSource(S.bgmSrc, S.bgmName || 'BGM', true);
+      if (!on) bgmApplyOn(false);   // setSource arms it; respect the saved on/off
+    }
     bgmPaint();
   }
 

@@ -102,6 +102,29 @@ class MainActivity : AppCompatActivity() {
     private var customView: View? = null
     private var customCallback: WebChromeClient.CustomViewCallback? = null
     private lateinit var nativePlayer: NativePlayback
+    /** Background music — a second ExoPlayer that loops quietly under the main one. */
+    private lateinit var bgmPlayer: BgmPlayback
+
+    /* "Device file" inside the BGM sheet: a real content uri (not a WebView File
+       blob) so the native BGM engine can open it. */
+    private val bgmChooser =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { res ->
+            val data = res.data?.data ?: return@registerForActivityResult
+            try {
+                contentResolver.takePersistableUriPermission(data, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            } catch (e: Exception) { }
+            var name = data.lastPathSegment?.substringAfterLast('/') ?: "BGM"
+            try {
+                contentResolver.query(data, null, null, null, null)?.use { c ->
+                    if (c.moveToFirst()) {
+                        val n = c.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                        if (n >= 0) name = c.getString(n) ?: name
+                    }
+                }
+            } catch (e: Exception) { }
+            val o = JSONObject().put("uri", "$ORIGIN$MEDIA_PREFIX" + Uri.encode(data.toString())).put("name", name)
+            js("window.HashBridge && window.HashBridge.onBgmPick(${JSONObject.quote(o.toString())});")
+        }
 
     /* The in-app YouTube browser: the real youtube.com in its own WebView on
        top of the player, used purely for browsing and searching. */
@@ -187,6 +210,13 @@ class MainActivity : AppCompatActivity() {
                 )
             }
         }
+        bgmPlayer = BgmPlayback(this) { json ->
+            runOnUiThread {
+                web.evaluateJavascript(
+                    "window.HashBridge && window.HashBridge.onBgm(" + JSONObject.quote(json) + ");", null
+                )
+            }
+        }
 
         web.settings.apply {
             javaScriptEnabled = true
@@ -202,7 +232,7 @@ class MainActivity : AppCompatActivity() {
             cacheMode = WebSettings.LOAD_DEFAULT
             mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
             textZoom = 100
-            userAgentString = "$userAgentString HashPlayer/2.8.0"
+            userAgentString = "$userAgentString HashPlayer/2.8.2"
         }
 
         web.webViewClient = object : WebViewClient() {
@@ -427,6 +457,7 @@ class MainActivity : AppCompatActivity() {
         volumeObserver?.let { try { contentResolver.unregisterContentObserver(it) } catch (e: Exception) { } }
         volumeObserver = null
         nativePlayer.release()
+        bgmPlayer.release()
         web.destroy()
         super.onDestroy()
     }
@@ -659,7 +690,7 @@ class MainActivity : AppCompatActivity() {
         fun toastMsg(msg: String) = runOnUiThread { toast(msg) }
 
         @android.webkit.JavascriptInterface
-        fun version(): String = "2.8.0"
+        fun version(): String = "2.8.2"
 
         /* ---------------- native ExoPlayer engine ---------------- */
 
@@ -783,6 +814,40 @@ class MainActivity : AppCompatActivity() {
         /** Where to draw the video, in CSS pixels, so the web UI stays on top of it. */
         @android.webkit.JavascriptInterface
         fun nRect(x: Float, y: Float, w: Float, h: Float) = nativePlayer.setRect(x, y, w, h)
+
+        /* ---------------- background music (BGM) ---------------- */
+
+        /** The web app asks this before routing BGM away from its <audio> tag. */
+        @android.webkit.JavascriptInterface
+        fun bgmEngine(): Boolean = true
+
+        /** @param uri content:// (via the asset-loader form), http(s) or hpyt:<id> */
+        @android.webkit.JavascriptInterface
+        fun nBgmLoad(uri: String, vol: Float, autoplay: Boolean) = bgmPlayer.load(realUri(uri), vol, autoplay)
+
+        @android.webkit.JavascriptInterface
+        fun nBgmPlay() = bgmPlayer.play()
+
+        @android.webkit.JavascriptInterface
+        fun nBgmPause() = bgmPlayer.pause()
+
+        @android.webkit.JavascriptInterface
+        fun nBgmVolume(v: Float) = bgmPlayer.setVolume(v)
+
+        @android.webkit.JavascriptInterface
+        fun nBgmStop() = bgmPlayer.stop()
+
+        /** Pick one audio/video file for BGM; answers through HashBridge.onBgmPick. */
+        @android.webkit.JavascriptInterface
+        fun pickBgm() = runOnUiThread {
+            val pick = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE)
+                type = "*/*"
+                putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("audio/*", "video/*"))
+            }
+            try { bgmChooser.launch(Intent.createChooser(pick, "Background music")) }
+            catch (e: Exception) { toast("No file picker found on this device") }
+        }
 
         /* ---------------- artwork ---------------- */
 

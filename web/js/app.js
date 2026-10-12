@@ -6,7 +6,7 @@
   'use strict';
   const HP = w.HP, S = HP.S, $ = HP.$, $$ = HP.$$, el = HP.el, icon = HP.icon, clamp = HP.clamp;
   const L = HP.Lib, P = HP.Player, E = HP.Engine, UI = {};
-  const APP_VERSION = '2.8.0';
+  const APP_VERSION = '2.8.2';
 
   /* Android TV / Google TV / Fire TV (and smart-TV browsers, which report no
      pointer and no hover): the UI is driven by a D-pad remote. */
@@ -886,6 +886,10 @@
       let s; try { s = JSON.parse(json); } catch (e) { return; }
       P.n.onState(s);
     },
+    /** The native background-music engine reports play/pause/ready/error. */
+    onBgm(json) { if (P.BGM && P.BGM.onNative) P.BGM.onNative(json); },
+    /** A device file chosen for BGM through the native picker: {uri, name}. */
+    onBgmPick(json) { if (P.BGM && P.BGM.pickNative) P.BGM.pickNative(json); },
 
     /** Album art / video thumbnail extracted natively for a device file. */
     onArt(uri, dataUrl) {

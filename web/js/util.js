@@ -65,8 +65,9 @@
     mono: false, normalize: false, fade: true, pitch: true, pitchShift: 0, lastId: null, lastPos: 0, lyricsOn: false,
     perf: null, autoPip: true, autoScan: true, autoLandscape: true, ytSearch: true, skipSilence: false,
     anc: false, enhance: false,
-    /* Background music (BGM): quiet by design so it sits behind speech. */
-    bgmOn: false, bgmVol: 0.2, bgmSrc: '', bgmName: ''
+    /* Background music (BGM): 10 % of the media level by default so it sits
+       behind speech; bgmVolSet flips once the user moves the slider. */
+    bgmOn: false, bgmVol: 0.1, bgmVolSet: false, bgmSrc: '', bgmName: ''
   };
   /* ---------- how much eye-candy can this device actually afford? ---------- */
   const ua = navigator.userAgent || '';

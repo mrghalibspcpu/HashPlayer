@@ -643,7 +643,7 @@
 
 <div class="sheet" id="sheet-bgm" hidden>
   <h3>Background music (BGM)</h3>
-  <p class="muted">Plays on loop behind your audio or video and follows the main player — it pauses the moment your media pauses, and resumes with it.</p>
+  <p class="muted">Plays on loop behind your audio, video or YouTube and follows the main player — it pauses the moment your media pauses, resumes with it, and stays at a fraction of the media volume (10% by default).</p>
   <div class="bgm-state" id="bgm-state" hidden></div>
   <div class="head-actions bgm-actions">
     <button class="btn small primary" id="bgm-onoff" aria-pressed="false"><svg class="ic"><use href="#i-music"/></svg><span id="bgm-onoff-label">BGM on</span></button>
@@ -654,8 +654,8 @@
   <div class="bgm-list" id="bgm-list"></div>
   <input type="url" id="bgm-url" placeholder="https://site.com/background.mp3 — online audio / video URL" spellcheck="false">
   <div class="knob-row">
-    <label for="bgm-vol">BGM volume</label>
-    <input type="range" id="bgm-vol" min="0" max="100" step="1" value="20"><output id="bgm-vol-out">20%</output>
+    <label for="bgm-vol">BGM volume (% of media)</label>
+    <input type="range" id="bgm-vol" min="0" max="100" step="1" value="10"><output id="bgm-vol-out">10%</output>
   </div>
   <div class="sheet-foot">
     <button class="btn ghost" data-close>Close</button>
