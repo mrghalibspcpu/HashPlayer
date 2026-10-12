@@ -90,6 +90,7 @@
 <symbol id="i-lock" viewBox="0 0 24 24"><rect x="4" y="10.5" width="16" height="10" rx="2.5"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/><path d="M12 14.5v2.5"/></symbol>
 <symbol id="i-unlock" viewBox="0 0 24 24"><rect x="4" y="10.5" width="16" height="10" rx="2.5"/><path d="M8 10.5V7.5a4 4 0 0 1 7.7-1.5"/><path d="M12 14.5v2.5"/></symbol>
 <symbol id="i-yt" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="4.5"/><path d="M10 9.2 15 12l-5 2.8z"/></symbol>
+<symbol id="i-car" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.6"/><circle cx="12" cy="12" r="2.6"/><path d="M3.5 11h5.9M14.6 11h5.9M12 14.6V21"/></symbol>
 <symbol id="i-anc" viewBox="0 0 24 24"><rect x="9.2" y="3" width="5.6" height="10.5" rx="2.8"/><path d="M6 10.5a6 6 0 0 0 12 0"/><path d="M12 16.5V20M9 20h6"/><path d="M3.2 6.2 5.6 8.6M20.8 6.2l-2.4 2.4"/></symbol>
 </defs></svg>
 
@@ -156,6 +157,7 @@
         <button class="chip active" data-filter="all" data-i18n="all">All</button>
         <button class="chip" data-filter="audio"><svg class="ic"><use href="#i-music"/></svg><span data-i18n="audio">Audio</span></button>
         <button class="chip" data-filter="video"><svg class="ic"><use href="#i-video"/></svg><span data-i18n="video">Video</span></button>
+        <button class="chip" data-filter="online"><svg class="ic"><use href="#i-globe"/></svg><span data-i18n="watchedOnline">Watched online</span></button>
         <button class="chip" data-filter="recent"><svg class="ic"><use href="#i-clock"/></svg><span data-i18n="recent">Recent</span></button>
         <button class="chip" data-filter="most"><svg class="ic"><use href="#i-sparkle"/></svg><span data-i18n="mostPlayed">Most played</span></button>
       </div>
@@ -517,8 +519,39 @@
         <button class="tool" id="t-mark" data-pro><svg class="ic"><use href="#i-mark"/></svg><span data-i18n="bookmark">Bookmark</span></button>
         <button class="tool" id="t-vis" data-pro><svg class="ic"><use href="#i-wave"/></svg><span data-i18n="visualizer">Visualizer</span></button>
         <button class="tool" id="t-queue"><svg class="ic"><use href="#i-queue"/></svg><span data-i18n="queue">Queue</span></button>
+        <button class="tool mm-tool" id="t-minimal" aria-pressed="false"><svg class="ic"><use href="#i-car"/></svg><span data-i18n="minimalMode">Minimal</span></button>
       </div>
     </div>
+  </div>
+
+  <!-- ════ Portrait Minimal Mode — matte-black car / driving UI ════
+       One 3D "black hole" visual in the middle, a screen-lock pill right
+       under it, and only the essential transport when unlocked. -->
+  <div class="minimal-ui" id="minimal-ui" hidden>
+    <div class="mm-scene">
+      <div class="mm-hole" id="mm-hole">
+        <i class="mm-glow"></i>
+        <i class="mm-disk"></i>
+        <i class="mm-disk mm-disk2"></i>
+        <span class="mm-core"></span>
+        <i class="mm-ring"></i>
+        <i class="mm-ring mm-ring2"></i>
+      </div>
+    </div>
+    <div class="mm-title"><b id="mm-title">Nothing playing</b><small id="mm-artist"></small></div>
+    <button class="mm-lock" id="mm-lock" aria-pressed="false"><svg class="ic"><use href="#i-lock"/></svg><span data-i18n="mmLock">Screen lock</span></button>
+    <div class="mm-controls" id="mm-controls">
+      <button class="icon-btn" id="mm-shuf" aria-label="Shuffle"><svg class="ic"><use href="#i-shuffle"/></svg></button>
+      <button class="icon-btn big" id="mm-prev" aria-label="Previous track"><svg class="ic"><use href="#i-prev"/></svg></button>
+      <button class="play-btn" id="mm-play" aria-label="Play or pause"><svg class="ic"><use href="#i-play"/></svg></button>
+      <button class="icon-btn big" id="mm-next" aria-label="Next track"><svg class="ic"><use href="#i-next"/></svg></button>
+      <button class="icon-btn" id="mm-rep" aria-label="Repeat"><svg class="ic"><use href="#i-repeat"/></svg></button>
+    </div>
+    <div class="mm-sound" id="mm-sound">
+      <button class="icon-btn" id="mm-mute" aria-label="Mute"><svg class="ic"><use href="#i-vol"/></svg></button>
+      <input type="range" id="mm-vol" min="0" max="100" value="100" aria-label="Volume">
+    </div>
+    <button class="btn ghost mm-exit" id="mm-exit"><svg class="ic"><use href="#i-expand"/></svg><span data-i18n="mmExit">Back to normal mode</span></button>
   </div>
 
   <!-- screen lock: swallows every touch on the player until released again -->

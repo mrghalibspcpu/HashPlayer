@@ -573,6 +573,35 @@
     HP.emit('library');
   };
 
+  /* ---------------- online watch history ----------------
+     Everything streamed from the internet — YouTube picks, direct links and
+     videos found on web pages — is kept out of the local All / Audio / Video
+     shelves and lives in its own "Watched online" section for exactly one
+     day, after which it clears itself. */
+  const ONLINE_TTL = 24 * 60 * 60 * 1000;      // 1 day, then auto-purge
+  /** A track that plays from the internet rather than from this device. */
+  L.isOnline = t => !!t && (t.source === 'yt' || t.source === 'url');
+  /** When this online entry leaves the history (last watch + 24 h). */
+  L.onlineExpire = t => (t.lastPlayed || t.added || 0) + ONLINE_TTL;
+
+  /** Drop every online entry whose one day is up. The track that is playing
+     right now — and everything still queued — is always spared. */
+  L.purgeOnline = async function () {
+    if (!L.ready) return 0;
+    const now = Date.now(), keep = new Set(), P = HP.Player;
+    if (P) {
+      if (P.current) keep.add(P.current.id);
+      (P.queue || []).forEach(id => keep.add(id));
+    }
+    const doomed = [];
+    L.tracks.forEach(t => {
+      if (!keep.has(t.id) && L.isOnline(t) && L.onlineExpire(t) <= now) doomed.push(t.id);
+    });
+    for (const id of doomed) await L.remove(id);
+    if (doomed.length) L.render();          // the grid may show them via favourites / recent
+    return doomed.length;
+  };
+
   /* ---------------- playlists ---------------- */
   L.createPlaylist = async function (name, items) {
     const p = { id: HP.uid(), name: name || 'Playlist', items: items || [], created: Date.now() };
@@ -595,13 +624,18 @@
     let list = Array.from(L.tracks.values());
     const q = (L.search || '').trim().toLowerCase();
     const f = L.view === 'favorites' ? 'fav' : (S.filter || 'all');
-    if (f === 'audio' || f === 'video') list = list.filter(t => t.kind === f);
+    /* Online streams never mix into the local shelves — they get their own
+       "Watched online" section so local files stay easy to find. */
+    if (f === 'audio' || f === 'video') list = list.filter(t => t.kind === f && !L.isOnline(t));
     else if (f === 'fav') list = list.filter(t => t.fav);
+    else if (f === 'online') list = list.filter(t => L.isOnline(t))
+      .sort((a, b) => (b.lastPlayed || b.added || 0) - (a.lastPlayed || a.added || 0));
     else if (f === 'recent') list = list.filter(t => t.lastPlayed).sort((a, b) => b.lastPlayed - a.lastPlayed).slice(0, 60);
     else if (f === 'most') list = list.filter(t => t.plays).sort((a, b) => b.plays - a.plays).slice(0, 60);
+    else list = list.filter(t => !L.isOnline(t));
     if (q) list = list.filter(t =>
       (t.title + ' ' + t.artist + ' ' + t.album + ' ' + t.name + ' ' + (t.genre || '')).toLowerCase().indexOf(q) > -1);
-    if (f !== 'recent' && f !== 'most') {
+    if (f !== 'recent' && f !== 'most' && f !== 'online') {
       const s = S.sort;
       const cmp = {
         added: (a, b) => b.added - a.added,
@@ -633,6 +667,7 @@
     else art.appendChild(icon(isVid ? 'video' : 'music', 'ph'));
     const badges = el('div', { class: 'card-badges' });
     if (isVid) badges.appendChild(el('span', { class: 'badge v', text: 'VIDEO' }));
+    if (t.source === 'yt') badges.appendChild(el('span', { class: 'badge on', text: 'ONLINE' }));
     if (t.source === 'url') badges.appendChild(el('span', { class: 'badge', text: 'LINK' }));
     if (!t.file && !t.handle && !t.nativeUri && t.source !== 'url') badges.appendChild(el('span', { class: 'badge', text: 'RELINK' }));
     art.appendChild(badges);
@@ -704,8 +739,18 @@
       io.observe(more);
     }
     const none = lastList.length === 0;
-    empty.classList.toggle('show', none && !L.search);
-    grid.hidden = none && !L.search;
+    const fnow = L.view === 'favorites' ? 'fav' : (S.filter || 'all');
+    const onlineEmpty = none && !L.search && fnow === 'online';
+    /* the big "drop your media here" panel is for the local library; the
+       online shelf explains itself instead */
+    empty.classList.toggle('show', none && !L.search && !onlineEmpty);
+    grid.hidden = none && !L.search && !onlineEmpty;
+    if (onlineEmpty && reset !== false) {
+      grid.appendChild(el('div', { class: 'no-results' }, [
+        el('b', { text: 'Nothing watched online yet' }),
+        el('span', { text: 'Play a YouTube or web video in HashPlayer and it appears here — kept for 24 hours, then cleared automatically.' })
+      ]));
+    }
     if (none && L.search) {
       const q = L.search;
       const ytBtn = el('button', { class: 'btn small primary yt-btn' }, [
@@ -722,8 +767,11 @@
     $('#stat-count').textContent = st.total;
     const sub = $('#lib-sub');
     if (sub) sub.textContent = none && L.search ? 'No results for “' + L.search + '”'
-      : st.total ? st.total + ' tracks · ' + st.audio + ' audio · ' + st.video + ' video · ' + HP.fmtTime(st.dur) + ' · ' + HP.fmtBytes(st.size)
-        : 'Your library is empty';
+      : fnow === 'online' ? (lastList.length
+        ? lastList.length + ' watched online · history clears after 24 hours'
+        : 'Nothing watched online yet')
+        : st.total ? st.total + ' tracks · ' + st.audio + ' audio · ' + st.video + ' video · ' + HP.fmtTime(st.dur) + ' · ' + HP.fmtBytes(st.size)
+          : 'Your library is empty';
     const rb = $('#relink-bar');
     if (rb) {
       const n = L.countRelink();

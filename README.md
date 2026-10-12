@@ -17,6 +17,20 @@ Install it as an app on your phone or desktop, or build a real Android APK — s
 
 ---
 
+## 🆕 Naya kya hai — 2.9
+
+| Masla / feature | Ab kya hota hai |
+|---|---|
+| **Library ka sticky header gap khatam** | Library me neeche scroll karne par jab "Library" title/stats panel oopar jata hai, to filter chips ki row ("All", "Audio", "Video"…) top search bar ke bilkul neeche chipakti hai — beech me koi khali jagah ya semi-transparent band nahi rehta. Sirf tab jab strip waqai chipki hoti hai, ek opaque bar smooth fade ke saath aa jati hai, taake cards chips ke peechay se na jhaankain. |
+| **"Watched Online" apna section** | Filter row me naya chip: **"Watched online"** 🌐. YouTube, seedhe links aur web pages ki videos ab local library ke "All", "Audio" aur "Video" tabs me ghalat mix nahi hoti — sirf isi section me dikhti hain, taake local videos dhoondhna aasan rahe. |
+| **24 ghante baad khud saf** | Online dekhi gayi videos ki history **exactly 1 din (24 ghante)** tak rakhi jati hai — har dekhne ke baad 24 ghante, phir khud-ba-khud purge. Jo video abhi chal rahi ho ya queue me ho wo nahi hattati. |
+| **Portrait Minimal Mode (Car-Play / driving UI)** | Portrait audio/video chalte waqt neeche control panel me naya **"Minimal"** button. Tap karte hi screen matt-black ho jati hai (halke 3D dark gradients ke saath) aur center me ek bara **3D "Black Hole"** circular visualizer aata hai jo music ki beat par halka sa saans leta hai. |
+| **Minimal Mode ka lock** | Black hole ke bilkul neeche **"Screen lock"** ka button. Lock par saare playback buttons ghayab ho jate hain — gaari chalate hue ya jeb me phone rakhe hue koi ghalat touch nahi ho sakti. Unlock ke liye wahi button. |
+| **Minimal Mode ke controls** | Unlock hone par: Play/Pause, Next/Previous, Shuffle & Repeat, mute + volume slider, aur **"Back to normal mode"** button. Phone ko ghuma kar landscape karte hi mode khud band ho jata hai. |
+| **Version** | `versionCode 25`, `versionName "2.9.0"`. |
+
+---
+
 ## 🆕 Naya kya hai — 2.8
 
 | Masla / feature | Ab kya hota hai |

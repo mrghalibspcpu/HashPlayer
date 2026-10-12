@@ -6,7 +6,7 @@
   'use strict';
   const HP = w.HP, S = HP.S, $ = HP.$, $$ = HP.$$, el = HP.el, icon = HP.icon, clamp = HP.clamp;
   const L = HP.Lib, P = HP.Player, E = HP.Engine, UI = {};
-  const APP_VERSION = '2.8.0';
+  const APP_VERSION = '2.9.0';
 
   /* Android TV / Google TV / Fire TV (and smart-TV browsers, which report no
      pointer and no hover): the UI is driven by a D-pad remote. */
@@ -1139,6 +1139,16 @@
         L.render();
       });
     });
+    /* Library sticky header: the filter strip parks flush under the fixed
+       search bar once the title/stats head has scrolled away. Watching the
+       head tells us when the strip is actually stuck, so the opaque bar
+       fades in exactly then — no see-through band, no gap. */
+    const libHead = $('#view-library .view-head'), libBar = $('#view-library .toolbar');
+    if (libHead && libBar && 'IntersectionObserver' in window) {
+      new IntersectionObserver(es => {
+        es.forEach(e => libBar.classList.toggle('is-stuck', !e.isIntersecting));
+      }, { root: $('#views'), threshold: 0 }).observe(libHead);
+    }
     const search = $('#search');
     search.addEventListener('input', () => UI.updateSearchActive());
     search.addEventListener('focus', () => { searchFocused = true; UI.updateSearchActive(); });
@@ -1270,6 +1280,10 @@
 
     /* load the library */
     await L.load();
+    /* online watch history clears itself one day after each watch */
+    L.purgeOnline();
+    setInterval(() => { L.purgeOnline(); }, 60 * 1000);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) L.purgeOnline(); });
     setTimeout(() => { try { L.requestArt(); } catch (e) { } }, 1200);   // fill in device artwork
     const qp = new URLSearchParams(location.search).get('view');
     UI.nav(['library', 'playlists', 'favorites', 'eq', 'settings'].indexOf(qp) > -1 ? qp : 'library');

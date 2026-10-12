@@ -119,7 +119,9 @@
       linkCopied: 'YouTube link copied to clipboard', linkCopyFail: 'Could not copy the link', ytNoLink: 'Play a YouTube video first',
       ytOffline: 'YouTube search is not reachable right now',
       ttDownload: 'Save for offline',
-      anc: 'ANC', enhance: 'Enhance'
+      anc: 'ANC', enhance: 'Enhance',
+      watchedOnline: 'Watched online',
+      minimalMode: 'Minimal', mmLock: 'Screen lock', mmUnlock: 'Unlock', mmExit: 'Back to normal mode'
     },
     ur: {
       search: 'تلاش کریں…', library: 'لائبریری', playlists: 'پلے لسٹ', favorites: 'پسندیدہ', sound: 'آواز',
@@ -164,7 +166,9 @@
       ttSubs: 'سب ٹائٹل', ttSpeed: 'چلنے کی رفتار', ttLock: 'اسکرین لاک', ttPip: 'چھوٹی ونڈو',
       ttCopyLink: 'یوٹیوب لنک کاپی کریں', ttFull: 'پوری اسکرین',
       ttDownload: 'آف لائن کے لیے محفوظ کریں',
-      anc: 'اے این سی', enhance: 'اینہانس'
+      anc: 'اے این سی', enhance: 'اینہانس',
+      watchedOnline: 'آن لائن دیکھے گئے',
+      minimalMode: 'منیمل', mmLock: 'اسکرین لاک', mmUnlock: 'ان لاک', mmExit: 'نارمل موڈ پر واپس'
     }
   };
   HP.t = k => (STR[S.lang] && STR[S.lang][k]) || STR.en[k] || k;
@@ -176,6 +180,8 @@
     $$('[data-i18n]').forEach(n => { const v = STR[S.lang] && STR[S.lang][n.dataset.i18n]; if (!STR.en[n.dataset.i18n]) STR.en[n.dataset.i18n] = n.textContent; n.textContent = v || STR.en[n.dataset.i18n]; });
     $$('[data-i18n-ph]').forEach(n => { const v = STR[S.lang] && STR[S.lang][n.dataset.i18nPh]; if (!STR.en[n.dataset.i18nPh]) STR.en[n.dataset.i18nPh] = n.placeholder; n.placeholder = v || STR.en[n.dataset.i18nPh]; });
     $$('[data-i18n-t]').forEach(n => { const v = STR[S.lang] && STR[S.lang][n.dataset.i18nT]; if (v) n.title = v; });
+    /* the Minimal-mode lock pill prints a stateful label (lock/unlock) */
+    if (w.HP.Player && w.HP.Player.syncMinimal) { try { w.HP.Player.syncMinimal(); } catch (e) { } }
   }
 
   /* ---------- colour extraction from artwork ---------- */

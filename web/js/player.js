@@ -492,7 +492,7 @@
 
   function onPlay() {
     document.body.classList.add('playing');
-    $$('#btn-play use, #mini-play use').forEach(u => u.setAttribute('href', '#i-pause'));
+    $$('#btn-play use, #mini-play use, #mm-play use').forEach(u => u.setAttribute('href', '#i-pause'));
     HP.Vis.start();
     if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
     keepAwake(true);
@@ -501,7 +501,7 @@
   }
   function onPause() {
     document.body.classList.remove('playing');
-    $$('#btn-play use, #mini-play use').forEach(u => u.setAttribute('href', '#i-play'));
+    $$('#btn-play use, #mini-play use, #mm-play use').forEach(u => u.setAttribute('href', '#i-play'));
     if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
     keepAwake(false);
     savePos();
@@ -611,6 +611,10 @@
     const r = $('#btn-rep'), s = $('#btn-shuf');
     if (r) { r.classList.toggle('on', S.repeat !== 'off'); r.querySelector('use').setAttribute('href', S.repeat === 'one' ? '#i-repeat1' : '#i-repeat'); }
     if (s) s.classList.toggle('on', S.shuffle);
+    /* the Minimal-mode transport mirrors the same state */
+    const mr = $('#mm-rep'), ms = $('#mm-shuf');
+    if (mr) { mr.classList.toggle('on', S.repeat !== 'off'); const u = mr.querySelector('use'); if (u) u.setAttribute('href', S.repeat === 'one' ? '#i-repeat1' : '#i-repeat'); }
+    if (ms) ms.classList.toggle('on', S.shuffle);
   }
   P.syncToggles = syncToggles;
 
@@ -709,6 +713,9 @@
     $('#np-context').textContent = P.context;
     $('#mini-title').textContent = t.title || t.name;
     $('#mini-artist').textContent = t.artist || (t.kind === 'video' ? 'Video' : 'Unknown artist');
+    const mmT = $('#mm-title'), mmA = $('#mm-artist');
+    if (mmT) mmT.textContent = t.title || t.name;
+    if (mmA) mmA.textContent = [t.artist, t.album].filter(Boolean).join(' · ') || (t.kind === 'video' ? 'Video' : '');
     $('#np-fav').classList.toggle('on', !!t.fav);
     $('#mini-fav').classList.toggle('on', !!t.fav);
 
@@ -1213,9 +1220,16 @@
     $('#mini-mute').addEventListener('click', () => { S.muted = !S.muted; HP.save(); E().applyVolume(); updateMuteIcon(); });
     function updateMuteIcon() {
       $('#mini-mute use').setAttribute('href', S.muted || !S.volume ? '#i-mute' : '#i-vol');
+      const mm = $('#mm-mute use');
+      if (mm) mm.setAttribute('href', S.muted || !S.volume ? '#i-mute' : '#i-vol');
     }
     updateMuteIcon();
-    HP.on('volume', v => { if (document.activeElement !== vol) { vol.value = Math.round(v * 100); rangeFill(vol); } updateMuteIcon(); });
+    HP.on('volume', v => {
+      if (document.activeElement !== vol) { vol.value = Math.round(v * 100); rangeFill(vol); }
+      updateMuteIcon();
+      const mv = $('#mm-vol');
+      if (mv && document.activeElement !== mv) { mv.value = Math.round(v * 100); rangeFill(mv); }
+    });
 
     /* video tools */
     $('#v-pip').addEventListener('click', () => P.pip());
@@ -1232,6 +1246,7 @@
     const vLock = $('#v-lock');
     if (vLock) vLock.addEventListener('click', () => P.setLock(true));
     bindLock();
+    bindMinimal();
     $('#v-shot').addEventListener('click', () => P.screenshot());
     $('#v-mirror').addEventListener('click', () => {
       document.body.classList.toggle('mirror');
@@ -1324,11 +1339,132 @@
       if (u) u.setAttribute('href', on ? '#i-unlock' : '#i-lock');
       btn.title = on ? 'Unlock screen' : 'Lock screen';
     }
+    /* Minimal mode keeps its own lock pill under the black hole — it doubles
+       as the unlock button, so it always mirrors the state */
+    const mm = $('#mm-lock');
+    if (mm) {
+      mm.classList.toggle('on', on);
+      mm.setAttribute('aria-pressed', String(on));
+      const mu = mm.querySelector('use');
+      if (mu) mu.setAttribute('href', on ? '#i-unlock' : '#i-lock');
+      const lbl = mm.querySelector('span');
+      if (lbl) lbl.textContent = HP.t(on ? 'mmUnlock' : 'mmLock');
+    }
     if (on) peekRelease();
     if (!quiet) HP.toast(on ? 'Screen locked — tap, then tap unlock' : 'Screen unlocked', 'ok');
   };
 
   P.toggleLock = function () { P.setLock(!P.locked); };
+
+  /* =========================================================
+     Portrait Minimal Mode — matte-black car / driving UI.
+     One toggle in the bottom control panel; the player turns
+     into a single dark stage with a 3D "black hole" in the
+     middle and the essential transport only. A session mode:
+     it is never restored across restarts, so nobody is stuck
+     in it by surprise.
+     ========================================================= */
+  P.minimal = false;
+  let mmRaf = 0, mmLevel = 0;
+
+  /** Mirror playback / shuffle / repeat / volume / lock state onto the
+     Minimal-mode controls (they are separate buttons, not moved nodes). */
+  function syncMinimal() {
+    const playing = document.body.classList.contains('playing');
+    $$('#mm-play use').forEach(u => u.setAttribute('href', playing ? '#i-pause' : '#i-play'));
+    const mr = $('#mm-rep'), ms = $('#mm-shuf');
+    if (mr) { mr.classList.toggle('on', S.repeat !== 'off'); const u = mr.querySelector('use'); if (u) u.setAttribute('href', S.repeat === 'one' ? '#i-repeat1' : '#i-repeat'); }
+    if (ms) ms.classList.toggle('on', S.shuffle);
+    const mv = $('#mm-vol');
+    if (mv && document.activeElement !== mv) { mv.value = Math.round(S.volume * 100); rangeFill(mv); }
+    const mu = $('#mm-mute use');
+    if (mu) mu.setAttribute('href', S.muted || !S.volume ? '#i-mute' : '#i-vol');
+    const lock = $('#mm-lock');
+    if (lock) {
+      lock.classList.toggle('on', P.locked);
+      lock.setAttribute('aria-pressed', String(P.locked));
+      const u = lock.querySelector('use');
+      if (u) u.setAttribute('href', P.locked ? '#i-unlock' : '#i-lock');
+      const lbl = lock.querySelector('span');
+      if (lbl) lbl.textContent = HP.t(P.locked ? 'mmUnlock' : 'mmLock');
+    }
+  }
+  P.syncMinimal = syncMinimal;
+
+  /** A feather-light pulse driven by the SAME spectrum the visualizer reads
+     (Web Audio analyser, or the native feed on Android). Transform-only, and
+     skipped entirely in Smooth mode / reduced motion. */
+  function mmPulse() {
+    mmRaf = requestAnimationFrame(mmPulse);
+    const hole = $('#mm-hole');
+    if (!hole || !P.minimal || !$('#np').classList.contains('on')) return;
+    const live = !!(HP.Vis && HP.Vis.running && HP.Vis.mode !== 'off' && !document.hidden &&
+      document.body.classList.contains('playing'));
+    const target = live ? Math.min(1, (HP.Vis.level() || 0) * 1.25) : 0;
+    mmLevel += (target - mmLevel) * .14;
+    if (Math.abs(mmLevel) < .001) mmLevel = 0;
+    hole.style.setProperty('--pulse', (1 + mmLevel * .05).toFixed(4));
+  }
+  function mmPulseStop() {
+    if (mmRaf) cancelAnimationFrame(mmRaf);
+    mmRaf = 0; mmLevel = 0;
+    const hole = $('#mm-hole');
+    if (hole) hole.style.removeProperty('--pulse');
+  }
+
+  /** @param {boolean} on */
+  P.setMinimal = function (on) {
+    on = !!on;
+    if (on === P.minimal) return;
+    /* the car UI exists in portrait only — never engage it sideways */
+    const landscape = !!(window.matchMedia && window.matchMedia('(orientation: landscape)').matches);
+    if (on && landscape) return;
+    P.minimal = on;
+    document.body.classList.toggle('minimal', on);
+    const ui = $('#minimal-ui'), t = $('#t-minimal');
+    if (ui) ui.hidden = !on;
+    if (t) { t.classList.toggle('on', on); t.setAttribute('aria-pressed', String(on)); }
+    if (on) { syncMinimal(); if (!mmRaf && !S.perf && !document.body.classList.contains('no-motion')) mmRaf = requestAnimationFrame(mmPulse); }
+    else mmPulseStop();
+    HP.emit('minimal', on);
+  };
+  P.toggleMinimal = function () { P.setMinimal(!P.minimal); };
+
+  function bindMinimal() {
+    const on = (id, fn) => { const n = $(id); if (n) n.addEventListener('click', fn); };
+    on('#t-minimal', () => P.toggleMinimal());
+    on('#mm-play', () => P.toggle());
+    on('#mm-next', () => P.next());
+    on('#mm-prev', () => P.prev());
+    on('#mm-shuf', () => P.toggleShuffle());
+    on('#mm-rep', () => P.cycleRepeat());
+    on('#mm-exit', () => P.setMinimal(false));
+    on('#mm-lock', () => P.setLock(!P.locked));
+    const mv = $('#mm-vol');
+    if (mv) {
+      mv.value = Math.round(S.volume * 100); rangeFill(mv);
+      mv.addEventListener('input', () => {
+        S.muted = false;                     // unmute first, so the level is not applied as 0
+        E().setVolume(mv.value / 100);
+        rangeFill(mv);
+        const u = $('#mm-mute use');
+        if (u) u.setAttribute('href', S.muted || !S.volume ? '#i-mute' : '#i-vol');
+      });
+    }
+    on('#mm-mute', () => {
+      S.muted = !S.muted; HP.save(); E().applyVolume();
+      const u = $('#mm-mute use');
+      if (u) u.setAttribute('href', S.muted || !S.volume ? '#i-mute' : '#i-vol');
+    });
+    /* the car UI is a portrait feature — turning the phone sideways leaves it
+       (and a lock held through the switch falls back to the normal layer) */
+    const mq = window.matchMedia ? window.matchMedia('(orientation: landscape)') : null;
+    if (mq) {
+      const bye = () => { if (P.minimal) P.setMinimal(false); };
+      if (mq.addEventListener) mq.addEventListener('change', bye);
+      else if (mq.addListener) mq.addListener(bye);
+    }
+  }
 
   P.toggleLyrics = function (force) {
     const box = $('#lyrics');

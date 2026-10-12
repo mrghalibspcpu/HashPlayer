@@ -202,6 +202,142 @@ body.has-video .vtools.show,.stage:hover .vtools{opacity:1}
 body.locked .vtools,body.locked .landscape-tools,body.locked .np-ctrl,body.locked .np-top,body.locked #minibar,
 body.locked .gbar,body.locked .gfx{opacity:0 !important;pointer-events:none;transition:opacity .2s}
 
+/* ============================================================
+   Portrait Minimal Mode — matte-black car / driving UI
+   One toggle in the bottom panel (portrait, audio or video).
+   The screen becomes a single ultra-dark stage: a 3D "black
+   hole" visual in the middle, the screen-lock pill right under
+   it, and only the essential transport while unlocked. While
+   locked every playback button disappears so a pocket, a
+   finger or a bump on the road cannot touch playback.
+   Everything below is gated to portrait orientation: turning
+   the phone sideways always returns the normal player.
+   ============================================================ */
+
+/* the toggle lives only in the portrait bottom panel */
+.mm-tool{display:none}
+@keyframes mmSpin{to{transform:rotateX(76deg) rotate(360deg)}}
+@keyframes mmSpin2{to{transform:rotateX(76deg) rotate(305deg)}}
+
+.minimal-ui{
+  position:absolute;inset:0;z-index:80;display:flex;flex-direction:column;align-items:center;
+  padding:calc(env(safe-area-inset-top) + 14px) 22px calc(env(safe-area-inset-bottom) + 16px);
+  /* ultra-sleek matt black with subtle 3D gradients: a faint top light,
+     a deep floor shadow and an almost-black vertical falloff */
+  background:
+    radial-gradient(120% 42% at 50% -8%, rgba(255,255,255,.055), transparent 60%),
+    radial-gradient(130% 58% at 50% 112%, rgba(0,0,0,.92), transparent 62%),
+    linear-gradient(178deg, #0d0d11 0%, #070709 46%, #030304 100%);
+}
+.minimal-ui[hidden]{display:none}
+
+/* ---- the black hole ---- */
+.mm-scene{flex:1 1 auto;min-height:0;width:100%;display:grid;place-items:center;perspective:1200px}
+.mm-hole{
+  --pulse:1;
+  position:relative;width:min(clamp(200px,60vw,400px),48vh);aspect-ratio:1;
+  transform:rotateX(16deg) scale(var(--pulse));
+  transform-style:preserve-3d;will-change:transform;
+}
+.mm-glow{position:absolute;inset:-16%;border-radius:50%;
+  background:radial-gradient(circle, rgba(148,158,196,.16) 0%, rgba(96,104,140,.06) 44%, transparent 70%);
+  filter:blur(12px)}
+/* the event horizon */
+.mm-core{position:absolute;inset:23%;border-radius:50%;
+  background:radial-gradient(circle at 40% 34%, #191920 0%, #0b0b0f 36%, #000 70%);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.06),
+    inset 0 -20px 44px rgba(0,0,0,.92),
+    0 34px 80px rgba(0,0,0,.85),
+    0 10px 34px rgba(0,0,0,.6),
+    0 0 64px rgba(150,160,205,.10)}
+/* the photon ring hugging the horizon */
+.mm-ring{position:absolute;inset:22.6%;border-radius:50%;border:1.6px solid rgba(214,222,255,.34);
+  box-shadow:0 0 22px rgba(178,190,255,.28), inset 0 0 10px rgba(178,190,255,.18)}
+.mm-ring.mm-ring2{inset:19%;border-color:rgba(190,200,255,.12);box-shadow:0 0 12px rgba(178,190,255,.10)}
+/* two accretion disks, tilted into 3D and slowly spiralling */
+.mm-disk{position:absolute;inset:4%;border-radius:50%;transform:rotateX(76deg);
+  background:conic-gradient(from 20deg,
+    transparent 0 12%, rgba(196,204,236,.15) 20%, rgba(255,255,255,.30) 30%,
+    rgba(150,158,196,.11) 44%, transparent 52% 60%, rgba(196,204,236,.12) 72%, transparent 88%);
+  -webkit-mask:radial-gradient(circle, transparent 58%, #000 62% 79%, transparent 83%);
+  mask:radial-gradient(circle, transparent 58%, #000 62% 79%, transparent 83%);
+  filter:blur(.4px) drop-shadow(0 0 10px rgba(170,180,230,.25));
+  animation:mmSpin 16s linear infinite}
+.mm-disk.mm-disk2{inset:13%;animation:mmSpin2 26s linear infinite reverse;
+  -webkit-mask:radial-gradient(circle, transparent 66%, #000 70% 84%, transparent 88%);
+  mask:radial-gradient(circle, transparent 66%, #000 70% 84%, transparent 88%)}
+body.no-motion .mm-disk{animation:none}
+body.no-motion .mm-hole{transform:rotateX(16deg)}
+
+/* ---- what is playing ---- */
+.mm-title{flex:none;text-align:center;max-width:92%;margin-top:8px;pointer-events:none}
+.mm-title b{display:block;font-size:16.5px;font-weight:750;letter-spacing:-.2px;color:#f2f3f7;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-shadow:0 2px 14px rgba(0,0,0,.8)}
+.mm-title small{display:block;font-size:12px;color:rgba(233,236,247,.55);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* ---- screen lock / unlock: directly under the circle ---- */
+.mm-lock{margin-top:16px;display:inline-flex;align-items:center;gap:9px;padding:12px 22px;border-radius:999px;
+  border:1px solid rgba(255,255,255,.14);color:#eef0f7;font-size:13px;font-weight:750;letter-spacing:.4px;
+  background:linear-gradient(180deg, rgba(34,34,42,.92), rgba(13,13,17,.92));
+  box-shadow:0 12px 30px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.08);
+  transition:transform .15s var(--ease), border-color .2s, color .2s}
+.mm-lock:active{transform:scale(.94)}
+.mm-lock .ic{width:17px;height:17px}
+.mm-lock.on{color:var(--a1);border-color:color-mix(in srgb,var(--a1) 45%,transparent);
+  background:linear-gradient(180deg, color-mix(in srgb,var(--a1) 14%, rgba(20,20,26,.92)), rgba(8,8,10,.94))}
+
+/* ---- essential transport (unlocked state) ---- */
+.mm-controls{display:flex;align-items:center;justify-content:center;gap:4px;margin-top:16px}
+.mm-controls .icon-btn{width:52px;height:52px;border-radius:50%;color:rgba(240,242,250,.85);
+  border:1px solid rgba(255,255,255,.08);
+  background:linear-gradient(180deg, rgba(30,30,38,.55), rgba(12,12,16,.55))}
+.mm-controls .icon-btn.big{width:58px;height:58px}
+.mm-controls .icon-btn .ic{width:22px;height:22px}
+.mm-controls .icon-btn.on{color:var(--a1);border-color:color-mix(in srgb,var(--a1) 40%,transparent);
+  background:color-mix(in srgb,var(--a1) 10%, rgba(12,12,16,.55))}
+.mm-controls .play-btn{width:76px;height:76px;margin:0 10px;color:#04060b;
+  background:linear-gradient(150deg,var(--a1),var(--a2));
+  box-shadow:0 16px 40px color-mix(in srgb,var(--a2) 38%,transparent), inset 0 1px 0 rgba(255,255,255,.25)}
+.mm-controls .play-btn .ic{width:32px;height:32px}
+body.playing .mm-controls .play-btn{animation:none}   /* keep the matte look steady */
+
+/* ---- quick sound / volume ---- */
+.mm-sound{display:flex;align-items:center;gap:10px;width:min(320px,84%);margin-top:14px;
+  padding:9px 14px;border-radius:999px;border:1px solid rgba(255,255,255,.08);
+  background:linear-gradient(180deg, rgba(26,26,33,.6), rgba(10,10,14,.6))}
+.mm-sound .icon-btn{width:34px;height:34px;color:rgba(240,242,250,.8)}
+.mm-sound .icon-btn .ic{width:18px;height:18px}
+.mm-sound input{flex:1}
+
+.mm-exit{margin-top:14px;font-size:12.5px;color:rgba(233,236,247,.66);
+  background:linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.02));border-color:transparent}
+.mm-exit .ic{width:15px;height:15px}
+
+/* locked: every playback button disappears — only the lock pill stays */
+body.minimal.locked .mm-controls,body.minimal.locked .mm-sound,body.minimal.locked .mm-exit{display:none}
+body.minimal.locked .mm-title{opacity:.6}
+/* in Minimal mode the round pill itself is the unlock — the full-screen
+   lock catcher stays out of the way */
+body.minimal #lock-layer{display:none !important}
+
+/* the whole mode is portrait-only; even if the class lingers after a fast
+   rotation, landscape always renders the normal player */
+@media (orientation:landscape){
+  .minimal-ui{display:none !important}
+  body.minimal #np .np-top,body.minimal #np .np-body{opacity:1;pointer-events:auto}
+}
+@media (orientation:portrait){
+  /* the toggle appears in the bottom panel during portrait playback only */
+  #np .np-tools .mm-tool{display:flex}
+  #np .np-tools .mm-tool .ic{width:18px;height:18px}
+  /* take over the player chrome while the mode is on */
+  body.minimal #np{background:#050506}
+  body.minimal #np .np-bg{display:none}
+  body.minimal #np .np-top,body.minimal #np .np-body{opacity:0;pointer-events:none;transition:opacity .25s var(--ease)}
+}
+
 /* ---------------- controls ---------------- */
 .np-ctrl{flex:none;display:flex;flex-direction:column;gap:10px;max-width:760px;width:100%;margin:0 auto}
 .np-meta{display:flex;align-items:center;gap:14px}
@@ -480,7 +616,7 @@ body.has-video.side-tools-active .landscape-tools.show{transform:translateY(-50%
    ============================================================ */
 body.in-pip #topbar,body.in-pip #rail,body.in-pip #minibar,
 body.in-pip .np-top,body.in-pip .np-ctrl,body.in-pip .vtools,body.in-pip .landscape-tools,
-body.in-pip #toasts,body.in-pip .aurora{display:none !important}
+body.in-pip #toasts,body.in-pip .aurora,body.in-pip .minimal-ui{display:none !important}
 body.in-pip #np{transform:none !important;visibility:visible}
 body.in-pip #np .np-body{padding:0}
 body.in-pip .stage{border-radius:0;box-shadow:none}
