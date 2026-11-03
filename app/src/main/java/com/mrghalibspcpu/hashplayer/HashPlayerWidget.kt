@@ -27,16 +27,23 @@ class HashPlayerWidget : AppWidgetProvider() {
         ids.forEach { manager.updateAppWidget(it, views(context, manager.getAppWidgetOptions(it))) }
     }
 
-    override fun onAppOptionsChanged(context: Context, appWidgetId: Int, newOptions: Bundle) {
-        AppWidgetManager.getInstance(context).updateAppWidget(appWidgetId, views(context, newOptions))
-    }
-
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action == Intent.ACTION_MY_PACKAGE_REPLACED) {
             refresh(context)
             return
         }
         val action = intent.action
+        // Resize / orientation option changes arrive as a broadcast on every
+        // supported Android version (the AppWidgetProvider callback is newer
+        // and not present in all compile SDKs).
+        if (action == AppWidgetManager.ACTION_APPWIDGET_OPTIONS_CHANGED) {
+            val id = intent.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, AppWidgetManager.INVALID_APPWIDGET_ID)
+            if (id != AppWidgetManager.INVALID_APPWIDGET_ID) {
+                val opts = intent.getBundleExtra(AppWidgetManager.EXTRA_APPWIDGET_OPTIONS)
+                AppWidgetManager.getInstance(context).updateAppWidget(id, views(context, opts))
+            }
+            return
+        }
         super.onReceive(context, intent)
         when (action) {
             ACTION_TOGGLE -> transport(context, "toggle", ACTION_TOGGLE)

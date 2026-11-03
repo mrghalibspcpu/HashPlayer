@@ -9,7 +9,7 @@ Install it as an app on your phone or desktop, or build a real Android APK — s
 
 `10-band EQ` · `visualizer` · `lyrics` · `subtitles` · `gestures` · `playlists` · `no account, no server, no tracking`
 
-### [⬇️ Android APK download karein](https://github.com/mrghalibspcpu/HashPlayer/releases/latest)
+### [⬇️ Android APK download karein](https://github.com/mrghalibspcpu/HashPlayer/releases/tag/latest-apks)
 
 `YouTube links` · `auto device scan` · `picture-in-picture` · `open with / share to` · `online lyrics` · `landscape video`
 
