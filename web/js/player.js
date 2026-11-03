@@ -50,6 +50,7 @@
     bindGestures();
     bindLandscapeTools();
     mediaSession();
+    HP.on('removed', id => P.removeTrack(id));
     tick();
   };
 
@@ -252,6 +253,7 @@
       P.setSkipSilence(!!S.skipSilence, true);
       paintNowPlaying(t);
       if (HP.UI && !$('#np').classList.contains('on')) HP.UI.openNP(true);
+      if (HP.UI && HP.UI.autoLandscape) HP.UI.autoLandscape(window.matchMedia('(orientation:landscape)').matches);
       loadLyrics(t);
       P.ab = { a: null, b: null }; updateAB(); renderMarks();
       HP.emit('track-changed', t);
@@ -308,6 +310,7 @@
       renderMarks();
       paintNowPlaying(t);
       if (isVideo && HP.UI && !$('#np').classList.contains('on')) HP.UI.openNP(true);
+      if (isVideo && HP.UI && HP.UI.autoLandscape) HP.UI.autoLandscape(window.matchMedia('(orientation:landscape)').matches);
       reportVideo();
       HP.emit('track-changed', t);
       highlightCards();
@@ -367,6 +370,7 @@
     paintNowPlaying(t);
     /* a video you cannot see is just an awkward podcast — open the player for it */
     if (isVideo && HP.UI && !$('#np').classList.contains('on')) HP.UI.openNP(true);
+    if (isVideo && HP.UI && HP.UI.autoLandscape) HP.UI.autoLandscape(window.matchMedia('(orientation:landscape)').matches);
     HP.emit('track-changed', t);
     highlightCards();
     renderQueue();
@@ -434,6 +438,7 @@
 
   P.toggle = function () {
     if (!P.current) {
+      if (S.lastId) { P.resumeSaved('play'); return; }
       const ids = L().contextIds();
       if (ids.length) P.playList(ids);
       return;
@@ -567,7 +572,14 @@
     S.speed = clamp(v, .25, 4); HP.save();
     // If the user deliberately changes speed while S+R was on, exit the preset
     // so the buttons never appear stuck.
-    if (P.srActive && Math.abs(S.speed - 0.8) > 0.01) { P.srActive = false; updateSRButton(); }
+    if (P.srActive && Math.abs(S.speed - 0.8) > 0.01) {
+      P.srActive = false;
+      P._pitchFactor = null;
+      S.pitchShift = P.srPrevPitch || 0;
+      if (P.n && P.n.setPitch) P.n.setPitch(Math.pow(2, S.pitchShift / 12));
+      [P.a, P.b, P.y].forEach(m => { if (m) { try { if ('preservesPitch' in m) m.preservesPitch = !!S.pitch; } catch (e) { } } });
+      updatePitchLabel(); updateSRButton(); applySREffects();
+    }
     // P.n is the native ExoPlayer engine — it used to be left out, so speed
     // silently did nothing for device files and YouTube on Android.
     [P.a, P.b, P.y, P.n].forEach(m => {
@@ -592,6 +604,7 @@
       try { if ('preservesPitch' in m) m.preservesPitch = !!S.pitch; } catch (e) { }
     });
     updatePitchLabel();
+    applySREffects();
     if (!quiet && S.pitchShift !== 0) HP.toast('Pitch ' + (S.pitchShift > 0 ? '+' : '') + S.pitchShift + ' semitones');
   };
   function updatePitchLabel() {
@@ -632,6 +645,11 @@
     const r = $('#btn-rep'), s = $('#btn-shuf');
     if (r) { r.classList.toggle('on', S.repeat !== 'off'); r.querySelector('use').setAttribute('href', S.repeat === 'one' ? '#i-repeat1' : '#i-repeat'); }
     if (s) s.classList.toggle('on', S.shuffle);
+    const libShuf = $('#btn-shuffle-all');
+    if (libShuf) {
+      libShuf.classList.toggle('active', !!S.shuffle);
+      libShuf.setAttribute('aria-pressed', S.shuffle ? 'true' : 'false');
+    }
     const mShuf = $('#mm-shuf'), mRep = $('#mm-rep');
     if (mShuf) mShuf.classList.toggle('on', !!S.shuffle);
     if (mRep) mRep.classList.toggle('on', S.repeat !== 'off');
@@ -701,8 +719,45 @@
       dragRow(row, box);
       box.appendChild(row);
     });
+    saveSession();
   }
   P.renderQueue = renderQueue;
+
+  function saveSession() {
+    S.lastQueue = P.queue.slice();
+    S.lastContext = P.context || 'Library';
+    if (P.current) {
+      S.lastId = P.current.id;
+      S.lastPos = (P.active && P.active.currentTime) || P.current.pos || 0;
+    }
+    HP.save();
+  }
+  P.saveSession = saveSession;
+
+  /** Cold-start transport from the home-screen widget / notification. */
+  P.resumeSaved = async function (command) {
+    await L().whenReady();
+    const id = S.lastId;
+    const t = id ? L().get(id) : null;
+    if (!t) { HP.toast('Play something in HashPlayer first'); return false; }
+    const ids = (S.lastQueue || []).filter(x => L().get(x));
+    P.context = S.lastContext || 'Library';
+    await P.playTrack(t.id, ids.length ? ids : [t.id], S.lastPos || t.pos || 0);
+    if (command === 'next') P.next();
+    else if (command === 'prev') P.prev();
+    else if (command === 'pause') P.pause();
+    return true;
+  };
+
+  P.removeTrack = function (id) {
+    if (P.current && P.current.id === id) { P.close(); return; }
+    const i = P.queue.indexOf(id);
+    if (i < 0) return;
+    P.queue.splice(i, 1);
+    if (i < P.index) P.index--;
+    if (P.index >= P.queue.length) P.index = P.queue.length - 1;
+    buildOrder(); renderQueue();
+  };
 
   let dragSrc = null;
   function dragRow(row, box) {
@@ -1430,6 +1485,10 @@
      S+R — one-tap 0.8x speed AND 0.8x pitch (slow/relaxed preset)
      Toggling off restores the previous user values.
      ========================================================= */
+  function applySREffects() {
+    if (E().ready) E().applyAll();
+    else E().pushNative();
+  }
   P.toggleSR = function () {
     if (!P.srActive) {
       P.srPrevSpeed = S.speed;
@@ -1437,15 +1496,19 @@
       P.setSpeed(0.8);
       P.setPitchFactor(0.8);
       P.srActive = true;
-      HP.toast('S+R on · 0.8× slow mode', 'ok');
+      updateSRButton();
+      applySREffects();
+      HP.toast('S+R on · 0.8× slow + reverb & echo', 'ok');
     } else {
-      P.setSpeed(P.srPrevSpeed || 1);
-      P.setPitchFactor(null);                           // restore remembered pitch shift
-      P.setPitch(P.srPrevPitch || 0);
+      const sp = P.srPrevSpeed || 1, st = P.srPrevPitch || 0;
       P.srActive = false;
+      P._pitchFactor = null;
+      P.setSpeed(sp);
+      P.setPitch(st, true);
+      updateSRButton();
+      applySREffects();
       HP.toast('S+R off · back to normal');
     }
-    updateSRButton();
   };
   function updateSRButton() {
     const b = $('#t-sr'), l = $('#sr-label');
@@ -1994,12 +2057,15 @@
       document.body.classList.add('cinema');
       try { window.HashNative && window.HashNative.setFullscreen && window.HashNative.setFullscreen(true); } catch (e) { }
       if (P.current && P.current.kind === 'video') P.setOrientation('landscape');
+      HP.emit('fullscreen-ui', true);
     } else {
       document.exitFullscreen && document.exitFullscreen();
       document.body.classList.remove('cinema');
       try { window.HashNative && window.HashNative.setFullscreen && window.HashNative.setFullscreen(false); } catch (e) { }
       P.setOrientation('auto');
+      HP.emit('fullscreen-ui', false);
     }
+    if (P.active && P.active.pushRect) requestAnimationFrame(() => P.active.pushRect());
   };
   document.addEventListener('fullscreenchange', () => {
     const fs = !!document.fullscreenElement;

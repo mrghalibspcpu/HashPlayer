@@ -6,6 +6,10 @@
         android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+    <!-- Deleting a device file on Android 9 and older needs legacy write access.
+         Android 10+ uses the system scoped-storage delete consent instead. -->
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28" />
 
     <!-- Reading our own audio session so the visualiser can draw the music.
          Nothing is recorded; playback works fine if this is refused. -->
@@ -180,7 +184,6 @@
                 <action android:name="com.mrghalibspcpu.hashplayer.widget.NEXT" />
                 <action android:name="com.mrghalibspcpu.hashplayer.widget.PREV" />
                 <action android:name="com.mrghalibspcpu.hashplayer.widget.EQ" />
-                <action android:name="com.mrghalibspcpu.hashplayer.widget.ANC" />
             </intent-filter>
             <meta-data
                 android:name="android.appwidget.provider"

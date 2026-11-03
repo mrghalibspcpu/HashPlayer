@@ -347,14 +347,16 @@
   N.pushFx = function () {
     const n = bridge(); if (!n || !n.nFx) return;
     const S = HP.S || {};
+    const sr = !!(HP.Player && HP.Player.srActive);
     try {
       n.nFx(JSON.stringify({
         preamp: +(S.preamp || 0),
         treble: +(S.treble || 0),
         bass: +(S.bass || 0),
-        reverb: +(S.reverb || 0),
+        reverb: Math.max(0, Math.min(100, +(S.reverb || 0) + (sr ? 28 : 0))),
         boost: +(S.boost == null ? 100 : S.boost),
-        anc: !!S.anc
+        anc: !!S.anc,
+        echo: sr ? 0.22 : 0
       }));
     } catch (e) { }
   };

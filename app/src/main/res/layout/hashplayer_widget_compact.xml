@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Short / narrow resize: keep every working control reachable, drop only the
+     last-track preview row so nothing is clipped. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_background"
+    android:padding="6dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:gravity="center">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="32dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <LinearLayout
+                android:id="@+id/widget_search"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:orientation="horizontal"
+                android:gravity="center"
+                android:background="@drawable/widget_search_background"
+                android:clickable="true"
+                android:focusable="true">
+                <ImageView
+                    android:layout_width="16dp"
+                    android:layout_height="16dp"
+                    android:src="@drawable/widget_search_icon"
+                    android:contentDescription="@string/widget_search_title" />
+            </LinearLayout>
+
+            <ImageButton
+                android:id="@+id/widget_playlists"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:layout_marginStart="5dp"
+                android:background="@drawable/widget_button_background"
+                android:src="@drawable/widget_playlist_icon"
+                android:scaleType="center"
+                android:contentDescription="@string/widget_open_playlists"
+                android:padding="7dp" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="40dp"
+            android:layout_marginTop="5dp"
+            android:orientation="horizontal"
+            android:gravity="center"
+            android:weightSum="4">
+
+            <ImageButton
+                android:id="@+id/widget_prev"
+                android:layout_width="0dp"
+                android:layout_height="38dp"
+                android:layout_weight="1"
+                android:layout_marginEnd="4dp"
+                android:background="@drawable/widget_button_background"
+                android:src="@drawable/widget_prev_icon"
+                android:scaleType="center"
+                android:contentDescription="@string/widget_previous"
+                android:padding="7dp" />
+
+            <ImageButton
+                android:id="@+id/widget_eq"
+                android:layout_width="0dp"
+                android:layout_height="38dp"
+                android:layout_weight="1"
+                android:layout_marginEnd="4dp"
+                android:background="@drawable/widget_button_background"
+                android:src="@drawable/widget_eq_icon"
+                android:scaleType="center"
+                android:contentDescription="@string/widget_equalizer"
+                android:padding="7dp" />
+
+            <ImageButton
+                android:id="@+id/widget_play_last"
+                android:layout_width="0dp"
+                android:layout_height="40dp"
+                android:layout_weight="1"
+                android:layout_marginEnd="4dp"
+                android:background="@drawable/widget_play_background"
+                android:src="@drawable/widget_play_icon"
+                android:scaleType="center"
+                android:contentDescription="@string/widget_play_pause"
+                android:padding="8dp" />
+
+            <ImageButton
+                android:id="@+id/widget_next"
+                android:layout_width="0dp"
+                android:layout_height="38dp"
+                android:layout_weight="1"
+                android:background="@drawable/widget_button_background"
+                android:src="@drawable/widget_next_icon"
+                android:scaleType="center"
+                android:contentDescription="@string/widget_next"
+                android:padding="7dp" />
+        </LinearLayout>
+    </LinearLayout>
+</FrameLayout>

@@ -21,6 +21,7 @@ import android.view.TextureView
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import androidx.media3.common.AudioAttributes
+import androidx.media3.common.audio.AudioProcessor
 import androidx.media3.common.text.CueGroup
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.C
@@ -33,6 +34,8 @@ import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.datasource.ResolvingDataSource
 import androidx.media3.exoplayer.DefaultRenderersFactory
+import androidx.media3.exoplayer.audio.AudioSink
+import androidx.media3.exoplayer.audio.DefaultAudioSink
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.exoplayer.source.MediaSource
@@ -116,6 +119,8 @@ class NativePlayback(
     private var fxReverb = 0f
     private var fxBoost = 100f
     private var fxAnc = false
+    private var fxEcho = 0f
+    private val echoProcessor = EchoAudioProcessor()
     private var baseVolume = 1f
 
     /** Professional colour grade for the video surface (see setEnhance). */
@@ -158,12 +163,20 @@ class NativePlayback(
 
     private fun engine(): ExoPlayer {
         player?.let { return it }
-        val p = ExoPlayer.Builder(
-            activity,
-            DefaultRenderersFactory(activity)
-                .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
-                .setEnableDecoderFallback(true)        // a flaky hardware decoder falls back to software
-        )
+        val renderers = object : DefaultRenderersFactory(activity) {
+            override fun buildAudioSink(
+                context: Context,
+                enableFloatOutput: Boolean,
+                enableAudioTrackPlaybackParams: Boolean
+            ): AudioSink = DefaultAudioSink.Builder(context)
+                .setEnableFloatOutput(enableFloatOutput)
+                .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
+                .setAudioProcessors(arrayOf<AudioProcessor>(echoProcessor))
+                .build()
+        }.setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
+            .setEnableDecoderFallback(true)        // a flaky hardware decoder falls back to software
+
+        val p = ExoPlayer.Builder(activity, renderers)
             .setHandleAudioBecomingNoisy(true)         // unplugging headphones pauses, never blasts
             .setSeekBackIncrementMs(10_000)
             .setSeekForwardIncrementMs(10_000)
@@ -696,13 +709,15 @@ class NativePlayback(
      * negative), reverb → PresetReverb, treble/bass → folded into the EQ,
      * ANC → a vocal-focused EQ shape plus a loudness lift.
      */
-    fun setFx(preamp: Float, treble: Float, bassDb: Float, reverb: Float, boost: Float, anc: Boolean) = main.post {
+    fun setFx(preamp: Float, treble: Float, bassDb: Float, reverb: Float, boost: Float, anc: Boolean, echo: Float = 0f) = main.post {
         fxPreamp = if (preamp.isFinite()) preamp.coerceIn(-12f, 12f) else 0f
         fxTreble = if (treble.isFinite()) treble.coerceIn(-6f, 12f) else 0f
         fxBass = if (bassDb.isFinite()) bassDb.coerceIn(0f, 18f) else 0f
         fxReverb = if (reverb.isFinite()) reverb.coerceIn(0f, 100f) else 0f
         fxBoost = if (boost.isFinite()) boost.coerceIn(100f, 300f) else 100f
         fxAnc = anc
+        fxEcho = if (echo.isFinite()) echo.coerceIn(0f, 0.45f) else 0f
+        echoProcessor.setMix(fxEcho)
         applyEq()
         applyFx()
         applyVolume()

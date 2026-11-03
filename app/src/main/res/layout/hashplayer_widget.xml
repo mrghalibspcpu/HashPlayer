@@ -1,10 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Standard / resized-up widget. The preview row flexes with the height the
+     launcher gives us; transport buttons share the width evenly. No mic/ANC
+     button lives here anymore — ANC stays inside the player. -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/widget_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@drawable/widget_background"
-    android:padding="10dp">
+    android:padding="8dp">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -14,7 +17,7 @@
 
         <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="40dp"
+            android:layout_height="36dp"
             android:orientation="horizontal"
             android:gravity="center_vertical">
 
@@ -26,21 +29,21 @@
                 android:orientation="horizontal"
                 android:gravity="center_vertical"
                 android:background="@drawable/widget_search_background"
-                android:paddingStart="11dp"
+                android:paddingStart="10dp"
                 android:paddingEnd="8dp"
                 android:clickable="true"
                 android:focusable="true">
                 <ImageView
-                    android:layout_width="18dp"
-                    android:layout_height="18dp"
+                    android:layout_width="17dp"
+                    android:layout_height="17dp"
                     android:src="@drawable/widget_search_icon"
-                    android:contentDescription="Search" />
+                    android:contentDescription="@string/widget_search_title" />
                 <TextView
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
                     android:layout_marginStart="8dp"
-                    android:text="Search songs or YouTube…"
+                    android:text="@string/widget_search_hint"
                     android:textColor="#c6cbd5"
                     android:textSize="12sp"
                     android:singleLine="true"
@@ -49,14 +52,14 @@
 
             <ImageButton
                 android:id="@+id/widget_playlists"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
-                android:layout_marginStart="7dp"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:layout_marginStart="6dp"
                 android:background="@drawable/widget_button_background"
                 android:src="@drawable/widget_playlist_icon"
                 android:scaleType="center"
-                android:contentDescription="Open playlists"
-                android:padding="10dp" />
+                android:contentDescription="@string/widget_open_playlists"
+                android:padding="8dp" />
         </LinearLayout>
 
         <LinearLayout
@@ -64,7 +67,7 @@
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="1"
-            android:layout_marginTop="8dp"
+            android:layout_marginTop="6dp"
             android:orientation="horizontal"
             android:gravity="center_vertical"
             android:background="@drawable/widget_preview_background"
@@ -73,32 +76,23 @@
             android:clickable="true"
             android:focusable="true">
             <ImageView
-                android:layout_width="35dp"
-                android:layout_height="35dp"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
                 android:src="@mipmap/ic_launcher"
                 android:scaleType="centerCrop"
                 android:background="@drawable/widget_button_background"
-                android:contentDescription="HashPlayer" />
+                android:contentDescription="@string/app_name" />
             <LinearLayout
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:layout_marginStart="9dp"
+                android:layout_marginStart="8dp"
                 android:orientation="vertical">
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="LAST PLAYED"
-                    android:textColor="#8e97a9"
-                    android:textSize="8sp"
-                    android:textStyle="bold"
-                    android:letterSpacing="0.12" />
                 <TextView
                     android:id="@+id/widget_track_title"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="2dp"
-                    android:text="Nothing played yet"
+                    android:text="@string/nothing_playing"
                     android:textColor="#ffffff"
                     android:textSize="12sp"
                     android:textStyle="bold"
@@ -108,7 +102,8 @@
                     android:id="@+id/widget_track_artist"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="Your last track will show here"
+                    android:layout_marginTop="1dp"
+                    android:text="@string/widget_last_hint"
                     android:textColor="#aab1be"
                     android:textSize="10sp"
                     android:maxLines="1"
@@ -116,26 +111,24 @@
             </LinearLayout>
         </LinearLayout>
 
-        <!-- Dedicated transport row: each button targets its own action, NOT a generic
-             launcher intent. This is the whole point of the widget fix. -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="44dp"
-            android:layout_marginTop="7dp"
+            android:layout_marginTop="6dp"
             android:orientation="horizontal"
             android:gravity="center"
-            android:weightSum="5">
+            android:weightSum="4">
 
             <ImageButton
                 android:id="@+id/widget_prev"
                 android:layout_width="0dp"
                 android:layout_height="40dp"
                 android:layout_weight="1"
-                android:layout_marginEnd="3dp"
+                android:layout_marginEnd="4dp"
                 android:background="@drawable/widget_button_background"
                 android:src="@drawable/widget_prev_icon"
                 android:scaleType="center"
-                android:contentDescription="Previous"
+                android:contentDescription="@string/widget_previous"
                 android:padding="8dp" />
 
             <ImageButton
@@ -143,11 +136,11 @@
                 android:layout_width="0dp"
                 android:layout_height="40dp"
                 android:layout_weight="1"
-                android:layout_marginEnd="3dp"
+                android:layout_marginEnd="4dp"
                 android:background="@drawable/widget_button_background"
                 android:src="@drawable/widget_eq_icon"
                 android:scaleType="center"
-                android:contentDescription="Equalizer"
+                android:contentDescription="@string/widget_equalizer"
                 android:padding="8dp" />
 
             <ImageButton
@@ -155,24 +148,12 @@
                 android:layout_width="0dp"
                 android:layout_height="44dp"
                 android:layout_weight="1"
-                android:layout_marginEnd="3dp"
+                android:layout_marginEnd="4dp"
                 android:background="@drawable/widget_play_background"
                 android:src="@drawable/widget_play_icon"
                 android:scaleType="center"
-                android:contentDescription="Play / Pause"
+                android:contentDescription="@string/widget_play_pause"
                 android:padding="10dp" />
-
-            <ImageButton
-                android:id="@+id/widget_anc"
-                android:layout_width="0dp"
-                android:layout_height="40dp"
-                android:layout_weight="1"
-                android:layout_marginEnd="3dp"
-                android:background="@drawable/widget_button_background"
-                android:src="@drawable/widget_anc_icon"
-                android:scaleType="center"
-                android:contentDescription="ANC"
-                android:padding="8dp" />
 
             <ImageButton
                 android:id="@+id/widget_next"
@@ -182,7 +163,7 @@
                 android:background="@drawable/widget_button_background"
                 android:src="@drawable/widget_next_icon"
                 android:scaleType="center"
-                android:contentDescription="Next"
+                android:contentDescription="@string/widget_next"
                 android:padding="8dp" />
         </LinearLayout>
     </LinearLayout>

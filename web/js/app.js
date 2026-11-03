@@ -6,7 +6,7 @@
   'use strict';
   const HP = w.HP, S = HP.S, $ = HP.$, $$ = HP.$$, el = HP.el, icon = HP.icon, clamp = HP.clamp;
   const L = HP.Lib, P = HP.Player, E = HP.Engine, UI = {};
-  const APP_VERSION = '2.8.2';
+  const APP_VERSION = '2.9.0';
 
   /* Android TV / Google TV / Fire TV (and smart-TV browsers, which report no
      pointer and no hover): the UI is driven by a D-pad remote. */
@@ -168,6 +168,12 @@
     item('trash', 'Remove from library', async () => {
       await L.remove(t.id); L.render(); HP.toast('Removed');
     }, 'danger');
+    if (t.nativeUri && w.HashNative && w.HashNative.deleteFile) {
+      item('trash', 'Delete file from device…', () => {
+        try { w.HashNative.deleteFile(t.nativeUri, t.id, t.title || t.name || 'file'); }
+        catch (e) { HP.toast('Could not start delete', 'err'); }
+      }, 'danger');
+    }
 
     m.hidden = false;
     const r = m.getBoundingClientRect();
@@ -243,7 +249,8 @@
       rm.addEventListener('click', async e => {
         e.stopPropagation();
         p.items = p.items.filter(x => x !== id);
-        await HP.DB.put('playlists', p); UI.openPlaylist(pid); L.renderPlaylists();
+        p.updatedAt = Date.now();
+        await HP.DB.put('playlists', p); L.backupSoon(); UI.openPlaylist(pid); L.renderPlaylists();
       });
       row.appendChild(el('div', { class: 'list-right' }, [rm]));
       row.addEventListener('click', () => { P.context = p.name; P.playTrack(id, ids); });
@@ -279,8 +286,9 @@
   UI.autoLandscape = function (isLandscape) {
     if (!S.autoLandscape) return;
     const video = document.body.classList.contains('has-video');
-    const small = Math.min(w.innerWidth, w.innerHeight) < 560;
-    if (isLandscape && video && small && $('#np').classList.contains('on')) {
+    // Phones *and* tablets: landscape video is always an immersive overlay,
+    // never the desktop split view with a permanent control column.
+    if (isLandscape && video && $('#np').classList.contains('on')) {
       if (!document.body.classList.contains('cinema')) {
         landscapeAuto = true;
         document.body.classList.add('cinema');
@@ -634,7 +642,7 @@
       tracks: Array.from(L.tracks.values()).map(t => ({
         key: t.key, name: t.name, title: t.title, artist: t.artist, album: t.album, genre: t.genre,
         year: t.year, trackNo: t.trackNo, duration: t.duration, size: t.size, kind: t.kind,
-        source: t.source, url: t.url, folder: t.folder, added: t.added, plays: t.plays,
+        source: t.source, url: t.url, nativeUri: t.nativeUri, ytId: t.ytId, folder: t.folder, added: t.added, plays: t.plays,
         lastPlayed: t.lastPlayed, fav: t.fav, pos: t.pos, lrc: t.lrc, bookmarks: t.bookmarks
       }))
     };
@@ -658,11 +666,12 @@
           ex.fav = ex.fav || r.fav; ex.plays = Math.max(ex.plays || 0, r.plays || 0);
           ex.lrc = ex.lrc || r.lrc; ex.bookmarks = (ex.bookmarks && ex.bookmarks.length) ? ex.bookmarks : (r.bookmarks || []);
           L.saveTrack(ex); merged++;
-        } else if (r.source === 'url' && r.url) {
-          const t = Object.assign({ id: HP.uid(), cover: null, file: null, handle: null, nativeUri: null, tagged: true }, r);
+        } else if ((r.source === 'url' && r.url) || (r.source === 'native' && r.nativeUri) || (r.source === 'yt' && r.ytId)) {
+          const t = Object.assign({ id: HP.uid(), cover: null, file: null, handle: null, tagged: true }, r);
           L.tracks.set(t.id, t); await L.saveTrack(t); created++;
         }
       }
+      L.backupSoon();
       HP.toast('Imported · ' + merged + ' updated, ' + created + ' added', 'ok');
       applyTheme(); HP.applyI18n(); L.render(); L.renderPlaylists();
     } catch (x) { HP.toast('That file could not be read', 'err'); }
@@ -904,9 +913,14 @@
       artTimer = setTimeout(() => L.render(), 350);   // one repaint per burst
     },
 
-    onTransport(action) {
+    async onTransport(action) {
+      await L.whenReady();
       if (typeof action === 'string' && action.indexOf('seek:') === 0) {
-        P.seek((parseInt(action.slice(5), 10) || 0) / 1000);
+        if (P.current) P.seek((parseInt(action.slice(5), 10) || 0) / 1000);
+        return;
+      }
+      if (!P.current && ['play', 'pause', 'toggle', 'next', 'prev'].indexOf(action) > -1) {
+        await P.resumeSaved(action === 'toggle' ? 'play' : action);
         return;
       }
       const act = {
@@ -915,6 +929,34 @@
         anc: () => P.toggleAnc && P.toggleAnc()
       };
       (act[action] || (() => { }))();
+    },
+
+    /** Widget: resume the last track even after the process was killed. */
+    async onWidgetPlayLast() {
+      await L.whenReady();
+      await P.resumeSaved('play');
+    },
+
+    /** Widget search box: search the local library, with YouTube results below. */
+    async onWidgetSearch(query) {
+      await L.whenReady();
+      const q = String(query || '');
+      UI.nav('library');
+      const input = $('#search');
+      if (input) input.value = q;
+      L.search = q;
+      $('#search-clear').hidden = !q;
+      L.render();
+      L.ytSearch(q);
+      UI.updateSearchActive();
+    },
+
+    /** Android confirmed the physical file was deleted. */
+    async onFileDeleted(id, uri) {
+      await L.whenReady();
+      let hit = id ? L.get(id) : null;
+      if (!hit && uri) L.tracks.forEach(t => { if (!hit && t.nativeUri === uri) hit = t; });
+      if (hit) { await L.remove(hit.id); L.render(); }
     },
 
     /**
@@ -1128,6 +1170,9 @@
   async function boot() {
     applyTheme();
     HP.applyI18n();
+    // Restore the durable library *before* the native auto-scan / widget
+    // intents can race it, and before any UI renders favorites/playlists.
+    await L.load();
     P.init();
     buildEQ(); bindFX(); bindSettings(); bindFiles(); bindKeys(); bindDpad(); buildKeys();
     $('#app-version').textContent = 'v' + APP_VERSION;
@@ -1140,11 +1185,11 @@
     $('#btn-menu').setAttribute('aria-label', 'Queue');
 
     /* chips / toolbar */
-    $$('#type-chips .chip').forEach(c => {
+    $$('#type-chips .chip[data-filter]').forEach(c => {
       c.classList.toggle('active', c.dataset.filter === S.filter);
       c.addEventListener('click', () => {
         S.filter = c.dataset.filter; HP.save();
-        $$('#type-chips .chip').forEach(x => x.classList.toggle('active', x === c));
+        $$('#type-chips .chip[data-filter]').forEach(x => x.classList.toggle('active', x === c));
         L.render();
       });
     });
@@ -1277,8 +1322,7 @@
     });
     HP.on('track-changed', () => P.highlightCards());
 
-    /* load the library */
-    await L.load();
+    /* library already restored at the top of boot() */
     setTimeout(() => { try { L.requestArt(); } catch (e) { } }, 1200);   // fill in device artwork
     const qp = new URLSearchParams(location.search).get('view');
     UI.nav(['library', 'playlists', 'favorites', 'eq', 'settings'].indexOf(qp) > -1 ? qp : 'library');
@@ -1346,6 +1390,11 @@
     setTimeout(() => $('#boot').classList.add('gone'), 420);
     setTimeout(() => { const b = $('#boot'); b && b.remove(); }, 1200);
   }
+
+  w.addEventListener('pagehide', () => { try { L.flushBackup(true); HP.saveNow(); P.saveSession && P.saveSession(); } catch (e) { } });
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) { try { L.flushBackup(true); HP.saveNow(); } catch (e) { } }
+  });
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
   else boot();

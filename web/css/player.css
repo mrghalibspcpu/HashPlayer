@@ -275,12 +275,12 @@ body.can-pitch .portrait-tool{display:flex}
 body.has-video .video-tool{display:flex}
 .tool[disabled]{opacity:.45;cursor:not-allowed;filter:saturate(.25)}
 
-/* desktop split layout */
+/* desktop split layout — audio only. Video (including tablets) uses the
+   immersive landscape overlay below, never a permanent control column. */
 @media (min-width:1000px) and (orientation:landscape){
-  .np-body{flex-direction:row;align-items:stretch;gap:26px;padding:6px 26px 24px}
-  .stage{flex:1.4}
-  .np-ctrl{width:400px;flex:none;justify-content:center;margin:0}
-  body:not(.has-video) .np-body{max-width:1180px;margin:0 auto;width:100%}
+  body:not(.has-video) .np-body{flex-direction:row;align-items:stretch;gap:26px;padding:6px 26px 24px;max-width:1180px;margin:0 auto;width:100%}
+  body:not(.has-video) .stage{flex:1.4}
+  body:not(.has-video) .np-ctrl{width:400px;flex:none;justify-content:center;margin:0}
 }
 @media (max-width:420px){
   .np-titles h2{font-size:18px}
@@ -411,7 +411,7 @@ body.yt-mode .vtools{opacity:1}
    Phone landscape — the video takes the whole screen and the
    controls float on top of it instead of stealing its height.
    ============================================================ */
-@media (orientation:landscape) and (max-height:620px){
+@media (orientation:landscape){
   body.has-video #np .np-body{padding:0;gap:0}
   body.has-video #np .stage{border-radius:0;box-shadow:none;flex:1}
 

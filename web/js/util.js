@@ -67,7 +67,9 @@
     anc: false, enhance: false,
     /* Background music (BGM): 10 % of the media level by default so it sits
        behind speech; bgmVolSet flips once the user moves the slider. */
-    bgmOn: false, bgmVol: 0.1, bgmVolSet: false, bgmSrc: '', bgmName: ''
+    bgmOn: false, bgmVol: 0.1, bgmVolSet: false, bgmSrc: '', bgmName: '',
+    /* Last queue so the home-screen widget can resume / skip after a cold start. */
+    lastQueue: [], lastContext: 'Library'
   };
   /* ---------- how much eye-candy can this device actually afford? ---------- */
   const ua = navigator.userAgent || '';
@@ -88,6 +90,9 @@
   try { S = Object.assign({}, DEFAULTS, JSON.parse(localStorage.getItem(LS) || '{}')); }
   catch (e) { S = Object.assign({}, DEFAULTS); }
   if (!Array.isArray(S.eqGains) || S.eqGains.length !== 10) S.eqGains = DEFAULTS.eqGains.slice();
+  // 2.9 retired the Deep and Late-night presets. Keep the user's actual curve
+  // as Custom instead of silently snapping their sound back to Flat.
+  if (S.eqPreset === 'deep' || S.eqPreset === 'night') S.eqPreset = 'custom';
   if (S.perf === null || S.perf === undefined) S.perf = DEV.weak;    // first run: pick for them
   HP.S = S;
   HP.DEFAULTS = DEFAULTS;

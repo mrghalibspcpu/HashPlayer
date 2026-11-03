@@ -11,7 +11,6 @@
   const PRESETS = {
     flat: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
     bass: [8, 6.5, 4.5, 1.5, 0, 0, 0, 0, 0, 0],
-    deep: [6, 5, 2, 0, -1, -2, -1, 1, 3, 4],
     treble: [0, 0, 0, 0, 0, 1.5, 3, 5, 6.5, 7],
     vocal: [-3, -2, 0, 2.5, 4.5, 4.5, 3, 1.5, 0, -1],
     rock: [5, 4, 2, -1, -2, 0, 2.5, 4.5, 5, 5],
@@ -22,12 +21,12 @@
     hiphop: [7, 6, 2.5, 3, -1, -1, 1, 2, 3, 4],
     acoustic: [4, 4, 3, 1, 1, 1, 2, 3, 3, 2],
     speech: [-6, -4, 0, 4, 5, 4, 3, 2, 0, -2],
-    night: [-2, -1, 0, 2, 3, 3, 2, 1, -1, -2]
+    lofi: [5, 4, 2, 1, 0, 1, 0, -2, -4, -6]
   };
   const PRESET_NAMES = {
-    flat: 'Flat', bass: 'Bass boost', deep: 'Deep', treble: 'Treble', vocal: 'Vocal', rock: 'Rock',
+    flat: 'Flat', bass: 'Bass boost', treble: 'Treble', vocal: 'Vocal', rock: 'Rock',
     pop: 'Pop', jazz: 'Jazz', classical: 'Classical', dance: 'Dance', hiphop: 'Hip-hop',
-    acoustic: 'Acoustic', speech: 'Speech', night: 'Late night'
+    acoustic: 'Acoustic', speech: 'Speech', lofi: 'Lo-fi'
   };
 
   const E = {
@@ -88,6 +87,11 @@
     E.master = c.createGain();
     E.conv = c.createConvolver(); E.conv.buffer = impulse(c, 2.1, 2.6);
     E.wet = c.createGain(); E.wet.gain.value = 0;
+    /* S+R adds a gentle, distinct repeat on top of the hall reverb. It is fully
+       dry (gain 0) until the S+R toggle is active. */
+    E.echoDelay = c.createDelay(1.0); E.echoDelay.delayTime.value = 0.18;
+    E.echoFeedback = c.createGain(); E.echoFeedback.gain.value = 0.28;
+    E.echoWet = c.createGain(); E.echoWet.gain.value = 0;
     E.analyser = c.createAnalyser();
     E.analyser.fftSize = 2048; E.analyser.smoothingTimeConstant = .78; E.analyser.minDecibels = -92;
 
@@ -114,6 +118,8 @@
     if (E.pan) E.merge.connect(E.pan);
     tail.connect(E.master);
     tail.connect(E.conv); E.conv.connect(E.wet); E.wet.connect(E.master);
+    tail.connect(E.echoDelay); E.echoDelay.connect(E.echoWet); E.echoWet.connect(E.master);
+    E.echoDelay.connect(E.echoFeedback); E.echoFeedback.connect(E.echoDelay);
     E.master.connect(E.analyser);
     E.analyser.connect(c.destination);
 
@@ -237,7 +243,10 @@
     ramp(E.preamp.gain, db2gain(S.preamp || 0), 80);
     ramp(E.bass.gain, S.bass || 0, 80);
     ramp(E.treble.gain, S.treble || 0, 80);
-    ramp(E.wet.gain, (S.reverb || 0) / 140, 120);
+    const sr = !!(HP.Player && HP.Player.srActive);
+    const reverb = clamp((S.reverb || 0) + (sr ? 28 : 0), 0, 100);
+    ramp(E.wet.gain, reverb / 140, 120);
+    if (E.echoWet) ramp(E.echoWet.gain, sr ? 0.2 : 0, 140);
     ramp(E.sideW.gain, S.mono ? 0 : (S.width || 100) / 100, 90);
     if (E.pan) ramp(E.pan.pan, clamp((S.balance || 0) / 100, -1, 1), 90);
     /* ANC: rumble filter + mud cut + presence lift + hiss trim. While it is

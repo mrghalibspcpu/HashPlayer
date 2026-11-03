@@ -348,6 +348,14 @@ body[dir=rtl] .ctx button{text-align:right}
   #views{left:0;padding:14px 14px calc(62px + var(--mini-h) + 30px)}
   .view-head h1{font-size:22px}
   .toolbar{top:0;gap:8px}
+  /* Library controls sit flush under the search bar and bleed to both screen
+     edges on phones; the chips themselves keep a comfortable thumb inset. */
+  #view-library .toolbar{
+    margin:-14px -14px 14px;
+    padding:8px 14px 10px;
+    width:auto;
+  }
+  #view-library .view-head{margin-top:0}
   .tool-right{width:100%;margin:0}
   .tool-right .select{flex:1}
   .grid{grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:12px}
@@ -499,18 +507,18 @@ body.yt-mode .yt-warn{display:flex}
   .tool-right .btn span{white-space:nowrap}
   #btn-view-mode{flex:0 0 auto}
 
-  /* The filter-strip surface is intentionally allowed to bleed to the outer
-     library edge. The chips still retain the same 14px inset, but the dark
-     sticky backdrop no longer stops short on the right. */
+  /* Both edges bleed on phones (the old rule only bled the right edge). */
   #view-library .toolbar{
+    margin-left:-14px;
     margin-right:-14px;
+    padding-left:14px;
     padding-right:14px;
   }
   body[dir=rtl] #view-library .toolbar{
-    margin-right:0;
-    padding-right:0;
     margin-left:-14px;
+    margin-right:-14px;
     padding-left:14px;
+    padding-right:14px;
   }
 }
 @media (max-width:380px){
@@ -539,3 +547,8 @@ body.tv .card{content-visibility:auto}
 body.tv .card:hover{transform:none}
 body.tv *{transition-duration:.12s !important}
 body.tv .nav-item,body.tv .tool,body.tv .btn{min-height:44px}
+
+/* Shuffle lives in the filter strip now — no extra toolbar row for it. */
+#btn-shuffle-all.chip{flex:0 0 auto}
+#btn-shuffle-all.chip.active{color:#05060a}
+body.surface-light #btn-shuffle-all.chip.active{color:#fff}

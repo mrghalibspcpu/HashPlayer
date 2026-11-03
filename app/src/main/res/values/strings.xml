@@ -19,9 +19,25 @@
     <string name="web_browse_hint">Play the video on the page, then tap Play in HashPlayer</string>
     <string name="web_play_here">▶ Play in HashPlayer</string>
     <string name="widget_name">HashPlayer</string>
-    <string name="widget_description">Search your music and YouTube, open playlists, and return to your last track.</string>
+    <string name="widget_description">Search, playlists and playback controls. Resize for the compact control bar or the full last-track preview.</string>
     <string name="widget_search_title">Search HashPlayer</string>
     <string name="widget_search_hint">Song, artist, or YouTube video</string>
     <string name="widget_cancel">Cancel</string>
-    <string name="widget_search_action">Search YouTube</string>
+    <string name="widget_search_action">Search</string>
+    <string name="widget_search_youtube">YouTube</string>
+    <string name="widget_last_hint">Your last track will show here</string>
+    <string name="widget_open_playlists">Open playlists</string>
+    <string name="widget_previous">Previous</string>
+    <string name="widget_next">Next</string>
+    <string name="widget_equalizer">Equalizer</string>
+    <string name="widget_play_pause">Play / Pause</string>
+    <string name="yt_mic_needs_permission">Allow the microphone so YouTube voice search can hear you</string>
+    <string name="delete_file_title">Delete file?</string>
+    <string name="delete_file_message">“%1$s” will be deleted from this device. This cannot be undone.</string>
+    <string name="delete_file_confirm">Delete</string>
+    <string name="delete_done">File deleted</string>
+    <string name="delete_failed">Could not delete that file</string>
+    <string name="delete_cancelled">Delete cancelled</string>
+    <string name="delete_local_only">Only device files can be deleted from storage</string>
+    <string name="delete_needs_permission">Storage permission is needed to delete this file</string>
 </resources>

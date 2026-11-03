@@ -6,31 +6,32 @@ import android.appwidget.AppWidgetProvider
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.os.Bundle
 import android.widget.RemoteViews
 
 /**
- * Compact home-screen widget with dedicated transport controls.
+ * Home-screen widget with dedicated, working transport controls.
  *
- * Every button fires a specific action rather than wrapping the whole widget in
- * a generic launcher tap, so Play/Pause, Skip, Previous, EQ and ANC each execute
- * their own action.
+ * The microphone-looking ANC button has been removed from the widget (ANC is
+ * still available inside the player). Search, Playlists, Prev, EQ, Play/Pause
+ * and Next each own a distinct PendingIntent. Transport taps are broadcasts to
+ * this receiver, which is allowed from the background; if the player process is
+ * dead we open MainActivity and replay the command once the web library is ready.
  *
- * The transport buttons are delivered as broadcasts to this receiver instead of
- * `PendingIntent.getService(...)`. A widget tap happens while the app is in the
- * background, and on Android 8+ `startService()` from there throws
- * "Not allowed to start service ... app is in background", which the launcher
- * swallows — the button looks completely dead. A broadcast to our own receiver
- * is always allowed, and from here the command is handed straight to the live
- * player (or the app is opened to replay it) without any service start.
+ * Resize: the launcher tells us the available size through AppWidget options.
+ * Short/narrow placements switch to a compact control-only layout so buttons
+ * are never clipped; larger placements get the flexible last-track preview.
  */
 class HashPlayerWidget : AppWidgetProvider() {
     override fun onUpdate(context: Context, manager: AppWidgetManager, ids: IntArray) {
-        ids.forEach { manager.updateAppWidget(it, views(context)) }
+        ids.forEach { manager.updateAppWidget(it, views(context, manager.getAppWidgetOptions(it))) }
+    }
+
+    override fun onAppOptionsChanged(context: Context, appWidgetId: Int, newOptions: Bundle) {
+        AppWidgetManager.getInstance(context).updateAppWidget(appWidgetId, views(context, newOptions))
     }
 
     override fun onReceive(context: Context, intent: Intent) {
-        // After an app update the home screen still holds the old RemoteViews
-        // with the old (dead) PendingIntents, so rebuild the widget right away.
         if (intent.action == Intent.ACTION_MY_PACKAGE_REPLACED) {
             refresh(context)
             return
@@ -41,9 +42,7 @@ class HashPlayerWidget : AppWidgetProvider() {
             ACTION_TOGGLE -> transport(context, "toggle", ACTION_TOGGLE)
             ACTION_NEXT   -> transport(context, "next",   ACTION_NEXT)
             ACTION_PREV   -> transport(context, "prev",   ACTION_PREV)
-            ACTION_ANC    -> toggleAnc(context)
         }
-        // Any widget button press refreshes the widget so the play/pause glyph stays honest.
         if (action?.startsWith(PREFIX) == true) refresh(context)
     }
 
@@ -55,7 +54,6 @@ class HashPlayerWidget : AppWidgetProvider() {
         const val ACTION_NEXT        = "com.mrghalibspcpu.hashplayer.widget.NEXT"
         const val ACTION_PREV        = "com.mrghalibspcpu.hashplayer.widget.PREV"
         const val ACTION_EQ          = "com.mrghalibspcpu.hashplayer.widget.EQ"
-        const val ACTION_ANC         = "com.mrghalibspcpu.hashplayer.widget.ANC"
 
         private const val PREFIX = "com.mrghalibspcpu.hashplayer.widget."
         private const val PREFS = "hashplayer_widget"
@@ -79,10 +77,11 @@ class HashPlayerWidget : AppWidgetProvider() {
             refresh(context)
         }
 
+        /** Kept so the in-app ANC toggle can still persist its state; the widget
+         *  itself no longer renders a mic/ANC button. */
         fun setAnc(context: Context, on: Boolean) {
             context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
                 .putBoolean("anc_on", on).apply()
-            refresh(context)
         }
 
         fun lastTrackId(context: Context): String = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -91,45 +90,49 @@ class HashPlayerWidget : AppWidgetProvider() {
         private fun refresh(context: Context) {
             val manager = AppWidgetManager.getInstance(context)
             val component = ComponentName(context, HashPlayerWidget::class.java)
-            val ids = manager.getAppWidgetIds(component)
-            ids.forEach { manager.updateAppWidget(it, views(context)) }
+            manager.getAppWidgetIds(component).forEach {
+                manager.updateAppWidget(it, views(context, manager.getAppWidgetOptions(it)))
+            }
         }
 
-        /** Public wrapper so the app can rebuild the widget's PendingIntents on
-         *  launch / after an update, never leaving dead buttons on the screen. */
         fun forceRefresh(context: Context) { refresh(context) }
 
-        private fun views(context: Context): RemoteViews {
+        private fun compact(opts: Bundle?): Boolean {
+            if (opts == null) return false
+            val h = opts.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT,
+                opts.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 160))
+            val w = opts.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_WIDTH,
+                opts.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 260))
+            return (h in 1..124) || (w in 1..229)
+        }
+
+        private fun views(context: Context, opts: Bundle?): RemoteViews {
             val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            val title = prefs.getString(KEY_TITLE, null).orEmpty().ifBlank { "Nothing played yet" }
-            val artist = prefs.getString(KEY_ARTIST, null).orEmpty().ifBlank { "Your last track will show here" }
             val id = prefs.getString(KEY_ID, "").orEmpty()
             val playing = prefs.getBoolean(KEY_PLAYING, false)
-            return RemoteViews(context.packageName, R.layout.hashplayer_widget).apply {
-                setTextViewText(R.id.widget_track_title, title)
-                setTextViewText(R.id.widget_track_artist, artist)
-
-                // Activity-launching actions (open a screen inside the app).
+            val small = compact(opts)
+            val layout = if (small) R.layout.hashplayer_widget_compact else R.layout.hashplayer_widget
+            return RemoteViews(context.packageName, layout).apply {
                 setOnClickPendingIntent(R.id.widget_search,      activity(context, ACTION_SEARCH,    1))
                 setOnClickPendingIntent(R.id.widget_playlists,   activity(context, ACTION_PLAYLISTS, 2))
-                setOnClickPendingIntent(R.id.widget_track_preview, activity(context, ACTION_PLAY_LAST, 4))
-
-                // Direct transport actions — delivered to this receiver, never to
-                // a background startService(), so they fire on every Android version.
                 setOnClickPendingIntent(R.id.widget_play_last,   broadcast(context, ACTION_TOGGLE, 10))
                 setOnClickPendingIntent(R.id.widget_prev,        broadcast(context, ACTION_PREV,   11))
                 setOnClickPendingIntent(R.id.widget_next,        broadcast(context, ACTION_NEXT,   12))
                 setOnClickPendingIntent(R.id.widget_eq,          activity(context, ACTION_EQ,      13))
-                setOnClickPendingIntent(R.id.widget_anc,         broadcast(context, ACTION_ANC,    14))
 
-                // Flip the play/pause glyph so the widget reflects what is actually happening.
                 setImageViewResource(
                     R.id.widget_play_last,
                     if (playing) R.drawable.widget_pause_icon else R.drawable.widget_play_icon
                 )
                 setFloat(R.id.widget_play_last, "setAlpha", if (id.isBlank()) 0.5f else 1f)
-                // ANC pressed state — subtle alpha hint.
-                setFloat(R.id.widget_anc, "setAlpha", if (prefs.getBoolean("anc_on", false)) 1f else 0.75f)
+
+                if (!small) {
+                    val title = prefs.getString(KEY_TITLE, null).orEmpty().ifBlank { context.getString(R.string.nothing_playing) }
+                    val artist = prefs.getString(KEY_ARTIST, null).orEmpty().ifBlank { context.getString(R.string.widget_last_hint) }
+                    setTextViewText(R.id.widget_track_title, title)
+                    setTextViewText(R.id.widget_track_artist, artist)
+                    setOnClickPendingIntent(R.id.widget_track_preview, activity(context, ACTION_PLAY_LAST, 4))
+                }
             }
         }
 
@@ -144,7 +147,6 @@ class HashPlayerWidget : AppWidgetProvider() {
             )
         }
 
-        /** A tap on a transport button, delivered to this receiver. */
         private fun broadcast(context: Context, action: String, requestCode: Int): PendingIntent {
             val intent = Intent(context, HashPlayerWidget::class.java).setAction(action)
             return PendingIntent.getBroadcast(
@@ -154,25 +156,12 @@ class HashPlayerWidget : AppWidgetProvider() {
             )
         }
 
-        /**
-         * Hand a transport command to the running player. If the player is not
-         * alive there is nothing to control, so open the app with the same
-         * action and let MainActivity replay it once the WebView is ready.
-         */
         private fun transport(context: Context, command: String, replay: String) {
             val handler = PlaybackService.transport
             if (handler != null) {
                 try { handler(command); return } catch (e: Exception) { /* fall through */ }
             }
             openApp(context, replay)
-        }
-
-        private fun toggleAnc(context: Context) {
-            val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            val on = !prefs.getBoolean("anc_on", false)
-            prefs.edit().putBoolean("anc_on", on).apply()
-            PlaybackService.ancOn = on
-            transport(context, "anc", ACTION_ANC)
         }
 
         private fun openApp(context: Context, action: String) {
@@ -185,7 +174,7 @@ class HashPlayerWidget : AppWidgetProvider() {
                                 Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
                         )
                 )
-            } catch (e: Exception) { /* no activity to open — the tap is a no-op */ }
+            } catch (e: Exception) { /* no activity to open */ }
         }
     }
 }

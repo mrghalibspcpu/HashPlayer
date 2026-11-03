@@ -11,53 +11,177 @@
     needsRelink: 0, rendering: 0, pageSize: 90
   };
 
-  /* ---------------- persistence ---------------- */
+  /* ---------------- persistence ----------------
+     IndexedDB remains the browser store. Inside Android we also mirror the
+     library metadata to a native atomic file, so favorites/playlists survive
+     even if WebView storage is evicted or recreated. Tombstones stop deleted
+     items from being resurrected by the next device scan. */
+  let resolveReady;
+  const readyPromise = new Promise(res => { resolveReady = res; });
+  L.whenReady = () => readyPromise;
+  let backupRevision = 0;
+  let tombstones = { tracks: {}, playlists: {} };
+
   const dehydrate = t => {
     const o = Object.assign({}, t);
     delete o._coverUrl; delete o._srcUrl; delete o._busy;
     return o;
   };
-  const saveTrack = t => DB.put('tracks', dehydrate(t));
+  const backupTrack = t => {
+    const o = dehydrate(t);
+    delete o.file; delete o.handle; delete o.cover;
+    if (o.thumb && /^data:/i.test(String(o.thumb))) delete o.thumb; // re-extracted natively
+    return o;
+  };
+  const saveTrack = t => {
+    t.updatedAt = Date.now();
+    return DB.put('tracks', dehydrate(t));
+  };
   const saveSoon = HP.debounce(() => DB.bulkPut('tracks', Array.from(L.tracks.values()).map(dehydrate)), 900);
   L.saveTrack = saveTrack;
 
-  L.load = async function () {
-    let rows = [];
-    try { rows = (await DB.all('tracks')) || []; } catch (e) { console.warn(e); }
-    // Auto-purge "Watched Online" history older than 24 hours so the section
-    // never accumulates forever; local library tracks are never touched.
-    const DAY = 24 * 60 * 60 * 1000;
-    const now = Date.now();
-    const keep = [];
-    rows.forEach(t => {
-      const isOnline = t && (t.source === 'yt' || t.source === 'url' || t.online);
-      if (isOnline) {
-        const ts = t.lastPlayed || t.added || 0;
-        if (now - ts > DAY) return;                       // drop from library
+  const nativeBackup = () => HP.isAndroidApp && w.HashNative && w.HashNative.saveLibraryBackup;
+  function nextRevision() {
+    backupRevision = Math.max(Date.now(), backupRevision + 1);
+    return backupRevision;
+  }
+  function snapshot() {
+    return {
+      schema: 1,
+      revision: nextRevision(),
+      tracks: Array.from(L.tracks.values()).map(backupTrack),
+      playlists: L.playlists.map(p => Object.assign({}, p)),
+      deleted: tombstones
+    };
+  }
+  L.flushBackup = function (sync) {
+    if (!nativeBackup()) return false;
+    try {
+      const s = snapshot();
+      return !!w.HashNative.saveLibraryBackup(JSON.stringify(s), s.revision, !!sync);
+    } catch (e) { console.warn('[library] native backup', e); return false; }
+  };
+  const backupSoon = HP.debounce(() => L.flushBackup(false), 220);
+  L.backupSoon = backupSoon;
+
+  function readBackup() {
+    if (!(HP.isAndroidApp && w.HashNative && w.HashNative.loadLibraryBackup)) return null;
+    try {
+      const raw = w.HashNative.loadLibraryBackup();
+      const d = raw ? JSON.parse(raw) : null;
+      if (!d || d.schema !== 1) return null;
+      backupRevision = +d.revision || 0;
+      tombstones = Object.assign({ tracks: {}, playlists: {} }, d.deleted || {});
+      return d;
+    } catch (e) { console.warn('[library] backup read', e); return null; }
+  }
+  function deletedRow(store, row) {
+    const map = tombstones[store] || {};
+    const hit = map[row.id];
+    const at = row.updatedAt || row.added || row.created || 0;
+    if (hit && (hit.at || 0) >= at) return true;
+    if (store === 'tracks') {
+      for (const k in map) {
+        const d = map[k];
+        if ((d.at || 0) < at) continue;
+        if (row.nativeUri && d.uri && row.nativeUri === d.uri) return true;
+        if (row.key && d.key && row.key === d.key) return true;
       }
-      keep.push(t);
-      L.tracks.set(t.id, t);
-    });
-    if (keep.length !== rows.length) {
-      await DB.bulkPut('tracks', keep.map(dehydrate));
     }
-    try { L.playlists = (await DB.all('playlists')) || []; } catch (e) { }
-    L.ready = true;
-    L.countRelink();
-    HP.emit('library');
-    // Periodic purge while the app stays open (every 20 minutes).
+    return false;
+  }
+  function mergeRows(store, localRows, backupRows) {
+    const out = new Map();
+    (localRows || []).forEach(r => { if (r && r.id && !deletedRow(store, r)) out.set(r.id, r); });
+    (backupRows || []).forEach(r => {
+      if (!r || !r.id || deletedRow(store, r)) return;
+      const ex = out.get(r.id);
+      if (!ex || (r.updatedAt || 0) > (ex.updatedAt || 0)) {
+        // Keep live File/Blob handles from IndexedDB when the backup metadata wins.
+        const merged = Object.assign({}, ex || {}, r);
+        if (ex) {
+          if (ex.file) merged.file = ex.file;
+          if (ex.handle) merged.handle = ex.handle;
+          if (ex.cover) merged.cover = ex.cover;
+        }
+        out.set(r.id, merged);
+      }
+    });
+    return out;
+  }
+  function rememberDelete(store, row) {
+    const map = tombstones[store] || (tombstones[store] = {});
+    map[row.id] = { at: Date.now(), key: row.key || '', uri: row.nativeUri || '' };
+    const keys = Object.keys(map);
+    if (keys.length > 5000) keys.sort((a, b) => (map[a].at || 0) - (map[b].at || 0)).slice(0, keys.length - 5000).forEach(k => delete map[k]);
+  }
+  L.isDeletedNative = function (uri, key) {
+    const map = tombstones.tracks || {};
+    for (const k in map) {
+      const d = map[k];
+      if (uri && d.uri === uri) return true;
+      if (key && d.key === key) return true;
+    }
+    return false;
+  };
+
+  L.load = async function () {
+    try {
+      const backup = readBackup();
+      let rows = [], pls = [];
+      try { rows = (await DB.all('tracks')) || []; } catch (e) { console.warn(e); }
+      try { pls = (await DB.all('playlists')) || []; } catch (e) { console.warn(e); }
+
+      const trackMap = mergeRows('tracks', rows, backup && backup.tracks);
+      const plMap = mergeRows('playlists', pls, backup && backup.playlists);
+
+      // Favorites and anything saved in a playlist are permanent. The 24-hour
+      // "Watched Online" cleanup must never delete a saved item.
+      const protectedIds = new Set();
+      plMap.forEach(p => (p.items || []).forEach(id => protectedIds.add(id)));
+      trackMap.forEach(t => { if (t.fav) protectedIds.add(t.id); });
+
+      const DAY = 24 * 60 * 60 * 1000, now = Date.now();
+      trackMap.forEach((t, id) => {
+        const isOnline = t && (t.source === 'yt' || t.source === 'url' || t.online);
+        const ts = t.lastPlayed || t.added || 0;
+        if (isOnline && !protectedIds.has(id) && now - ts > DAY) trackMap.delete(id);
+      });
+
+      L.tracks = trackMap;
+      L.playlists = Array.from(plMap.values());
+
+      // Reconcile IndexedDB with the merged/native-backed state.
+      const keepTracks = new Set(trackMap.keys()), keepPls = new Set(plMap.keys());
+      for (const r of rows) if (r && r.id && !keepTracks.has(r.id)) { try { await DB.del('tracks', r.id); } catch (e) { } }
+      for (const p of pls) if (p && p.id && !keepPls.has(p.id)) { try { await DB.del('playlists', p.id); } catch (e) { } }
+      if (trackMap.size) await DB.bulkPut('tracks', Array.from(trackMap.values()).map(dehydrate));
+      if (L.playlists.length) await DB.bulkPut('playlists', L.playlists);
+      L.countRelink();
+      L.flushBackup(false);
+    } finally {
+      L.ready = true;
+      resolveReady();
+      HP.emit('library');
+    }
+
+    // Periodic purge while the app stays open (every 20 minutes), still
+    // protecting favorites and playlist members.
     clearInterval(L._purgeTimer);
     L._purgeTimer = setInterval(() => {
-      let dirty = false;
-      const DAY2 = DAY, now2 = Date.now();
+      const protectedIds = new Set();
+      L.playlists.forEach(p => (p.items || []).forEach(id => protectedIds.add(id)));
+      const DAY2 = 24 * 60 * 60 * 1000, now2 = Date.now();
+      const gone = [];
       L.tracks.forEach(t => {
         const isOnline = t && (t.source === 'yt' || t.source === 'url' || t.online);
-        if (isOnline) {
-          const ts = t.lastPlayed || t.added || 0;
-          if (now2 - ts > DAY2) { L.tracks.delete(t.id); dirty = true; }
-        }
+        const ts = t.lastPlayed || t.added || 0;
+        if (isOnline && !t.fav && !protectedIds.has(t.id) && now2 - ts > DAY2) gone.push(t.id);
       });
-      if (dirty) { DB.bulkPut('tracks', Array.from(L.tracks.values()).map(dehydrate)); L.countRelink(); HP.emit('library'); }
+      if (gone.length) {
+        gone.forEach(id => { L.tracks.delete(id); DB.del('tracks', id); });
+        L.countRelink(); HP.emit('library'); backupSoon();
+      }
     }, 20 * 60 * 1000);
   };
 
@@ -88,6 +212,7 @@
 
   /* add File objects (+ .lrc/.srt sidecars) */
   L.addFiles = async function (files, opts) {
+    await L.whenReady();
     opts = opts || {};
     const list = Array.from(files || []);
     if (!list.length) return [];
@@ -123,7 +248,7 @@
       } catch (e) { }
     }
 
-    if (added.length) await DB.bulkPut('tracks', added.map(dehydrate));
+    if (added.length) { await DB.bulkPut('tracks', added.map(dehydrate)); backupSoon(); }
     else if (relinked) saveSoon();
     L.countRelink();
     HP.emit('library');
@@ -197,6 +322,7 @@
 
   /* remote URL */
   L.addUrl = async function (url) {
+    await L.whenReady();
     url = String(url || '').trim();
     if (url && !/^[a-z]+:\/\//i.test(url)) url = 'https://' + url;
 
@@ -216,6 +342,7 @@
       };
       L.tracks.set(t.id, t);
       await saveTrack(t);
+      backupSoon();
       HP.emit('library');
       HP.toast('YouTube video added', 'ok');
       return t;
@@ -238,6 +365,7 @@
     };
     L.tracks.set(t.id, t);
     await saveTrack(t);
+    backupSoon();
     HP.emit('library');
     HP.toast('Stream added', 'ok');
     return t;
@@ -275,6 +403,7 @@
 
   /** A stream the in-app browser found on a page — add it and play it. */
   L.addStream = async function (info) {
+    await L.whenReady();
     if (!info || !info.url) return null;
     const url = String(info.url);
     const site = String(info.site || '').replace(/^www\./, '');
@@ -341,6 +470,7 @@
 
   /** Turn a search result into a library track (or reuse the one we already have). */
   L.addYt = async function (row) {
+    await L.whenReady();
     if (!row || !row.id) return null;
     const known = [...L.tracks.values()].find(t => t.ytId === row.id);
     if (known) {
@@ -363,6 +493,7 @@
     };
     L.tracks.set(t.id, t);
     await saveTrack(t);
+    backupSoon();
     HP.emit('library');
     return t;
   };
@@ -434,11 +565,13 @@
 
   /* Android native scan (MediaStore via the APK bridge) */
   L.addNative = async function (items, opts) {
+    await L.whenReady();
     opts = opts || {};
     const known = new Map(); L.tracks.forEach(t => { if (t.nativeUri) known.set(t.nativeUri, t); });
     const add = [];
     (items || []).forEach(it => {
       if (known.has(it.uri)) return;
+      if (!opts.allowDeleted && L.isDeletedNative(it.uri, it.uri)) return;
       const g = HP.splitArtistTitle(it.name || 'Track');
       add.push({
         id: HP.uid(), key: it.uri, name: it.name || 'Track', title: it.title || g.title,
@@ -450,7 +583,7 @@
       });
     });
     add.forEach(t => L.tracks.set(t.id, t));
-    if (add.length) await DB.bulkPut('tracks', add);
+    if (add.length) { await DB.bulkPut('tracks', add); backupSoon(); }
     HP.emit('library');
     L.requestArt();                       // native album art / video thumbnails
     if (!opts.quiet) HP.toast(add.length ? add.length + ' tracks found on device' : 'No new tracks found', add.length ? 'ok' : '');
@@ -575,23 +708,27 @@
 
   /* ---------------- mutations ---------------- */
   L.get = id => L.tracks.get(id);
-  L.toggleFav = function (id) {
+  L.toggleFav = async function (id) {
     const t = L.tracks.get(id); if (!t) return;
-    t.fav = !t.fav; saveTrack(t);
+    t.fav = !t.fav;
+    await saveTrack(t);
+    backupSoon();
     HP.emit('track-updated', t);
     if (S.filter === 'fav' || L.view === 'favorites') L.render();
     HP.toast(t.fav ? '♥ Added to favourites' : 'Removed from favourites');
   };
   L.remove = async function (id) {
     const t = L.tracks.get(id); if (!t) return;
+    rememberDelete('tracks', t);
     L.tracks.delete(id);
     if (srcCache.has(id)) { URL.revokeObjectURL(srcCache.get(id)); srcCache.delete(id); }
     if (coverCache.has(id)) { URL.revokeObjectURL(coverCache.get(id)); coverCache.delete(id); }
     await DB.del('tracks', id);
-    L.playlists.forEach(p => {
+    for (const p of L.playlists) {
       const i = p.items.indexOf(id);
-      if (i > -1) { p.items.splice(i, 1); DB.put('playlists', p); }
-    });
+      if (i > -1) { p.items.splice(i, 1); p.updatedAt = Date.now(); await DB.put('playlists', p); }
+    }
+    backupSoon();
     HP.emit('removed', id);
     HP.emit('library');
   };
@@ -599,25 +736,36 @@
     srcCache.forEach(u => URL.revokeObjectURL(u)); srcCache.clear();
     coverCache.forEach(u => URL.revokeObjectURL(u)); coverCache.clear();
     L.tracks.clear(); L.playlists = [];
+    tombstones = { tracks: {}, playlists: {} };
     await DB.clear('tracks'); await DB.clear('playlists'); await DB.clear('kv');
+    try { if (HP.isAndroidApp && w.HashNative && w.HashNative.clearLibraryBackup) w.HashNative.clearLibraryBackup(); } catch (e) { }
+    backupRevision = 0;
     HP.emit('library');
   };
 
   /* ---------------- playlists ---------------- */
   L.createPlaylist = async function (name, items) {
-    const p = { id: HP.uid(), name: name || 'Playlist', items: items || [], created: Date.now() };
+    await L.whenReady();
+    const now = Date.now();
+    const p = { id: HP.uid(), name: name || 'Playlist', items: items || [], created: now, updatedAt: now };
     L.playlists.push(p); await DB.put('playlists', p);
+    backupSoon();
     HP.emit('library'); return p;
   };
   L.addToPlaylist = async function (pid, ids) {
+    await L.whenReady();
     const p = L.playlists.find(x => x.id === pid); if (!p) return;
     ids.forEach(id => { if (p.items.indexOf(id) < 0) p.items.push(id); });
-    await DB.put('playlists', p); HP.emit('library');
+    p.updatedAt = Date.now();
+    await DB.put('playlists', p); backupSoon(); HP.emit('library');
     HP.toast('Added to ' + p.name, 'ok');
   };
   L.deletePlaylist = async function (pid) {
+    await L.whenReady();
+    const p = L.playlists.find(x => x.id === pid);
+    if (p) rememberDelete('playlists', p);
     L.playlists = L.playlists.filter(p => p.id !== pid);
-    await DB.del('playlists', pid); HP.emit('library');
+    await DB.del('playlists', pid); backupSoon(); HP.emit('library');
   };
 
   /* ---------------- query ---------------- */

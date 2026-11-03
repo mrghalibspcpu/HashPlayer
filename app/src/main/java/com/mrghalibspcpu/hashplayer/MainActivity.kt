@@ -1,10 +1,12 @@
 package com.mrghalibspcpu.hashplayer
 
 import android.annotation.SuppressLint
+import android.app.RecoverableSecurityException
 import android.app.PictureInPictureParams
 import android.content.ContentUris
 import android.content.Context
 import android.content.Intent
+import android.content.IntentSender
 import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
 import android.content.res.Configuration
@@ -45,6 +47,7 @@ import android.widget.Toast
 import android.view.Gravity
 import android.webkit.CookieManager
 import androidx.activity.OnBackPressedCallback
+import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
@@ -104,6 +107,45 @@ class MainActivity : AppCompatActivity() {
     private lateinit var nativePlayer: NativePlayback
     /** Background music — a second ExoPlayer that loops quietly under the main one. */
     private lateinit var bgmPlayer: BgmPlayback
+
+    /** Native atomic mirror of favorites / playlists / library metadata. */
+    private val libraryBackup: LibraryBackup by lazy { LibraryBackup(applicationContext) }
+
+    /* YouTube voice search: the WebView may ask for the microphone only after
+       the user taps YouTube's mic. We forward that to Android's runtime
+       permission dialog, then grant the pending WebRTC request. */
+    private var pendingWebAudio: PermissionRequest? = null
+    private val webMicPermission =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            val req = pendingWebAudio
+            pendingWebAudio = null
+            if (req == null) return@registerForActivityResult
+            if (granted) req.grant(arrayOf(PermissionRequest.RESOURCE_AUDIO_CAPTURE))
+            else {
+                req.deny()
+                toast(getString(R.string.yt_mic_needs_permission))
+            }
+        }
+
+    /* Delete a device file from HashPlayer, with Android's own confirmation /
+       scoped-storage consent where the file belongs to another app. */
+    private data class PendingDelete(val uri: Uri, val id: String, val name: String)
+    private var pendingDelete: PendingDelete? = null
+    private val deleteConsent =
+        registerForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { res ->
+            val d = pendingDelete
+            pendingDelete = null
+            if (d == null) return@registerForActivityResult
+            if (res.resultCode == android.app.Activity.RESULT_OK) fileDeleted(d)
+            else toast(getString(R.string.delete_cancelled))
+        }
+    private val legacyWritePermission =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            val d = pendingDelete
+            if (d == null) return@registerForActivityResult
+            if (granted) performDelete(d)
+            else { pendingDelete = null; toast(getString(R.string.delete_needs_permission)) }
+        }
 
     /* "Device file" inside the BGM sheet: a real content uri (not a WebView File
        blob) so the native BGM engine can open it. */
@@ -232,7 +274,7 @@ class MainActivity : AppCompatActivity() {
             cacheMode = WebSettings.LOAD_DEFAULT
             mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
             textZoom = 100
-            userAgentString = "$userAgentString HashPlayer/2.8.2"
+            userAgentString = "$userAgentString HashPlayer/2.9.0"
         }
 
         web.webViewClient = object : WebViewClient() {
@@ -416,12 +458,23 @@ class MainActivity : AppCompatActivity() {
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
         web.saveState(outState)
+        flushLibraryBackup()
     }
 
     override fun onPause() {
         super.onPause()
+        flushLibraryBackup()
         if (!isPlaying) { web.onPause(); web.pauseTimers() }   // keep audio alive in the background
         if (ytVisible) ytWeb?.onPause()
+    }
+
+    private fun flushLibraryBackup() {
+        try {
+            web.evaluateJavascript(
+                "window.HP && window.HP.Lib && window.HP.Lib.flushBackup && window.HP.Lib.flushBackup(true);",
+                null
+            )
+        } catch (e: Exception) { }
     }
 
     override fun onResume() {
@@ -452,6 +505,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        pendingWebAudio?.deny()
+        pendingWebAudio = null
         PlaybackService.transport = null
         PlaybackService.stop(this)
         volumeObserver?.let { try { contentResolver.unregisterContentObserver(it) } catch (e: Exception) { } }
@@ -690,7 +745,41 @@ class MainActivity : AppCompatActivity() {
         fun toastMsg(msg: String) = runOnUiThread { toast(msg) }
 
         @android.webkit.JavascriptInterface
-        fun version(): String = "2.8.2"
+        fun version(): String = "2.9.0"
+
+        /* ---------------- durable library backup ---------------- */
+
+        @android.webkit.JavascriptInterface
+        fun loadLibraryBackup(): String = libraryBackup.read()
+
+        @android.webkit.JavascriptInterface
+        fun saveLibraryBackup(json: String, revision: Double, sync: Boolean): Boolean =
+            libraryBackup.save(json, revision.toLong(), sync)
+
+        @android.webkit.JavascriptInterface
+        fun clearLibraryBackup() { libraryBackup.clear() }
+
+        /* ---------------- delete a device file ---------------- */
+
+        @android.webkit.JavascriptInterface
+        fun deleteFile(uri: String?, id: String?, name: String?) = runOnUiThread {
+            val raw = realUri(uri.orEmpty())
+            val u = Uri.parse(raw)
+            if (u.scheme != "content") { toast(getString(R.string.delete_local_only)); return@runOnUiThread }
+            val d = PendingDelete(u, id.orEmpty(), name.orEmpty().ifBlank { u.lastPathSegment ?: "file" })
+            androidx.appcompat.app.AlertDialog.Builder(this@MainActivity)
+                .setTitle(R.string.delete_file_title)
+                .setMessage(getString(R.string.delete_file_message, d.name))
+                .setNegativeButton(R.string.widget_cancel, null)
+                .setPositiveButton(R.string.delete_file_confirm) { _, _ ->
+                    pendingDelete = d
+                    performDelete(d)
+                }
+                .show()
+        }
+
+        @android.webkit.JavascriptInterface
+        fun canDeleteFiles(): Boolean = true
 
         /* ---------------- native ExoPlayer engine ---------------- */
 
@@ -733,7 +822,8 @@ class MainActivity : AppCompatActivity() {
                 o.optDouble("bass", 0.0).toFloat(),
                 o.optDouble("reverb", 0.0).toFloat(),
                 o.optDouble("boost", 100.0).toFloat(),
-                o.optBoolean("anc", false)
+                o.optBoolean("anc", false),
+                o.optDouble("echo", 0.0).toFloat()
             )
         }
 
@@ -1063,6 +1153,26 @@ class MainActivity : AppCompatActivity() {
             override fun onReceivedTitle(view: WebView?, title: String?) {
                 if (!title.isNullOrBlank()) sniffTitle = title
             }
+
+            override fun onPermissionRequest(request: PermissionRequest) {
+                val host = request.origin?.host.orEmpty()
+                val wantsMic = request.resources.contains(PermissionRequest.RESOURCE_AUDIO_CAPTURE)
+                val trustedYouTube = youtube && (host == "youtube.com" || host.endsWith(".youtube.com") || host == "youtu.be")
+                if (!wantsMic || !trustedYouTube) { request.deny(); return }
+                if (ContextCompat.checkSelfPermission(this@MainActivity, "android.permission.RECORD_AUDIO")
+                    == PackageManager.PERMISSION_GRANTED
+                ) {
+                    request.grant(arrayOf(PermissionRequest.RESOURCE_AUDIO_CAPTURE))
+                } else {
+                    pendingWebAudio?.deny()
+                    pendingWebAudio = request
+                    webMicPermission.launch("android.permission.RECORD_AUDIO")
+                }
+            }
+
+            override fun onPermissionRequestCanceled(request: PermissionRequest) {
+                if (pendingWebAudio === request) pendingWebAudio = null
+            }
         }
         wv.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView, req: WebResourceRequest): Boolean {
@@ -1254,6 +1364,8 @@ class MainActivity : AppCompatActivity() {
     private fun closeYouTubeBrowser() {
         val layer = ytLayer ?: return
         val wv = ytWeb
+        pendingWebAudio?.deny()
+        pendingWebAudio = null
         ytLayer = null
         ytWeb = null
         ytVisible = false
@@ -1565,12 +1677,19 @@ class MainActivity : AppCompatActivity() {
             .setNegativeButton(R.string.widget_cancel, null)
             .setPositiveButton(R.string.widget_search_action, null)
             .create()
+        dialog.setButton(
+            androidx.appcompat.app.AlertDialog.BUTTON_NEUTRAL,
+            getString(R.string.widget_search_youtube)
+        ) { _, _ ->
+            val query = field.text?.toString()?.trim().orEmpty()
+            if (query.isNotBlank()) openYouTubeBrowser(query)
+        }
         dialog.setOnShowListener {
             dialog.getButton(androidx.appcompat.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener {
                 val query = field.text?.toString()?.trim().orEmpty()
                 if (query.isNotBlank()) {
                     dialog.dismiss()
-                    openYouTubeBrowser(query)
+                    js("window.HashBridge && window.HashBridge.onWidgetSearch(${JSONObject.quote(query)});")
                 } else {
                     field.error = getString(R.string.widget_search_hint)
                 }
@@ -1587,8 +1706,69 @@ class MainActivity : AppCompatActivity() {
             toast("Play something in HashPlayer first")
             return
         }
-        val safeId = JSONObject.quote(id)
-        js("""(function(){var tries=0;function run(){var h=window.HP;if(h&&h.Lib&&h.Player){var t=h.Lib.get($safeId);if(t){h.Player.playTrack(t.id,h.Lib.contextIds());return;}}if(++tries<24)setTimeout(run,350);else if(h&&h.toast)h.toast('Last played item is no longer in your library','err');}setTimeout(run,500);})();""")
+        js("window.HashBridge && window.HashBridge.onWidgetPlayLast();")
+    }
+
+    /* ====================================================== device file delete */
+
+    private fun performDelete(d: PendingDelete) {
+        when {
+            Build.VERSION.SDK_INT >= 30 -> {
+                try {
+                    val req = MediaStore.createDeleteRequest(contentResolver, listOf(d.uri))
+                    deleteConsent.launch(IntentSenderRequest.Builder(req.intentSender).build())
+                } catch (e: Exception) {
+                    Log.w(TAG, "delete request", e)
+                    pendingDelete = null
+                    toast(getString(R.string.delete_failed))
+                }
+            }
+            Build.VERSION.SDK_INT == 29 -> performDelete29(d)
+            else -> legacyDelete(d)
+        }
+    }
+
+    @androidx.annotation.RequiresApi(29)
+    private fun performDelete29(d: PendingDelete) {
+        try {
+            val rows = contentResolver.delete(d.uri, null, null)
+            if (rows > 0) fileDeleted(d)
+            else { pendingDelete = null; toast(getString(R.string.delete_failed)) }
+        } catch (e: RecoverableSecurityException) {
+            try {
+                deleteConsent.launch(IntentSenderRequest.Builder(e.userAction.actionIntent.intentSender).build())
+            } catch (ex: Exception) { pendingDelete = null; toast(getString(R.string.delete_failed)) }
+        } catch (e: Exception) {
+            Log.w(TAG, "delete file", e)
+            pendingDelete = null
+            toast(getString(R.string.delete_failed))
+        }
+    }
+
+    private fun legacyDelete(d: PendingDelete) {
+        try {
+            val rows = contentResolver.delete(d.uri, null, null)
+            if (rows > 0) fileDeleted(d)
+            else { pendingDelete = null; toast(getString(R.string.delete_failed)) }
+        } catch (e: SecurityException) {
+            if (ContextCompat.checkSelfPermission(this, "android.permission.WRITE_EXTERNAL_STORAGE")
+                != PackageManager.PERMISSION_GRANTED
+            ) legacyWritePermission.launch("android.permission.WRITE_EXTERNAL_STORAGE")
+            else { pendingDelete = null; toast(getString(R.string.delete_needs_permission)) }
+        } catch (e: Exception) {
+            Log.w(TAG, "delete file", e)
+            pendingDelete = null
+            toast(getString(R.string.delete_failed))
+        }
+    }
+
+    private fun fileDeleted(d: PendingDelete) {
+        pendingDelete = null
+        js(
+            "window.HashBridge && window.HashBridge.onFileDeleted(" +
+                JSONObject.quote(d.id) + "," + JSONObject.quote(d.uri.toString()) + ");"
+        )
+        toast(getString(R.string.delete_done))
     }
 
     /**
@@ -1634,11 +1814,10 @@ class MainActivity : AppCompatActivity() {
             /* The widget hands a transport tap back to us when the player was
                not running, so the button still does something visible. */
             HashPlayerWidget.ACTION_TOGGLE, HashPlayerWidget.ACTION_NEXT,
-            HashPlayerWidget.ACTION_PREV, HashPlayerWidget.ACTION_ANC -> {
+            HashPlayerWidget.ACTION_PREV -> {
                 val command = when (intent.action) {
                     HashPlayerWidget.ACTION_NEXT -> "next"
                     HashPlayerWidget.ACTION_PREV -> "prev"
-                    HashPlayerWidget.ACTION_ANC -> "anc"
                     else -> "toggle"
                 }
                 intent.action = null

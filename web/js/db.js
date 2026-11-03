@@ -22,9 +22,15 @@
         if (!db.objectStoreNames.contains('playlists')) db.createObjectStore('playlists', { keyPath: 'id' });
         if (!db.objectStoreNames.contains('kv')) db.createObjectStore('kv', { keyPath: 'k' });
       };
-      rq.onsuccess = () => { rq.result.onversionchange = () => rq.result.close(); res(rq.result); };
+      rq.onsuccess = () => {
+        const db = rq.result;
+        db.onversionchange = () => { try { db.close(); } catch (e) { } dbp = null; };
+        db.onclose = () => { dbp = null; };
+        res(db);
+      };
       rq.onerror = () => rej(rq.error);
-    }).catch(e => { console.warn('[db] unavailable, memory fallback', e); return null; });
+      rq.onblocked = () => console.warn('[db] upgrade blocked by another open tab');
+    }).catch(e => { console.warn('[db] unavailable, memory fallback', e); dbp = null; return null; });
     return dbp;
   }
 

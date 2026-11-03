@@ -140,24 +140,13 @@
 
   <!-- LIBRARY -->
   <section class="view active" id="view-library">
-    <div class="view-head">
-      <div>
-        <h1 id="lib-title" data-i18n="library">Library</h1>
-        <p class="sub" id="lib-sub">—</p>
-      </div>
-      <div class="head-actions">
-        <button class="btn primary" id="btn-add-files"><svg class="ic"><use href="#i-plus"/></svg><span data-i18n="addFiles">Add files</span></button>
-        <button class="btn ghost" id="btn-add-url"><svg class="ic"><use href="#i-link"/></svg><span data-i18n="addUrl">URL</span></button>
-        <button class="btn ghost only-android" id="btn-scan" hidden><svg class="ic"><use href="#i-sparkle"/></svg><span data-i18n="scan">Scan device</span></button>
-      </div>
-    </div>
-
     <div class="toolbar">
       <div class="chips" id="type-chips">
         <button class="chip active" data-filter="all" data-i18n="all">All</button>
         <button class="chip" data-filter="audio"><svg class="ic"><use href="#i-music"/></svg><span data-i18n="audio">Audio</span></button>
         <button class="chip" data-filter="video"><svg class="ic"><use href="#i-video"/></svg><span data-i18n="video">Video</span></button>
         <button class="chip" data-filter="online"><svg class="ic"><use href="#i-globe"/></svg><span data-i18n="watchedOnline">Watched Online</span></button>
+        <button class="chip shuffle-chip" id="btn-shuffle-all" aria-pressed="false" title="Shuffle library"><svg class="ic"><use href="#i-shuffle"/></svg><span data-i18n="shuffle">Shuffle</span></button>
         <button class="chip" data-filter="recent"><svg class="ic"><use href="#i-clock"/></svg><span data-i18n="recent">Recent</span></button>
         <button class="chip" data-filter="most"><svg class="ic"><use href="#i-sparkle"/></svg><span data-i18n="mostPlayed">Most played</span></button>
       </div>
@@ -176,7 +165,18 @@
         </label>
         <button class="icon-btn" id="btn-view-mode" title="Grid / list"><svg class="ic"><use href="#i-grid"/></svg></button>
         <button class="btn ghost" id="btn-play-all"><svg class="ic"><use href="#i-play"/></svg><span data-i18n="playAll">Play all</span></button>
-        <button class="btn ghost" id="btn-shuffle-all"><svg class="ic"><use href="#i-shuffle"/></svg><span data-i18n="shuffle">Shuffle</span></button>
+      </div>
+    </div>
+
+    <div class="view-head">
+      <div>
+        <h1 id="lib-title" data-i18n="library">Library</h1>
+        <p class="sub" id="lib-sub">—</p>
+      </div>
+      <div class="head-actions">
+        <button class="btn primary" id="btn-add-files"><svg class="ic"><use href="#i-plus"/></svg><span data-i18n="addFiles">Add files</span></button>
+        <button class="btn ghost" id="btn-add-url"><svg class="ic"><use href="#i-link"/></svg><span data-i18n="addUrl">URL</span></button>
+        <button class="btn ghost only-android" id="btn-scan" hidden><svg class="ic"><use href="#i-sparkle"/></svg><span data-i18n="scan">Scan device</span></button>
       </div>
     </div>
 
