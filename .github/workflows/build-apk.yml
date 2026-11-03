@@ -121,7 +121,7 @@ jobs:
           cp publish/*.apk apk/
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add apk/*.apk
+          git add -f apk/*.apk
           git commit -m "ci: deliver HashPlayer v2.9.0 APK [skip ci]" || echo "nothing to commit"
           git push origin HEAD:${{ github.ref_name }}
 
