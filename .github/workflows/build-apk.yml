@@ -9,14 +9,11 @@ on:
     branches: [main]
   workflow_dispatch:
     inputs:
-      upload_url:
-        description: 'Optional base URL to POST the built APKs to (manual transfer)'
+      deliver_apk:
+        description: 'Commit the built APKs into apk/ for sandbox delivery'
         required: false
-        type: string
-      upload_token:
-        description: 'Token for the optional transfer URL'
-        required: false
-        type: string
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -116,18 +113,17 @@ jobs:
           fi
           ls -lh dist publish
 
-      - name: Transfer APKs to the requesting session (manual dispatch only)
-        if: github.event_name == 'workflow_dispatch' && inputs.upload_url != ''
-        env:
-          UPLOAD_URL: ${{ inputs.upload_url }}
-          UPLOAD_TOKEN: ${{ inputs.upload_token }}
+      - name: Commit APKs into apk/ for sandbox delivery (manual dispatch only)
+        if: github.event_name == 'workflow_dispatch' && inputs.deliver_apk
         run: |
           set -e
-          for f in publish/*.apk; do
-            echo "POST $(basename "$f")"
-            curl --fail --retry 3 --retry-delay 2 -X POST --data-binary @"$f" \
-              "$UPLOAD_URL/$UPLOAD_TOKEN/$(basename "$f")"
-          done
+          mkdir -p apk
+          cp publish/*.apk apk/
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apk/*.apk
+          git commit -m "ci: deliver HashPlayer v2.9.0 APK [skip ci]" || echo "nothing to commit"
+          git push origin HEAD:${{ github.ref_name }}
 
       - name: Summary
         run: |
