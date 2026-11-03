@@ -8,6 +8,15 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      upload_url:
+        description: 'Optional base URL to POST the built APKs to (manual transfer)'
+        required: false
+        type: string
+      upload_token:
+        description: 'Token for the optional transfer URL'
+        required: false
+        type: string
 
 permissions:
   contents: write
@@ -106,6 +115,19 @@ jobs:
             cp app/build/outputs/apk/release/app-release.apk "publish/HashPlayer-release.apk"
           fi
           ls -lh dist publish
+
+      - name: Transfer APKs to the requesting session (manual dispatch only)
+        if: github.event_name == 'workflow_dispatch' && inputs.upload_url != ''
+        env:
+          UPLOAD_URL: ${{ inputs.upload_url }}
+          UPLOAD_TOKEN: ${{ inputs.upload_token }}
+        run: |
+          set -e
+          for f in publish/*.apk; do
+            echo "POST $(basename "$f")"
+            curl --fail --retry 3 --retry-delay 2 -X POST --data-binary @"$f" \
+              "$UPLOAD_URL/$UPLOAD_TOKEN/$(basename "$f")"
+          done
 
       - name: Summary
         run: |
