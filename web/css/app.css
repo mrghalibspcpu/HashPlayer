@@ -4,7 +4,12 @@
 
 /* ---------- boot splash ---------- */
 #boot{position:fixed;inset:0;z-index:9999;display:grid;place-content:center;justify-items:center;gap:18px;
-  background:radial-gradient(60% 60% at 50% 40%,#11131d,#05060a 75%);transition:opacity .5s var(--ease),visibility .5s}
+  /* Splash artwork (user-supplied) fills the whole boot screen; the logo,
+     ring animation and name sit on top of its dark centre stage. */
+  background:#04050a url('../icons/splash-bg.jpg') center/cover no-repeat;
+  transition:opacity .5s var(--ease),visibility .5s}
+#boot .boot-name{text-shadow:0 2px 18px rgba(0,0,0,.9),0 0 34px rgba(90,40,255,.65)}
+#boot .boot-logo img{box-shadow:0 14px 44px rgba(0,0,0,.65),0 0 34px rgba(0,190,255,.35)}
 #boot.gone{opacity:0;visibility:hidden}
 .boot-logo{position:relative;width:104px;height:104px;display:grid;place-items:center}
 .boot-logo img{width:88px;height:88px;border-radius:26px;animation:bootPop .8s var(--ease) both}

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Startup window background: the user's artwork, centre-cropped to fill
+     the screen, shown from process start until the web splash takes over
+     with the same image (web/icons/splash-bg.jpg) plus logo + animation. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@color/hash_bg"/>
+    <item>
+        <bitmap
+            android:src="@drawable/splash_bg"
+            android:gravity="fill"
+            android:filter="true"/>
+    </item>
+</layer-list>

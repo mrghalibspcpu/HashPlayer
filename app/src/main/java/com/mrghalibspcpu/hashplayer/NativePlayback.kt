@@ -21,7 +21,6 @@ import android.view.TextureView
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import androidx.media3.common.AudioAttributes
-import androidx.media3.common.audio.AudioProcessor
 import androidx.media3.common.text.CueGroup
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.C
@@ -34,8 +33,6 @@ import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.datasource.ResolvingDataSource
 import androidx.media3.exoplayer.DefaultRenderersFactory
-import androidx.media3.exoplayer.audio.AudioSink
-import androidx.media3.exoplayer.audio.DefaultAudioSink
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.exoplayer.source.MediaSource
@@ -119,8 +116,7 @@ class NativePlayback(
     private var fxReverb = 0f
     private var fxBoost = 100f
     private var fxAnc = false
-    private var fxEcho = 0f
-    private val echoProcessor = EchoAudioProcessor()
+    private var fxEcho = 0f  // kept for the bridge signature; S+R space now comes from PresetReverb only (see setFx)
     private var baseVolume = 1f
 
     /** Professional colour grade for the video surface (see setEnhance). */
@@ -163,17 +159,14 @@ class NativePlayback(
 
     private fun engine(): ExoPlayer {
         player?.let { return it }
-        val renderers = object : DefaultRenderersFactory(activity) {
-            override fun buildAudioSink(
-                context: Context,
-                enableFloatOutput: Boolean,
-                enableAudioTrackPlaybackParams: Boolean
-            ): AudioSink = DefaultAudioSink.Builder(context)
-                .setEnableFloatOutput(enableFloatOutput)
-                .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
-                .setAudioProcessors(arrayOf<AudioProcessor>(echoProcessor))
-                .build()
-        }.setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
+        /* Stock Media3 audio sink, deliberately with NO custom AudioProcessor.
+           v2.9.0/v2.9.1 inserted a hand-rolled PCM echo processor here and it
+           broke playback on real devices (beeping, then a play/pause loop and
+           no file starting at all). "Pakka working" beats a fancy repeat: the
+           S+R space is now produced by the PresetReverb device effect alone,
+           which can never corrupt the PCM stream. */
+        val renderers = DefaultRenderersFactory(activity)
+            .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
             .setEnableDecoderFallback(true)        // a flaky hardware decoder falls back to software
 
         val p = ExoPlayer.Builder(activity, renderers)
@@ -717,7 +710,6 @@ class NativePlayback(
         fxBoost = if (boost.isFinite()) boost.coerceIn(100f, 300f) else 100f
         fxAnc = anc
         fxEcho = if (echo.isFinite()) echo.coerceIn(0f, 0.45f) else 0f
-        echoProcessor.setMix(fxEcho)
         applyEq()
         applyFx()
         applyVolume()
