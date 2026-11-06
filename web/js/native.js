@@ -221,6 +221,9 @@
       } catch (e) { }
       N.pushEq();
       N.pushFx();
+      /* Skip silence must survive a fresh ExoPlayer (activity recreate,
+         engine restart, YouTube native track): re-arm it on every load. */
+      if (HP.S && HP.S.skipSilence) N.setSkipSilence(true);
       N.setEnhance(!!(HP.S && HP.S.enhance));
       N.pushVis();
       watchRect(viewActive);
@@ -259,6 +262,8 @@
       switch (s.e) {
         case 'ready':
           ready = true;
+          if (HP.S && HP.S.skipSilence) N.setSkipSilence(true);   // engine is up — make sure the silence skipper is really on
+
           document.body.classList.remove('buffering');
           if (!hadDur || Math.abs(dur - hadDur) > .4) fire('durationchange');
           fire('loadedmetadata');

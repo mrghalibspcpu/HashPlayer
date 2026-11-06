@@ -42,9 +42,9 @@ android {
         minSdk 23
         targetSdk 34
         // Must rise on every release: Android refuses to install an older code.
-        // 2.9.2 = 31 (2.9.1 was 30).
-        versionCode 31
-        versionName "2.9.2"
+        // 2.9.3 = 32 (2.9.2 was 31).
+        versionCode 32
+        versionName "2.9.3"
         resourceConfigurations += ["en", "ur"]
     }
 

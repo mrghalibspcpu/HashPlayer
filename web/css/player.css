@@ -601,3 +601,32 @@ body[dir=rtl] .bgm-actions{margin-right:0}
 .bgm-item.now .ic,.bgm-item.now .bgm-item-k{color:var(--a1)}
 .bgm-empty{padding:10px 12px;border-radius:12px;background:var(--panel);font-size:12.5px;color:var(--dim)}
 .bgm-actions #bgm-onoff.on{box-shadow:0 0 0 1px color-mix(in srgb,var(--a1) 60%,transparent),0 6px 18px color-mix(in srgb,var(--a1) 30%,transparent)}
+
+/* ============================================================
+   v2.9.3 — YouTube playback must look like a video, not audio
+   • No audio-style blurred wallpaper / aurora behind ANY video
+     (YouTube included): the player goes pure black, like before.
+   • In the IFrame fallback, YouTube's own title / branding bars
+     are masked by black strips at the very top and bottom edge,
+     so only HashPlayer's controls are visible.
+   • Left landscape palette: icon on top, its name directly
+     underneath it (centred), instead of side-by-side.
+   ============================================================ */
+body.has-video .np-bg{display:none !important}
+body.has-video .aurora,body.has-video .grain,body.has-video .scanline{display:none !important}
+body.yt-mode #np{background:#000 !important;backdrop-filter:none !important;-webkit-backdrop-filter:none !important}
+body.yt-mode .np-bg{display:none !important}
+.yt-mount::before,.yt-mount::after{
+  content:"";position:absolute;left:0;right:0;height:11%;z-index:3;pointer-events:none;
+  background:linear-gradient(180deg,#000 30%,transparent)}
+.yt-mount::before{top:0}
+.yt-mount::after{bottom:0;transform:rotate(180deg)}
+.landscape-tools{width:clamp(76px,11vw,96px)}
+.landscape-tools .tool{
+  flex-direction:column !important;align-items:center;justify-content:center;
+  gap:3px;min-height:52px;padding:7px 4px;text-align:center}
+.landscape-tools .tool span{white-space:normal;line-height:1.15}
+.landscape-tools .tool b{line-height:1.1}
+body.has-video.side-tools-active.yt-track .landscape-tools #v-yt{
+  flex-direction:column !important;align-items:center;justify-content:center;
+  gap:3px;height:auto;min-height:52px;padding:7px 4px;text-align:center}
