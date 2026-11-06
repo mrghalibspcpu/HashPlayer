@@ -140,6 +140,18 @@
 
   <!-- LIBRARY -->
   <section class="view active" id="view-library">
+    <div class="view-head">
+      <div>
+        <h1 id="lib-title" data-i18n="library">Library</h1>
+        <p class="sub" id="lib-sub">—</p>
+      </div>
+      <div class="head-actions">
+        <button class="btn primary" id="btn-add-files"><svg class="ic"><use href="#i-plus"/></svg><span data-i18n="addFiles">Add files</span></button>
+        <button class="btn ghost" id="btn-add-url"><svg class="ic"><use href="#i-link"/></svg><span data-i18n="addUrl">URL</span></button>
+        <button class="btn ghost only-android" id="btn-scan" hidden><svg class="ic"><use href="#i-sparkle"/></svg><span data-i18n="scan">Scan device</span></button>
+      </div>
+    </div>
+
     <div class="toolbar">
       <div class="chips" id="type-chips">
         <button class="chip active" data-filter="all" data-i18n="all">All</button>
@@ -165,18 +177,6 @@
         </label>
         <button class="icon-btn" id="btn-view-mode" title="Grid / list"><svg class="ic"><use href="#i-grid"/></svg></button>
         <button class="btn ghost" id="btn-play-all"><svg class="ic"><use href="#i-play"/></svg><span data-i18n="playAll">Play all</span></button>
-      </div>
-    </div>
-
-    <div class="view-head">
-      <div>
-        <h1 id="lib-title" data-i18n="library">Library</h1>
-        <p class="sub" id="lib-sub">—</p>
-      </div>
-      <div class="head-actions">
-        <button class="btn primary" id="btn-add-files"><svg class="ic"><use href="#i-plus"/></svg><span data-i18n="addFiles">Add files</span></button>
-        <button class="btn ghost" id="btn-add-url"><svg class="ic"><use href="#i-link"/></svg><span data-i18n="addUrl">URL</span></button>
-        <button class="btn ghost only-android" id="btn-scan" hidden><svg class="ic"><use href="#i-sparkle"/></svg><span data-i18n="scan">Scan device</span></button>
       </div>
     </div>
 
@@ -506,22 +506,22 @@
       </div>
 
       <div class="np-tools">
+        <button class="tool" id="t-silence" aria-pressed="false"><svg class="ic"><use href="#i-silence"/></svg><span data-i18n="skipSilence">Skip silence</span></button>
+        <button class="tool anc-tool" id="t-anc" aria-pressed="false"><svg class="ic"><use href="#i-anc"/></svg><span data-i18n="anc">ANC</span></button>
+        <button class="tool portrait-tool sr-tool" id="t-sr" aria-pressed="false"><b id="sr-label">S+R</b><span>Slow</span></button>
+        <button class="tool" id="t-vis" data-pro><svg class="ic"><use href="#i-wave"/></svg><span data-i18n="visualizer">Visualizer</span></button>
         <button class="tool" id="t-speed" data-pro><b id="speed-label">1.0×</b><span data-i18n="speed">Speed</span></button>
         <button class="tool" id="t-ab" data-pro><b id="ab-label">A-B</b><span data-i18n="loop">Loop</span></button>
         <button class="tool" id="t-eq" data-pro><svg class="ic"><use href="#i-eq"/></svg><span data-i18n="equalizer">Equalizer</span></button>
         <button class="tool" id="t-lyrics"><svg class="ic"><use href="#i-lyrics"/></svg><span data-i18n="lyrics">Lyrics</span></button>
-        <button class="tool anc-tool" id="t-anc" aria-pressed="false"><svg class="ic"><use href="#i-anc"/></svg><span data-i18n="anc">ANC</span></button>
         <button class="tool video-tool" id="t-enhance" aria-pressed="false"><svg class="ic"><use href="#i-sparkle"/></svg><span data-i18n="enhance">Enhance</span></button>
-        <button class="tool video-tool" id="t-silence" aria-pressed="false"><svg class="ic"><use href="#i-silence"/></svg><span data-i18n="skipSilence">Skip silence</span></button>
         <button class="tool video-tool" id="t-cc" aria-pressed="false" hidden><svg class="ic"><use href="#i-cc"/></svg><span data-i18n="captions">Captions</span></button>
         <button class="tool portrait-tool" id="t-pitch" data-pro><b id="pitch-label">0</b><span data-i18n="pitch2">Pitch</span></button>
-        <button class="tool portrait-tool sr-tool" id="t-sr" aria-pressed="false"><b id="sr-label">S+R</b><span>Slow</span></button>
         <button class="tool portrait-tool" id="t-minimal"><svg class="ic"><use href="#i-disc"/></svg><span>Minimal</span></button>
         <!-- BGM: portrait bottom panel only (audio and video), see .bgm-tool in player.css -->
         <button class="tool bgm-tool" id="t-bgm" aria-pressed="false" title="Background music"><svg class="ic"><use href="#i-music"/></svg><span>BGM</span></button>
         <button class="tool" id="t-sleep"><svg class="ic"><use href="#i-timer"/></svg><span data-i18n="sleep">Sleep</span></button>
         <button class="tool" id="t-mark" data-pro><svg class="ic"><use href="#i-mark"/></svg><span data-i18n="bookmark">Bookmark</span></button>
-        <button class="tool" id="t-vis" data-pro><svg class="ic"><use href="#i-wave"/></svg><span data-i18n="visualizer">Visualizer</span></button>
         <button class="tool" id="t-queue"><svg class="ic"><use href="#i-queue"/></svg><span data-i18n="queue">Queue</span></button>
       </div>
     </div>

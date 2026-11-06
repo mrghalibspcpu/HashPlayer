@@ -1,7 +1,7 @@
 /* ============================================================
    HashPlayer · service worker — offline shell
    ============================================================ */
-const VERSION = 'hashplayer-v2.9.0';   /* durable favorites/playlists, tablet fullscreen, Lo-fi/S+R, widget + mic/delete fixes */
+const VERSION = 'hashplayer-v2.9.1';   /* durable favorites/playlists, tablet fullscreen, Lo-fi/S+R, widget + mic/delete fixes */
 const SHELL = [
   './', './index.html', './manifest.webmanifest',
   './css/base.css', './css/app.css', './css/player.css', './css/minimal.css',

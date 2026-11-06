@@ -8,6 +8,11 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      deliver_apk:
+        description: 'Commit built APKs into apk/ on this branch for sandbox delivery'
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -145,6 +150,19 @@ jobs:
             If Android says "App not installed" / signature mismatch, uninstall the
             old HashPlayer once, then install this build — a stable signing key is
             not configured in repository secrets yet.
+
+
+      - name: Deliver APKs into the branch (manual dispatch only)
+        if: github.event_name == 'workflow_dispatch' && inputs.deliver_apk
+        run: |
+          mkdir -p apk
+          cp publish/HashPlayer-debug.apk apk/HashPlayer-debug.apk
+          cp publish/HashPlayer-release.apk apk/HashPlayer-release.apk
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f apk/HashPlayer-debug.apk apk/HashPlayer-release.apk
+          git commit -m "ci: deliver HashPlayer APK [skip ci]" || exit 0
+          git push origin "HEAD:${GITHUB_REF_NAME}"
 
       - name: Publish a downloadable release (tags only)
         if: startsWith(github.ref, 'refs/tags/')

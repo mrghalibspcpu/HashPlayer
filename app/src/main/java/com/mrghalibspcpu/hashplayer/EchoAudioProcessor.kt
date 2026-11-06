@@ -48,7 +48,13 @@ class EchoAudioProcessor : BaseAudioProcessor() {
     override fun queueInput(inputBuffer: ByteBuffer) {
         val size = inputBuffer.remaining()
         val out = replaceOutputBuffer(size)
-        val input = inputBuffer.asReadOnlyBuffer().order(ByteOrder.nativeOrder())
+        // IMPORTANT: read from inputBuffer itself, never from a duplicate.
+        // BaseAudioProcessor's contract requires queueInput() to CONSUME the
+        // input (advance its position to its limit). Reading a read-only
+        // duplicate left the original buffer untouched, so the audio renderer
+        // re-queued the same chunk forever — heard on device as a loud,
+        // irritating beeping/buzzing loop on every track since v2.9.0.
+        val input = inputBuffer.order(ByteOrder.nativeOrder())
         val amount = mix
 
         if (amount <= 0f || delay.isEmpty()) {

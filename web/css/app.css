@@ -552,3 +552,29 @@ body.tv .nav-item,body.tv .tool,body.tv .btn{min-height:44px}
 #btn-shuffle-all.chip{flex:0 0 auto}
 #btn-shuffle-all.chip.active{color:#05060a}
 body.surface-light #btn-shuffle-all.chip.active{color:#fff}
+
+/* ============================================================
+   v2.9.1 — library header behaviour
+   At the very top the Library title/stats panel is visible first.
+   The search bar (#topbar, fixed) + filter toolbar then behave as
+   ONE merged sticky unit: scrolling down slides the Library panel
+   away underneath and the toolbar docks flush against the search
+   bar — no transparent strip, no gap, on scroll or at rest.
+   Shuffle stays inside the single chip row; it never gets a row
+   of its own (the row scrolls sideways on narrow screens).
+   ============================================================ */
+#view-library{margin-top:-22px}
+#view-library .view-head{padding-top:22px;margin-bottom:14px}
+#view-library .toolbar{
+  top:0;margin-top:0;margin-bottom:14px;
+  border-bottom:1px solid var(--line);
+  box-shadow:0 10px 24px -18px rgba(0,0,0,.55);
+}
+#view-library .toolbar .chips{flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;scrollbar-width:none}
+#view-library .toolbar .chips::-webkit-scrollbar{display:none}
+#view-library .toolbar .chip{flex:0 0 auto}
+@media (max-width:859px){
+  #view-library{margin-top:-14px}
+  #view-library .view-head{padding-top:14px}
+  #view-library .toolbar{margin:-0px -14px 14px;padding:8px 14px 10px}
+}
